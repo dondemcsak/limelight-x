@@ -237,7 +237,28 @@ IR::Format { input, target }
 
 ### Behavior
 
-1. Resolve `input` → `text`.  
+1. Resolve `input` → `text`.
+
+### Case A — target = "JSON"
+
+2. Construct the tabular‑format prompt:
+
+```
+Convert the following text into a pipe-delimited Markdown table with a header row:
+
+<text>
+```
+
+3. Call the model adapter with the tabular‑format prompt.  
+4. Parse the model's pipe‑delimited table into a JSON array of objects:
+   - Treat the first non‑separator row as column headers.  
+   - Skip the separator row (the row of `-` and `|` characters).  
+   - Strip Markdown inline formatting (`**`, `__`, `*`, `_`) from every cell value.  
+   - Each subsequent data row becomes a JSON object with keys taken from the header row.  
+5. Store the resulting JSON array string in `results[N]`.
+
+### Case B — other targets
+
 2. Construct the prompt:
 
 ```
@@ -247,7 +268,12 @@ Format the following text as <target>:
 ```
 
 3. Call the model adapter.  
-4. Store the output.
+4. Store the output in `results[N]`.
+
+### Errors
+- Invalid reference  
+- Model adapter error  
+- (Case A only) Model output is not a valid pipe‑delimited table: fatal error with operation index
 
 ---
 

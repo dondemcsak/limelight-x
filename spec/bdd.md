@@ -244,15 +244,32 @@ Rewrite { input: "$0", prompt: None }
 
 ---
 
-## Scenario: Evaluate Format
+## Scenario: Evaluate Format as JSON
 **GIVEN** an IR containing  
 ```
 Format { input: "$0", target: "JSON" }
 ```  
 **WHEN** the evaluator runs  
-**THEN** it constructs the built‑in formatting prompt  
-**SO THAT** formatting is consistent  
-**AS MEASURED BY** the constructed prompt matching the template
+**THEN** it:
+  1. constructs a prompt requesting a pipe‑delimited Markdown table from the model  
+  2. receives the model's tabular output  
+  3. parses the tabular output into a JSON array of objects without a second model call  
+**SO THAT** JSON conversion is deterministic and performed by the LLX evaluator, not the model  
+**AS MEASURED BY**  
+  - the model receives a prompt asking for a pipe‑delimited Markdown table with a header row  
+  - the final `results[N]` is a valid JSON array string produced by the evaluator from the tabular output
+
+---
+
+## Scenario: Evaluate Format as non‑JSON target
+**GIVEN** an IR containing  
+```
+Format { input: "$0", target: "Markdown" }
+```  
+**WHEN** the evaluator runs  
+**THEN** it constructs the built‑in formatting prompt and passes it to the model  
+**SO THAT** non‑JSON formatting is delegated to the model  
+**AS MEASURED BY** the model receiving a prompt matching the template in `evaluator-semantics.md`
 
 ---
 

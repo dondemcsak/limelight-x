@@ -127,8 +127,16 @@ fn execute_op(
 
         IrOp::Format { input, target } => {
             let text = resolve_ref(input, results, index, op_name)?;
-            let prompt = format!("Format the following text as {target}:\n\n{text}");
-            call_model(adapter, &prompt, index, op_name, trace)
+            if target.eq_ignore_ascii_case("JSON") {
+                let prompt = format!(
+                    "Convert the following text into a pipe-delimited Markdown table with a header row:\n\n{text}"
+                );
+                let table = call_model(adapter, &prompt, index, op_name, trace)?;
+                table_to_json(&table, index, op_name)
+            } else {
+                let prompt = format!("Format the following text as {target}:\n\n{text}");
+                call_model(adapter, &prompt, index, op_name, trace)
+            }
         }
     }
 }
@@ -136,6 +144,66 @@ fn execute_op(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+fn table_to_json(table: &str, index: usize, op_name: &str) -> Result<String, Error> {
+    let make_err = |msg: &str| Error::EvalError {
+        index,
+        op: op_name.to_string(),
+        message: msg.to_string(),
+    };
+
+    let is_separator = |line: &str| line.chars().all(|c| c == '|' || c == '-' || c == ' ' || c == ':');
+
+    let data_rows: Vec<Vec<String>> = table
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !is_separator(l.trim()))
+        .map(|l| {
+            l.split('|')
+                .map(|cell| strip_markdown(cell.trim()))
+                .filter(|cell| !cell.is_empty())
+                .collect()
+        })
+        .collect();
+
+    if data_rows.is_empty() {
+        return Err(make_err("model output is not a valid pipe-delimited table: no rows found"));
+    }
+
+    let headers = &data_rows[0];
+    if headers.is_empty() {
+        return Err(make_err("model output is not a valid pipe-delimited table: no header columns found"));
+    }
+
+    let mut json = String::from("[");
+    for (i, row) in data_rows[1..].iter().enumerate() {
+        if i > 0 {
+            json.push(',');
+        }
+        json.push('{');
+        for (j, header) in headers.iter().enumerate() {
+            if j > 0 {
+                json.push(',');
+            }
+            let value = row.get(j).map(String::as_str).unwrap_or("");
+            json.push('"');
+            json.push_str(&escape_json_str(header));
+            json.push_str("\":\"");
+            json.push_str(&escape_json_str(value));
+            json.push('"');
+        }
+        json.push('}');
+    }
+    json.push(']');
+    Ok(json)
+}
+
+fn strip_markdown(s: &str) -> String {
+    s.replace("**", "").replace("__", "").replace('*', "").replace('_', "")
+}
+
+fn escape_json_str(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
 
 fn resolve_ref<'a>(
     ir_ref: &IrRef,
@@ -292,21 +360,43 @@ mod tests {
         );
     }
 
-    // BDD: Evaluate Format
+    // BDD: Evaluate Format as JSON — model receives tabular prompt, evaluator converts to JSON
     #[test]
-    fn test_evaluate_format_builtin_prompt() {
+    fn test_evaluate_format_json_tabular_prompt_and_conversion() {
         // GIVEN: Format { input: "$0", target: "JSON" }
         // WHEN the evaluator runs
-        // THEN the adapter receives the built-in format template
-        let adapter = CapturingAdapter::new("{\"key\": \"value\"}");
+        // THEN the model receives a prompt asking for a pipe-delimited table,
+        //      and the result is a JSON array produced by the evaluator (not the model)
+        let table_output = "| **Name** | **Age** |\n|------|-----|\n| Alice | 30 |\n| Bob | 25 |";
+        let adapter = CapturingAdapter::new(table_output);
         let ir = Ir(vec![
             IrOp::Load { path: make_temp_file("some data") },
             IrOp::Format { input: IrRef(0), target: "JSON".to_string() },
         ]);
+        let result = eval(ir, &adapter).unwrap();
+        let prompt = adapter.last_prompt().unwrap();
+        assert!(
+            prompt.contains("pipe-delimited Markdown table with a header row"),
+            "unexpected prompt: {prompt}"
+        );
+        assert_eq!(result, r#"[{"Name":"Alice","Age":"30"},{"Name":"Bob","Age":"25"}]"#);
+    }
+
+    // BDD: Evaluate Format as non-JSON target — model receives standard format prompt
+    #[test]
+    fn test_evaluate_format_non_json_delegates_to_model() {
+        // GIVEN: Format { input: "$0", target: "Markdown" }
+        // WHEN the evaluator runs
+        // THEN the model receives the built-in format template
+        let adapter = CapturingAdapter::new("## Markdown output");
+        let ir = Ir(vec![
+            IrOp::Load { path: make_temp_file("some data") },
+            IrOp::Format { input: IrRef(0), target: "Markdown".to_string() },
+        ]);
         eval(ir, &adapter).unwrap();
         let prompt = adapter.last_prompt().unwrap();
         assert!(
-            prompt.contains("Format the following text as JSON:"),
+            prompt.contains("Format the following text as Markdown:"),
             "unexpected prompt: {prompt}"
         );
     }
