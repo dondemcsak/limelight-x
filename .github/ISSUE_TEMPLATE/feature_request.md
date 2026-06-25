@@ -1,20 +1,34 @@
 ---
-name: Feature request
-about: Suggest an idea for this project
-title: ''
-labels: ''
-assignees: ''
+name: "Feature Request"
+about: "Suggest an enhancement or new capability"
+labels: ["enhancement"]
+---
+
+# Feature Request: Limelight‑X
+
+Thank you for helping shape the future of the project.
+
+## 1. What problem does this solve?
+Describe the real problem or limitation you’re facing.
 
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+## 2. Proposed Solution
+What would you like Limelight‑X to do?
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+Be as clear and concrete as possible.
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+---
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+## 3. Why this belongs in Limelight‑X
+Explain why this feature fits the project’s philosophy, scope, or roadmap.
+
+---
+
+## 4. Alternatives Considered
+List any workarounds or other approaches you’ve tried.
+
+---
+
+## 5. Additional Context (optional)
+Anything else that helps clarify the request.
