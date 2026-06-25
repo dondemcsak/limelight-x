@@ -1,38 +1,64 @@
 ---
-name: Bug report
-about: Create a report to help us improve
-title: ''
-labels: ''
-assignees: ''
+name: "Bug Report"
+about: "Something isn’t working as expected"
+labels: ["bug"]
+---
+
+# Bug Report: Limelight‑X
+
+Thank you for taking the time to report a bug.  
+Clear, behavior‑focused reports help us fix issues quickly.
+
+## 1. Summary
+What is the bug?  
+Keep it short and specific.
 
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+## 2. Behavior Specification
+Describe the bug using Given / When / Then form.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+Example:
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+```
+Given <initial state>
+When <action occurs>
+Then <unexpected or incorrect outcome>
+```
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+If the bug cannot be expressed this way, describe the behavior as clearly as possible.
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+---
 
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
+## 3. Steps to Reproduce
+List the exact steps needed to trigger the bug.
 
-**Additional context**
-Add any other context about the problem here.
+1. …
+2. …
+3. …
+
+Include the smallest possible input that reproduces the issue.
+
+---
+
+## 4. Expected Behavior
+What *should* have happened?
+
+---
+
+## 5. Actual Behavior
+What *actually* happened?
+
+Include output, logs, or screenshots if helpful.
+
+---
+
+## 6. Environment
+- OS:
+- CLI version (if applicable):
+- Branch or commit hash:
+
+---
+
+## 7. Additional Notes (optional)
+Anything else that might help us understand or reproduce the issue.
