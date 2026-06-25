@@ -1,0 +1,20 @@
+# CODEOWNERS
+# This file defines who automatically reviews and approves changes to specific parts of Limelight‑X.
+# GitHub uses these rules to assign reviewers when a pull request touches matching paths.
+
+# Global ownership — all files
+* @DonDemcsak
+
+# Core DSL and evaluator
+src/dsl/ @DonDemcsak
+src/evaluator/ @DonDemcsak
+
+# Documentation and examples
+docs/ @DonDemcsak
+examples/ @DonDemcsak
+
+# GitHub configuration and community health files
+.github/ @DonDemcsak
+
+# Tests
+tests/ @DonDemcsak

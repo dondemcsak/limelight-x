@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+title: "Limelight‑X"
+message: "If you use this software, please cite it using the metadata below."
+type: software
+
+authors:
+  - family-names: "Demcsak"
+    given-names: "Don"
+    orcid: "https://orcid.org/0009-0009-0642-086X"
+
+version: "0.1.0"
+date-released: 2026-06-25
+
+repository-code: "https://github.com/dondemcsak/limelight-x"
+license: "MIT"
+
+abstract: >
+  Limelight‑X is a minimal, transparent engine for compiling constrained
+  natural language into a deterministic intermediate representation (IR).
+  It provides a small DSL, evaluator, and normalization pipeline designed
+  for clarity, reproducibility, and experimentation.
+
+keywords:
+  - DSL
+  - compiler
+  - intermediate representation
+  - natural language constraints
+  - evaluation semantics
+  - Limelight-X
