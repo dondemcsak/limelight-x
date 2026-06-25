@@ -1,11 +1,12 @@
 ---
-name: DSL Proposal
-about: Propose a change to the grammar, IR, evaluator, or semantics
-title: ''
-labels: ''
-assignees: ''
-
+name: "DSL Proposal"
+about: "Propose a change to the grammar, IR, evaluator, or semantics"
+labels: ["dsl", "design"]
 ---
+
+# DSL Proposal: Limelight‑X
+
+Use this template when proposing changes to the language itself — grammar, IR structure, evaluator semantics, or normalization rules.
 
 ## 1. Summary
 What change are you proposing?
