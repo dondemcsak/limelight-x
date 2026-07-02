@@ -45,6 +45,17 @@ All scenarios follow **pure Given/When/Then** format.
 **And** returns to ExecutionPage  
 **Then** the IR inspector remains expanded
 
+## Scenario: Sidebar navigation to SettingsPage succeeds from any page
+**Given** the user is on HomePage, EditorPage, or ExecutionPage  
+**When** the user selects "Settings" in the sidebar  
+**Then** the UI navigates to SettingsPage  
+**And** fields reflect the last-saved configuration values
+
+## Scenario: HomePage gear icon opens SettingsPage
+**Given** the user is on HomePage  
+**When** the user selects the gear icon  
+**Then** the UI navigates to SettingsPage
+
 ---
 
 # 2. Workflow Navigation
@@ -92,6 +103,33 @@ All scenarios follow **pure Given/When/Then** format.
 **Given** the editor contains valid CNL  
 **And** the backend mock response contains no inspectors  
 **When** the user presses Ctrl+T  
+**Then** the UI shows a navigation guard modal  
+**And** remains on EditorPage
+
+## Scenario: Leaving SettingsPage with unsaved changes shows a confirmation modal
+**Given** the user is on SettingsPage  
+**And** the user has edited a field without saving  
+**When** the user selects a different page in the sidebar  
+**Then** the UI shows an "Unsaved Changes" confirmation modal  
+**And** remains on SettingsPage
+
+## Scenario: Choosing "Stay" keeps unsaved Settings changes
+**Given** the "Unsaved Changes" confirmation modal is visible  
+**When** the user selects "Stay"  
+**Then** the modal closes  
+**And** the UI remains on SettingsPage  
+**And** the edited field values are unchanged
+
+## Scenario: Choosing "Discard Changes" navigates away and reverts fields
+**Given** the "Unsaved Changes" confirmation modal is visible  
+**When** the user selects "Discard Changes"  
+**Then** the UI navigates to the originally requested page  
+**And** SettingsPage fields revert to their last-saved values on next visit
+
+## Scenario: Navigation to SettingsPage is blocked during pipeline execution
+**Given** the user is on EditorPage  
+**And** a pipeline is currently running  
+**When** the user selects "Settings" in the sidebar  
 **Then** the UI shows a navigation guard modal  
 **And** remains on EditorPage
 

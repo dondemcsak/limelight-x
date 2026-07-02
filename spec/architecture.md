@@ -36,6 +36,13 @@ The repository must follow this structure:
     /evaluator
     /model
     /api
+/ui
+    /views
+    /viewmodels
+    /services
+    /components
+    /styles
+    /routing
 /spec
     architecture.md
     cnl-grammar.md
@@ -48,6 +55,22 @@ The repository must follow this structure:
     bdd.md
     bdd-api.md
     spec-template.md
+    /ux
+        ui-architecture.md
+        ui-components.md
+        ui-viewmodels.md
+        ui-styling-theming.md
+        ui-routing-navigation.md
+        ui-data-contracts.md
+        ui-error-handling.md
+        ui-accessibility.md
+        ui-build-pipeline.md
+        ui-testing.md
+        ui-deployment.md
+        bdd-ui-interactions.md
+        bdd-ui-navigation.md
+        bdd-ui-error-cases.md
+        bdd-ui-visual-regressions.md
 ```
 
 ### Rules
@@ -57,7 +80,8 @@ The repository must follow this structure:
 - No shared mutable state.  
 - No “utils” or “helpers” modules.  
 - AST definitions live inside `/parser` and `/normalizer` (no `/ast` module).  
-- `/src/api` is defined in `spec/api.md`. It orchestrates calls to the existing pipeline stages over local HTTP; it does not introduce new pipeline stages or modify existing ones.
+- `/src/api` is defined in `spec/api.md`. It orchestrates calls to the existing pipeline stages over local HTTP; it does not introduce new pipeline stages or modify existing ones.  
+- `/ui` is a separate Avalonia/.NET (C#) client defined in `spec/ux/*.md`. It is a deliberately-scoped second language; `/src` remains single-language Rust. See CLAUDE.md §1.1.
 
 ---
 

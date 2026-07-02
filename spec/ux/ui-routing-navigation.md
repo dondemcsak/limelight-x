@@ -28,7 +28,8 @@ Limelight‑X uses **ViewModel‑driven routing only**.
 PageType {
     Home,
     Editor,
-    Execution
+    Execution,
+    Settings
 }
 ```
 
@@ -56,6 +57,12 @@ Home → Editor → Execution
 - Displays pipeline results  
 - Navigation guard: backend must return a successful response
 
+### SettingsPage
+- Not part of the linear Home → Editor → Execution workflow  
+- Reachable from any page via the sidebar, or from HomePage's gear icon  
+- Navigation guard: none to *enter*; leaving with unsaved changes requires confirmation (see Guard 5)  
+- Subject to Guard 4 (no navigation during execution) like every other page
+
 ---
 
 # 3. NavigationViewModel
@@ -69,6 +76,7 @@ CurrentPage: PageType
 - `NavigateToHomeCommand`
 - `NavigateToEditorCommand`
 - `NavigateToExecutionCommand`
+- `NavigateToSettingsCommand`
 
 ### Responsibilities
 - Manage current page only  
@@ -113,8 +121,18 @@ IsTracing == false
 IsExplaining == false
 ```
 
+This applies to navigation into or out of any page, including SettingsPage — no new rule is needed for Settings specifically.
+
+### Guard 5: Unsaved Settings changes require confirmation
+```
+Leaving SettingsPage (via sidebar, gear icon, or any NavigationViewModel command)
+allowed only if:
+SettingsViewModel.IsDirty == false
+```
+If `IsDirty == true`, navigation is blocked and a confirmation modal is shown instead of the standard guard-failure modal (see below).
+
 ### Guard Failure Behavior
-Navigation failures trigger a **modal dialog**:
+Guards 1–4 failures trigger a **modal dialog**:
 
 ```
 ModalDialog {
@@ -123,6 +141,18 @@ ModalDialog {
     Buttons: [OK]
 }
 ```
+
+Guard 5 failures trigger a distinct **confirmation modal** instead, since the user has a real choice rather than a blocked action:
+
+```
+ModalDialog {
+    Title: "Unsaved Changes"
+    Message: "You have unsaved settings changes. Discard them?"
+    Buttons: [Stay, Discard Changes]
+}
+```
+- **Stay** — remains on SettingsPage, `IsDirty` unchanged.  
+- **Discard Changes** — reverts `SettingsViewModel` fields to last-saved values, sets `IsDirty = false`, and completes the original navigation.
 
 ---
 
@@ -198,6 +228,10 @@ Limelight‑X preserves state across pages:
 - Recent files persist  
 - Last opened file path persists
 
+### SettingsPage
+- Saved values persist across app restarts (written to the config file / Credential Manager, see `ui-deployment.md` §4.3)  
+- Unsaved edits do **not** persist across navigation away without confirmation (see Guard 5) — they are either saved or discarded, never silently carried
+
 ---
 
 # 8. Page Transition Behavior
@@ -224,13 +258,16 @@ Limelight‑X uses a **sidebar navigation layout**.
 - Home  
 - Editor  
 - Execution  
+- Settings  
 
 ### Rules
 - Sidebar reflects `CurrentPage`  
 - Sidebar navigation respects guards  
 - Sidebar cannot override guard failures  
 - Sidebar cannot navigate to ExecutionPage unless pipeline succeeded  
-- Sidebar cannot navigate to EditorPage unless a file is loaded
+- Sidebar cannot navigate to EditorPage unless a file is loaded  
+- Sidebar's Settings item is reachable from any page, subject to Guard 4 (no navigation during execution) and Guard 5 (unsaved Settings changes)  
+- Sidebar's Settings item uses the same `role="link"` / `aria-current="page"` pattern as Home, Editor, and Execution (see `ui-accessibility.md` §12)
 
 ---
 

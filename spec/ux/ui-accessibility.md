@@ -137,6 +137,7 @@ Limelight‑X provides **basic keyboard shortcuts**:
 | Explain  | Ctrl+E   |
 | Trace    | Ctrl+T   |
 | Save     | Ctrl+S   |
+| Settings | Ctrl+,   |
 
 ### Requirements
 - Shortcuts must not conflict with OS‑level shortcuts.  
@@ -160,7 +161,7 @@ Error surfaces must expose ARIA semantics:
 
 ---
 
-# 11. Editor Accessibility
+# 11. Editor & Form Accessibility
 
 The editor exposes **full ARIA textfield semantics**.
 
@@ -169,6 +170,13 @@ The editor exposes **full ARIA textfield semantics**.
 - Editor must expose current line and column position.  
 - Editor must expose validation errors via ARIA descriptions.  
 - Editor must expose selection and cursor position.
+
+### Settings Form Fields
+`TextField`, `SecureTextField`, and `SelectField` (`ui-components.md` §5.6–5.8) reuse the same pattern:
+- Each field must expose an accessible label (role="textbox" for `TextField`/`SecureTextField`, appropriate combobox role for `SelectField`).  
+- Validation errors must be exposed via ARIA descriptions, the same mechanism the editor uses.  
+- `SecureTextField`'s show/hide toggle must expose an accessible name ("Show API key" / "Hide API key") and must not rely on the icon alone.  
+- Tab order follows visual order: Port → Log Path → API Key → Environment Profile → Save/Cancel.
 
 ---
 
@@ -180,7 +188,8 @@ Sidebar navigation uses **ARIA navigation roles**.
 - Sidebar must expose role="navigation".  
 - Each navigation item must expose role="link".  
 - Current page must expose aria-current="page".  
-- Keyboard navigation must follow visual order.
+- Keyboard navigation must follow visual order.  
+- The sidebar's Settings item and the HomePage gear icon (`IconButton`, `ui-components.md` §5.5) both follow the same role and accessible-name rules; the gear icon exposes an accessible name of "Open Settings" since it has no visible text label.
 
 ---
 

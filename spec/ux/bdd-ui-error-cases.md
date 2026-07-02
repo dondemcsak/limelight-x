@@ -4,7 +4,7 @@
 This document defines Behavior‑Driven Development (BDD) scenarios for **all UI error behaviors** in Limelight‑X.  
 It covers validation errors, pipeline errors, API errors, rendering errors, navigation errors, and fatal errors.  
 Scenarios use **mock backend responses**, **medium granularity**, and **pure Given/When/Then** format.  
-The document is organized by **workflow** (Load, Edit, Run, Explain, Trace).
+The document is organized by **workflow** (Load, Edit, Run, Explain, Trace, Settings).
 
 Error surfaces covered:
 - Inline errors  
@@ -25,7 +25,7 @@ Inspector error coverage:
 - Rendering errors  
 
 Error persistence:
-- Editor validation errors persist until corrected  
+- Editor and Settings validation errors persist until corrected  
 - Other errors do not persist unless part of inspector state  
 
 Error recovery:
@@ -185,7 +185,37 @@ Keyboard shortcuts do **not** trigger error scenarios.
 
 ---
 
-# 6. Navigation Error Cases
+# 6. Settings Workflow Error Cases
+
+## Scenario: Invalid port shows an inline validation error
+**Given** the user is on SettingsPage  
+**When** the user enters a port value outside 1–65535  
+**Then** an inline validation error appears above the Port field  
+**And** Save is disabled
+
+## Scenario: Empty API key shows an inline validation error
+**Given** the user is on SettingsPage  
+**When** the user clears the API Key field  
+**Then** an inline validation error appears above the API Key field  
+**And** Save is disabled
+
+## Scenario: Editing an invalid field back to valid clears the error
+**Given** the Port field shows an inline validation error  
+**When** the user corrects the value to a valid port  
+**Then** the inline validation error clears  
+**And** Save becomes enabled (if no other fields are invalid)
+
+## Scenario: Server relaunch failure shows a fatal modal
+**Given** the user is on SettingsPage with valid edits  
+**And** the mocked `llx serve` relaunch fails (e.g. the new port is unavailable)  
+**When** the user selects Save  
+**Then** a modal dialog appears  
+**And** all actions are disabled until acknowledged  
+**And** the edited field values remain on SettingsPage after acknowledgment
+
+---
+
+# 7. Navigation Error Cases
 
 ## Scenario: Navigation guard error shows a modal dialog
 **Given** the user is on EditorPage  
@@ -203,7 +233,7 @@ Keyboard shortcuts do **not** trigger error scenarios.
 
 ---
 
-# 7. Error Recovery
+# 8. Error Recovery
 
 ## Scenario: Retry clears inline and banner errors
 **Given** the user is on ExecutionPage  

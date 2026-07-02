@@ -56,17 +56,17 @@ The spec is organized by **deployment stages**:
 
 - **Profiles:** Dev, Stage, Prod  
 - **Configuration:**  
-  - Backend URL per environment — must match the loopback address/port `llx serve` binds to (`127.0.0.1:4747` by default, see `api.md` §8)  
+  - Backend port per environment — the bind host is fixed at `127.0.0.1` and is never configurable (see `SECURITY.md`); only the port `llx serve` binds to is editable (`4747` by default, see `api.md` §8)  
   - Log path per environment  
   - `ANTHROPIC_API_KEY` — **required**. The installer prompts for it on first launch if unset, and stores it via Windows Credential Manager; the UI sets it in the environment of the `llx serve` process it launches. The UI must not start `llx serve` without it, since `api.md` §8/§10 specifies the server refuses to start and exits immediately without this variable.  
   - Optional environment variables for advanced setups (e.g. `--port` override, passed to `llx serve` if the default port is unavailable)  
-- **Selection:** Environment profile chosen at first launch or via config file
+- **Selection:** Environment profile chosen at first launch, via config file, or later via the **in-app Settings page** (`ui-viewmodels.md` §3.3, `ui-routing-navigation.md` §9) — the Settings page edits the same underlying values described here, using Credential Manager for `ANTHROPIC_API_KEY` and the config file for port/log path/profile, and applies changes by restarting `llx serve` in the background
 
 ## 4.4. Validate
 
 - **Step 1:** Launch Limelight‑X UI  
 - **Step 2:** Confirm main window renders without errors  
-- **Step 3:** Confirm environment profile is active (e.g., backend URL)  
+- **Step 3:** Confirm environment profile is active (e.g., backend port)  
 - **Step 4:** Confirm `llx serve` started successfully; if `ANTHROPIC_API_KEY` is missing or the port is unavailable, the UI must surface the fatal startup error from `api.md` §8 rather than failing silently  
 - **Step 5:** Optionally run a simple pipeline to confirm connectivity
 

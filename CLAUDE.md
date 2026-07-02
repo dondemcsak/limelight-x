@@ -41,7 +41,22 @@ Claude must assume the following directory layout:
     bdd.md
     bdd-api.md
     spec-template.md
-    ux/
+    /ux
+        ui-architecture.md
+        ui-components.md
+        ui-viewmodels.md
+        ui-styling-theming.md
+        ui-routing-navigation.md
+        ui-data-contracts.md
+        ui-error-handling.md
+        ui-accessibility.md
+        ui-build-pipeline.md
+        ui-testing.md
+        ui-deployment.md
+        bdd-ui-interactions.md
+        bdd-ui-navigation.md
+        bdd-ui-error-cases.md
+        bdd-ui-visual-regressions.md
 ```
 
 ### Rules

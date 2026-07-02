@@ -13,6 +13,7 @@ The document is organized by **workflow**:
 - Run  
 - Explain  
 - Trace  
+- Settings  
 
 ---
 
@@ -33,6 +34,7 @@ Test coverage includes:
 - Sidebar + workflow navigation  
 - Inspector expand/collapse  
 - Deterministic Run/Explain/Trace workflows  
+- Settings edit/save/apply workflows  
 
 ---
 
@@ -152,41 +154,85 @@ Test coverage includes:
 
 ---
 
-# 7. Navigation Tests
+# 7. Settings Workflow Tests
 
-## 7.1. Sidebar Navigation to EditorPage
+## 7.1. Valid Edit and Save
+- Open SettingsPage  
+- Edit Port, Log Path, API Key, Environment Profile to valid values  
+- Trigger Save with a mocked successful `llx serve` relaunch  
+- Assert `IsDirty` becomes `false`  
+- Assert navigation returns to the previous page
+
+## 7.2. Invalid Input Blocks Save
+- Open SettingsPage  
+- Enter an out-of-range port  
+- Assert inline validation error appears  
+- Assert Save is disabled  
+- Assert no relaunch is attempted
+
+## 7.3. Unsaved Changes Guard
+- Open SettingsPage  
+- Edit a field (sets `IsDirty`)  
+- Attempt to navigate away via sidebar  
+- Assert the confirmation modal appears  
+- Assert choosing "Stay" remains on SettingsPage  
+- Assert choosing "Discard Changes" reverts fields and completes navigation
+
+## 7.4. Relaunch Failure Produces a Fatal Modal
+- Open SettingsPage with valid edits  
+- Trigger Save with a mocked `llx serve` relaunch failure (e.g. port unavailable)  
+- Assert a fatal modal appears  
+- Assert all actions are disabled until acknowledged  
+- Assert `IsDirty` remains `true` after acknowledgment
+
+## 7.5. Settings State Reset
+- Edit fields on SettingsPage  
+- Reset UI state  
+- Assert fields revert to last-saved values  
+- Assert `IsDirty` is `false`
+
+---
+
+# 8. Navigation Tests
+
+## 8.1. Sidebar Navigation to EditorPage
 - Load file  
 - Navigate via sidebar  
 - Assert EditorPage loads  
 - Assert editor content visible
 
-## 7.2. Sidebar Navigation to ExecutionPage
+## 8.2. Sidebar Navigation to ExecutionPage
 - Execute pipeline  
 - Navigate via sidebar  
 - Assert ExecutionPage loads  
 - Assert inspectors visible
 
-## 7.3. Workflow Navigation
+## 8.3. Sidebar Navigation to SettingsPage
+- From any page, navigate to Settings via sidebar  
+- Assert SettingsPage loads  
+- Assert fields reflect last-saved values
+
+## 8.4. Workflow Navigation
 - Trigger Run/Explain/Trace  
 - Assert automatic navigation to ExecutionPage  
 - Assert correct inspectors appear
 
 ---
 
-# 8. Inspector Tests
+# 9. Inspector Tests
 
-## 8.1. Expand Inspector
+## 9.1. Expand Inspector
 - Execute pipeline  
 - Expand IR inspector  
 - Assert tree becomes visible  
 - Assert indentation correct
 
-## 8.2. Collapse Inspector
+## 9.2. Collapse Inspector
 - Expand inspector  
 - Collapse inspector  
 - Assert tree becomes hidden
 
-## 8.3. Inspector Reset
+## 9.3. Inspector Reset
 - Expand inspector  
 - Reset UI state  
 - Assert inspector collapsed  

@@ -105,15 +105,36 @@ Displays pipeline results in a vertical timeline.
 Provides deterministic navigation between pages.
 
 ### Responsibilities
-- Display navigation items  
+- Display navigation items (Home, Editor, Execution, Settings)  
 - Reflect current page  
-- Emit navigation commands
+- Emit navigation commands  
+- Trigger Guard 5's confirmation modal instead of navigating directly when leaving SettingsPage with unsaved changes
 
 ### Inputs
 - `NavigationViewModel`
 
 ### Outputs
 - Navigation events
+
+---
+
+## 2.5 `SettingsPage`
+### Purpose
+Dedicated page for viewing and editing deployment configuration (`ui-deployment.md` §4.3).
+
+### Responsibilities
+- Render editable fields for backend port, log path, API key, and environment profile  
+- Display inline validation errors  
+- Provide Save / Cancel actions  
+- Show an "Applying settings…" loading state while `llx serve` is relaunched  
+- Route back to the previous page on successful save or confirmed cancel
+
+### Inputs
+- `SettingsViewModel`
+
+### Outputs
+- Navigation events  
+- Field change events
 
 ---
 
@@ -454,6 +475,88 @@ Reusable component for inspector sections.
 
 ### Outputs
 - Collapse/expand events
+
+---
+
+## 5.5 `IconButton`
+### Purpose
+Generic icon-only action button, used for the Settings gear icon and reusable for future icon-triggered actions.
+
+### Responsibilities
+- Render a single Fluent UI icon  
+- Execute a command on click  
+- Display disabled state  
+- Expose an accessible name (e.g. "Open Settings") since the button has no visible text label
+
+### Inputs
+- Icon identifier (Fluent UI icon set only, no custom SVGs — see `ui-styling-theming.md` §6)  
+- Command  
+- Accessible name  
+- Enabled flag
+
+### Outputs
+- Click events
+
+---
+
+## 5.6 `TextField`
+### Purpose
+Standard single-line text input, used by `SettingsPage` (e.g. log path) and available for future forms.
+
+### Responsibilities
+- Render a labeled text input  
+- Display inline validation error state  
+- Emit value-changed events
+
+### Inputs
+- Label  
+- Value  
+- Validation error (optional)  
+- Enabled flag
+
+### Outputs
+- `ValueChanged` events
+
+---
+
+## 5.7 `SecureTextField`
+### Purpose
+Masked text input for secrets, used by `SettingsPage` for `ANTHROPIC_API_KEY`.
+
+### Responsibilities
+- Render a labeled, masked text input  
+- Provide a show/hide toggle (accessible name: "Show API key" / "Hide API key")  
+- Display inline validation error state  
+- Emit value-changed events
+
+### Inputs
+- Label  
+- Value  
+- Visibility flag  
+- Validation error (optional)
+
+### Outputs
+- `ValueChanged` events  
+- Visibility toggle events
+
+---
+
+## 5.8 `SelectField`
+### Purpose
+Labeled dropdown selector, used by `SettingsPage` for the Dev/Stage/Prod environment profile.
+
+### Responsibilities
+- Render a labeled dropdown  
+- Render the fixed list of options  
+- Emit selection-changed events
+
+### Inputs
+- Label  
+- Options  
+- Selected value
+
+### Outputs
+- `SelectionChanged` events
 
 ---
 

@@ -102,7 +102,8 @@ The UI uses a **multi‑page workflow** with deterministic routing:
 1. **Home Page**  
    - Open `.llx` file  
    - Recent files  
-   - Quick actions
+   - Quick actions  
+   - Settings icon (gear), routing to Settings Page
 
 2. **Editor Page**  
    - CNL editor  
@@ -115,6 +116,11 @@ The UI uses a **multi‑page workflow** with deterministic routing:
    - Vertical pipeline timeline  
    - Collapsible inspector panels  
    - Final result viewer
+
+4. **Settings Page**  
+   - Editable backend port, log path, `ANTHROPIC_API_KEY`, and environment profile (Dev/Stage/Prod)  
+   - Reachable from the HomePage gear icon or the sidebar, from any page  
+   - See `ui-routing-navigation.md` §9 and `ui-viewmodels.md` §3.3 for full behavior
 
 Navigation is controlled by a `NavigationViewModel` and must be deterministic.
 
@@ -143,6 +149,12 @@ The UI defines the following ViewModels:
 - Holds structured output from `/run`, `/explain`, `/trace`  
 - Maps backend output into inspector ViewModels  
 - Tracks execution status and errors
+
+### 5.4 SettingsViewModel
+- Holds editable backend port, log path, API key, and environment profile  
+- Validates input and blocks Save while invalid  
+- On Save, applies changes by relaunching `llx serve` in the background  
+- See `ui-viewmodels.md` §3.3 for the full state/command definition
 
 ### 5.4 Inspector ViewModels
 Each inspector has its own ViewModel:

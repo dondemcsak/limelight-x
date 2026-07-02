@@ -202,6 +202,23 @@ Rendered using:
 
 ---
 
+## 4.7 Form Inputs (Settings Page)
+`TextField`, `SecureTextField`, and `SelectField` (see `ui-components.md` §5.6–5.8) reuse existing tokens rather than introducing new ones:
+
+```
+Background: Surface
+Border: BorderColor
+Focus Border: AccentPrimary
+Text: TextPrimary
+Label: TextSecondary
+Error Border: Error (#EF4444)
+```
+
+- No new colors, shadows, or animation timings beyond those already defined in §2, §4.1, and §7.  
+- `SecureTextField`'s show/hide toggle uses a Fluent UI icon (eye / eye-off), per §6.
+
+---
+
 # 5. Syntax Highlighting
 
 Limelight‑X uses **VS Code Dark+** as the base theme.
@@ -225,6 +242,7 @@ Limelight‑X uses **Fluent UI icons** exclusively.
 - Chevron icons for collapsible panels  
 - Fluent folder/file icons for file loader  
 - Fluent run/explain/trace icons  
+- Fluent gear icon for the Settings entry point (HomePage and sidebar)  
 - No Material icons  
 - No custom SVGs in v0.1  
 

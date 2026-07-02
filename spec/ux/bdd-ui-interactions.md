@@ -12,6 +12,7 @@ Limelight‑X workflows covered:
 - Run  
 - Explain  
 - Trace  
+- Settings  
 
 Each workflow includes:
 - Successful interactions  
@@ -161,7 +162,37 @@ All scenarios follow **pure Given/When/Then** format.
 
 ---
 
-# 6. Inspector Interactions
+# 6. Settings Workflow
+
+## Scenario: Editing a Settings field marks it dirty
+**Given** the user is on SettingsPage  
+**When** the user edits the Log Path field  
+**Then** `SettingsViewModel.IsDirty` becomes `true`
+
+## Scenario: Saving valid settings applies them and navigates back
+**Given** the user is on SettingsPage  
+**And** all fields contain valid values  
+**And** the mocked `llx serve` relaunch succeeds  
+**When** the user selects Save  
+**Then** the UI shows an "Applying settings…" loading state  
+**And** navigates back to the previous page  
+**And** `IsDirty` becomes `false`
+
+## Scenario: Toggling API key visibility unmasks the field
+**Given** the user is on SettingsPage  
+**And** the API key field is masked  
+**When** the user selects the show/hide toggle  
+**Then** the API key field displays its unmasked value
+
+## Scenario: Canceling without changes returns immediately
+**Given** the user is on SettingsPage  
+**And** no fields have been edited  
+**When** the user selects Cancel  
+**Then** the UI navigates back to the previous page without a confirmation prompt
+
+---
+
+# 7. Inspector Interactions
 
 ## Scenario: Expanding an inspector reveals content
 **Given** the user is on ExecutionPage  
@@ -188,7 +219,7 @@ All scenarios follow **pure Given/When/Then** format.
 
 ---
 
-# 7. Navigation Scenarios
+# 8. Navigation Scenarios
 
 ## Scenario: Sidebar navigation to EditorPage succeeds
 **Given** the user is on HomePage  
@@ -212,7 +243,7 @@ All scenarios follow **pure Given/When/Then** format.
 
 ---
 
-# 8. State Persistence
+# 9. State Persistence
 
 ## Scenario: Editor text persists across navigation
 **Given** the user enters text in the editor  

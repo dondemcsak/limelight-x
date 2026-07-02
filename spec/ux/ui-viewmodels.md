@@ -108,11 +108,13 @@ CurrentPage: PageType
 - `NavigateToHomeCommand`
 - `NavigateToEditorCommand`
 - `NavigateToExecutionCommand`
+- `NavigateToSettingsCommand`
 
 ### Behavior
 - No history stack  
 - No deep‑linking  
 - Deterministic page transitions  
+- Enforces Guard 5 (unsaved Settings changes) before leaving SettingsPage, per `ui-routing-navigation.md` §4  
 
 ---
 
@@ -138,6 +140,55 @@ IsLoading: bool
 - Validates file existence  
 - Emits content to `EditorViewModel`  
 - Adds file to recent list  
+
+---
+
+## 3.3 SettingsViewModel
+### Purpose
+Holds and validates the editable deployment configuration (`ui-deployment.md` §4.3), and applies changes by relaunching `llx serve`.
+
+### State
+```
+Port: int
+LogPath: string
+ApiKey: string
+EnvironmentProfile: EnvironmentProfile
+IsDirty: bool
+IsApplying: bool
+Errors: ObservableCollection<UiError>
+```
+
+### EnvironmentProfile
+```
+EnvironmentProfile {
+    Dev,
+    Stage,
+    Prod
+}
+```
+
+### Commands
+- `SaveSettingsCommand`
+- `CancelSettingsCommand`
+- `ToggleApiKeyVisibilityCommand`
+
+### Behavior
+- `Port` is a bind **port number only** — the bind host is fixed at `127.0.0.1` (see `SECURITY.md`, `api.md`) and is never user-editable.
+- Editing any field sets `IsDirty = true`.
+- `SaveSettingsCommand`:
+  1. Validates all fields (see `ui-error-handling.md` §10); if invalid, populates `Errors` and does not proceed.
+  2. Writes `Port`, `LogPath`, `EnvironmentProfile` to the local config file.
+  3. Writes `ApiKey` to Windows Credential Manager (never to the plaintext config file).
+  4. Sets `IsApplying = true`, stops the running `llx serve` process, and relaunches it with the new `Port`/`ApiKey`.
+  5. On success: `IsApplying = false`, `IsDirty = false`, navigates back to the previous page.
+  6. On failure (e.g. new port unavailable, relaunch crash): `IsApplying = false`, raises a `Category: Api, Severity: fatal` error (see `ui-error-handling.md` §10) — `IsDirty` remains `true` so the user's edits are not lost.
+- `CancelSettingsCommand`: if `IsDirty`, triggers Guard 5's confirmation modal (`ui-routing-navigation.md` §4); otherwise navigates back immediately.
+- `ToggleApiKeyVisibilityCommand`: toggles masked/unmasked display of `ApiKey`; does not affect `IsDirty`.
+
+### Deterministic Behavior
+- No autosave — changes only take effect via explicit `SaveSettingsCommand`.  
+- No retries on relaunch failure.  
+- No partial apply — port/log path/profile and API key are written together or not at all.
 
 ---
 

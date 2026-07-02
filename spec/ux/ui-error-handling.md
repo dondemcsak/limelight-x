@@ -78,7 +78,7 @@ Each surface is used deterministically based on severity and category.
 Inline errors appear **above component content**.
 
 ### Used For
-- Validation errors (Editor)  
+- Validation errors (Editor, Settings)  
 - Inspector errors (AST, IR, Prompts, Model Outputs)  
 - Rendering errors inside inspectors  
 
@@ -209,7 +209,23 @@ Validation errors:
 
 ---
 
-# 10. Error Logging
+# 10. Settings Validation & Apply Error Behavior
+
+Settings field validation (`Category: Validation`, per §1) follows the same pattern as Editor validation:
+
+- Blocks `SaveSettingsCommand`.  
+- Shows inline errors above the relevant field (e.g. "Port must be between 1 and 65535", "API key is required").  
+- Clears automatically when the user edits the field.
+
+Applying settings (stopping and relaunching `llx serve` with the new port/key) is a distinct failure mode from field validation:
+
+- A relaunch failure (e.g. the new port is unavailable, or the process crashes on startup) is `Category: Api, Severity: fatal` — it shows a **modal dialog**, per §5, disabling all actions until acknowledged.  
+- On relaunch failure, the user's edited field values are **not discarded** (`SettingsViewModel.IsDirty` remains `true`), so the user can correct the value and retry without re-entering everything.  
+- Unlike Editor validation errors, Settings validation errors do not block other pages — they only block leaving SettingsPage via Save (leaving via Cancel/Discard, per Guard 5, is unaffected by validation state).
+
+---
+
+# 11. Error Logging
 
 Limelight‑X logs errors **only in memory**.
 
@@ -222,7 +238,7 @@ Errors exist only in ViewModel state.
 
 ---
 
-# 11. Error Propagation
+# 12. Error Propagation
 
 Errors propagate both locally and globally.
 
@@ -234,7 +250,7 @@ Errors propagate both locally and globally.
 
 ---
 
-# 12. Error Styling
+# 13. Error Styling
 
 Error styling follows:
 
@@ -245,7 +261,7 @@ Error styling follows:
 
 ---
 
-# 13. Error Persistence Across Navigation
+# 14. Error Persistence Across Navigation
 
 Errors persist across navigation until cleared or retried.
 
@@ -256,7 +272,7 @@ Errors persist across navigation until cleared or retried.
 
 ---
 
-# 14. Backend Error Handling
+# 15. Backend Error Handling
 
 If backend returns `success = false`:
 
@@ -267,7 +283,7 @@ If backend returns `success = false`:
 
 ---
 
-# 15. User-Facing Error Messages
+# 16. User-Facing Error Messages
 
 Error messages use a hybrid format:
 
