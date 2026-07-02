@@ -25,8 +25,8 @@ Limelight‑X uses two build systems, one per component:
 - **Full static analysis** (`dotnet format`, Roslyn analyzers, Rustfmt, Clippy, `cargo audit`, NuGet vulnerability audit)
 
 Build artifacts:
-- UI executable (`/ui`, .NET)  
-- CLI server binary (`/src/api`, Rust)  
+- UI executable: `LimelightX.exe` (project `LimelightX.UI`, `/ui`, .NET — see `ui-architecture.md` §3)  
+- CLI/server binary: `llx.exe` (`/src`, Rust — the same binary as the CLI; `llx serve` is what runs it as `/src/api`'s HTTP server)  
 - MSIX installer bundling both
 
 ---
@@ -160,12 +160,12 @@ Build artifacts:
 # 7. Build Targets
 
 ## 7.1. Windows‑Only UI Build
-- UI executable targets Windows (`net8.0-windows` or later, per `/ui`'s project file)  
+- `LimelightX.UI` targets Windows (`net8.0-windows` or later) and produces `LimelightX.exe`  
 - Avalonia build uses Windows runtime  
 - No macOS or Linux UI builds
 
-## 7.2. CLI Server Build
-- CLI server binary (`/src/api`) built for Windows via Cargo  
+## 7.2. CLI/Server Build
+- `llx.exe` built for Windows via Cargo (the same binary the CLI uses; `llx serve` runs its `/src/api` server mode)  
 - Optional cross‑platform builds may be added later
 
 ---
@@ -173,14 +173,14 @@ Build artifacts:
 # 8. Packaging Requirements
 
 ## 8.1. MSIX Installer
-- Installer must include UI executable  
-- Installer must include CLI server binary  
+- Installer must include `LimelightX.exe`  
+- Installer must include `llx.exe`  
 - Installer must include manifest  
 - Installer must remain unsigned  
 - Installer must validate structure before publishing
 
 ## 8.2. Distribution Bundle
-- UI executable + CLI server binary must be bundled  
+- `LimelightX.exe` + `llx.exe` must be bundled  
 - Bundle must match MSIX contents  
 - Bundle must be published as CI artifact
 

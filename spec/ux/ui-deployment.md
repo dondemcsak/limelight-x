@@ -15,8 +15,8 @@ The spec is organized by **deployment stages**:
 # 1. Deployment Targets
 
 - **Target:** Windows only  
-- **UI:** Avalonia‑based desktop application  
-- **API server:** `/src/api`, started via `llx serve`. Bundled with UI (no separate deployment) — see `api.md`.
+- **UI:** Avalonia‑based desktop application, `LimelightX.UI`, installed as `LimelightX.exe` (see `ui-architecture.md` §3)  
+- **API server:** `/src/api`, started via `llx.exe serve`. Bundled with UI (no separate deployment) — see `api.md`.
 
 ---
 
@@ -50,7 +50,7 @@ The spec is organized by **deployment stages**:
 - **Step 1:** Run MSIX installer interactively  
 - **Step 2:** Accept license and terms  
 - **Step 3:** Complete installation to default path  
-- **Step 4:** Confirm UI and bundled `/src/api` server binary are installed
+- **Step 4:** Confirm `LimelightX.exe` and bundled `llx.exe` are installed
 
 ## 4.3. Configure
 
@@ -96,14 +96,14 @@ The spec is organized by **deployment stages**:
 
 # 7. API Server Deployment
 
-- **Bundling:** the `/src/api` server binary is bundled with the UI in the MSIX installer  
-- **Location:** Installed alongside UI binaries  
-- **Usage:** the UI launches it locally as `llx serve` (default `127.0.0.1:4747`, see `api.md` §8) when the UI starts, and terminates it when the UI exits; no separate deployment or service mode  
-- **Secrets:** `ANTHROPIC_API_KEY` is supplied to the `llx serve` process via the environment, sourced from the value configured in §4.3
+- **Bundling:** `llx.exe` is bundled with `LimelightX.exe` in the MSIX installer  
+- **Location:** Installed alongside the UI binary  
+- **Usage:** `LimelightX.exe` launches `llx.exe serve` locally (default `127.0.0.1:4747`, see `api.md` §8) when the UI starts, and terminates it when the UI exits; no separate deployment or service mode  
+- **Secrets:** `ANTHROPIC_API_KEY` is supplied to the `llx.exe serve` process via the environment, sourced from the value configured in §4.3
 
 ---
 
 # Summary
 
-This UI deployment specification defines Windows‑only, MSIX‑based installation of Limelight‑X with .NET prerequisites, environment profiles (Dev/Stage/Prod), semi‑automatic updates, full uninstall cleanup, and a bundled `/src/api` server launched locally via `llx serve`.  
+This UI deployment specification defines Windows‑only, MSIX‑based installation of `LimelightX.exe` with .NET prerequisites, environment profiles (Dev/Stage/Prod), semi‑automatic updates, full uninstall cleanup, and a bundled `llx.exe` server launched locally via `llx.exe serve`.  
 Deployment is expressed as a clear prepare/install/configure/validate workflow and must be followed exactly.

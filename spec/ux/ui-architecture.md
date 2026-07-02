@@ -73,6 +73,11 @@ All nondeterminism is isolated to model output returned by the backend.
 
 # 3. Module Structure
 
+### Project & Executable Naming
+- **Project name (assembly name):** `LimelightX.UI`  
+- **Executable:** `LimelightX.exe`  
+- These names mirror the Rust side's naming convention (crate `limelight-x`, binary `llx`) and are used as-is in `ui-build-pipeline.md` and `ui-deployment.md`.
+
 The UI repository must follow this structure:
 
 ```
