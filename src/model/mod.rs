@@ -1,5 +1,5 @@
 pub mod claude;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 pub mod mock;
 
 use crate::error::Error;

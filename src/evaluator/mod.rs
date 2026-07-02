@@ -7,10 +7,40 @@ use crate::normalizer::ast::NormalizedAst;
 use crate::parser::ast::RawAst;
 
 // ---------------------------------------------------------------------------
+// Structured evaluation outcome
+// ---------------------------------------------------------------------------
+
+/// The result of a full evaluator run: the final result string plus every
+/// prompt sent to, and output received from, the model adapter along the way.
+///
+/// `prompts`/`model_outputs` are always collected regardless of `trace`, so
+/// callers that need structured data (e.g. `/src/api`'s `/trace` endpoint)
+/// don't have to re-run the pipeline or scrape stdout.
+#[derive(Debug, Clone)]
+pub struct EvalOutcome {
+    pub final_result: String,
+    pub prompts: Vec<PromptRecord>,
+    pub model_outputs: Vec<ModelOutputRecord>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PromptRecord {
+    pub operation_index: usize,
+    pub prompt_text: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModelOutputRecord {
+    pub operation_index: usize,
+    pub raw_text: String,
+    pub latency_ms: u128,
+}
+
+// ---------------------------------------------------------------------------
 // Public entry points
 // ---------------------------------------------------------------------------
 
-/// Evaluate an IR program and return the final result string.
+/// Evaluate an IR program and return the final result plus structured trace data.
 pub fn evaluate(
     ir: &Ir,
     adapter: &dyn ModelAdapter,
@@ -18,7 +48,7 @@ pub fn evaluate(
     trace: bool,
     raw_ast: Option<&RawAst>,
     normalized_ast: Option<&NormalizedAst>,
-) -> Result<String, Error> {
+) -> Result<EvalOutcome, Error> {
     if trace {
         if let Some(raw) = raw_ast {
             println!("=== Raw AST ===");
@@ -34,6 +64,8 @@ pub fn evaluate(
     }
 
     let mut results: Vec<String> = Vec::new();
+    let mut prompts: Vec<PromptRecord> = Vec::new();
+    let mut model_outputs: Vec<ModelOutputRecord> = Vec::new();
 
     for (index, op) in ir.0.iter().enumerate() {
         let op_name = op_name(op);
@@ -42,24 +74,33 @@ pub fn evaluate(
             println!("\n--- Operation [{index}]: {op} ---");
         }
 
-        let result = execute_op(op, &results, adapter, base_dir, index, op_name, trace)?;
+        let result = execute_op(
+            op, &results, adapter, base_dir, index, op_name, trace, &mut prompts, &mut model_outputs,
+        )?;
         results.push(result);
     }
 
-    results
+    let final_result = results
         .into_iter()
         .last()
         .ok_or_else(|| Error::EvalError {
             index: 0,
             op: "unknown".to_string(),
             message: "no operations to evaluate".to_string(),
-        })
+        })?;
+
+    Ok(EvalOutcome {
+        final_result,
+        prompts,
+        model_outputs,
+    })
 }
 
 // ---------------------------------------------------------------------------
 // Per-operation execution
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn execute_op(
     op: &IrOp,
     results: &[String],
@@ -68,6 +109,8 @@ fn execute_op(
     index: usize,
     op_name: &str,
     trace: bool,
+    prompts: &mut Vec<PromptRecord>,
+    model_outputs: &mut Vec<ModelOutputRecord>,
 ) -> Result<String, Error> {
     match op {
         IrOp::Load { path } => {
@@ -89,7 +132,7 @@ fn execute_op(
         IrOp::Extract { target, input } => {
             let text = resolve_ref(input, results, index, op_name)?;
             let prompt = format!("Extract the {target} from the following text:\n\n{text}");
-            call_model(adapter, &prompt, index, op_name, trace)
+            call_model(adapter, &prompt, index, op_name, trace, prompts, model_outputs)
         }
 
         IrOp::Summarize { input, prompt } => {
@@ -98,7 +141,7 @@ fn execute_op(
                 Some(user_prompt) => format!("{user_prompt}\n\nInput:\n{text}"),
                 None => format!("Summarize the following text clearly and concisely:\n\n{text}"),
             };
-            call_model(adapter, &full_prompt, index, op_name, trace)
+            call_model(adapter, &full_prompt, index, op_name, trace, prompts, model_outputs)
         }
 
         IrOp::Translate {
@@ -111,7 +154,7 @@ fn execute_op(
                 Some(user_prompt) => format!("{user_prompt}\n\nInput:\n{text}"),
                 None => format!("Translate the following text into {language}:\n\n{text}"),
             };
-            call_model(adapter, &full_prompt, index, op_name, trace)
+            call_model(adapter, &full_prompt, index, op_name, trace, prompts, model_outputs)
         }
 
         IrOp::Rewrite { input, prompt } => {
@@ -122,7 +165,7 @@ fn execute_op(
                     format!("Rewrite the following text for clarity and readability:\n\n{text}")
                 }
             };
-            call_model(adapter, &full_prompt, index, op_name, trace)
+            call_model(adapter, &full_prompt, index, op_name, trace, prompts, model_outputs)
         }
 
         IrOp::Format { input, target } => {
@@ -131,11 +174,11 @@ fn execute_op(
                 let prompt = format!(
                     "Convert the following text into a pipe-delimited Markdown table with a header row:\n\n{text}"
                 );
-                let table = call_model(adapter, &prompt, index, op_name, trace)?;
+                let table = call_model(adapter, &prompt, index, op_name, trace, prompts, model_outputs)?;
                 table_to_json(&table, index, op_name)
             } else {
                 let prompt = format!("Format the following text as {target}:\n\n{text}");
-                call_model(adapter, &prompt, index, op_name, trace)
+                call_model(adapter, &prompt, index, op_name, trace, prompts, model_outputs)
             }
         }
     }
@@ -218,24 +261,38 @@ fn resolve_ref<'a>(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn call_model(
     adapter: &dyn ModelAdapter,
     prompt: &str,
     index: usize,
     op_name: &str,
     trace: bool,
+    prompts: &mut Vec<PromptRecord>,
+    model_outputs: &mut Vec<ModelOutputRecord>,
 ) -> Result<String, Error> {
     if trace {
         println!("Prompt:\n{prompt}\n");
     }
+    prompts.push(PromptRecord {
+        operation_index: index,
+        prompt_text: prompt.to_string(),
+    });
+    let started = std::time::Instant::now();
     let output = adapter.complete(prompt).map_err(|e| Error::EvalError {
         index,
         op: op_name.to_string(),
         message: e.to_string(),
     })?;
+    let latency_ms = started.elapsed().as_millis();
     if trace {
         println!("Model output:\n{output}");
     }
+    model_outputs.push(ModelOutputRecord {
+        operation_index: index,
+        raw_text: output.clone(),
+        latency_ms,
+    });
     Ok(output)
 }
 
@@ -262,6 +319,7 @@ mod tests {
 
     fn eval(ir: Ir, adapter: &dyn ModelAdapter) -> Result<String, Error> {
         evaluate(&ir, adapter, std::path::Path::new("."), false, None, None)
+            .map(|outcome| outcome.final_result)
     }
 
     // BDD: Evaluate a Load operation
@@ -414,6 +472,25 @@ mod tests {
         let err = eval(ir, &adapter).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("operation 0"), "unexpected error: {msg}");
+    }
+
+    // EvalOutcome carries structured prompt/model-output records regardless of trace
+    #[test]
+    fn test_eval_outcome_collects_prompts_and_model_outputs() {
+        let adapter = CapturingAdapter::new("summary text");
+        let ir = Ir(vec![
+            IrOp::Load { path: make_temp_file("article text") },
+            IrOp::Summarize { input: IrRef(0), prompt: None },
+        ]);
+        let outcome =
+            evaluate(&ir, &adapter, std::path::Path::new("."), false, None, None).unwrap();
+        assert_eq!(outcome.final_result, "summary text");
+        assert_eq!(outcome.prompts.len(), 1);
+        assert_eq!(outcome.prompts[0].operation_index, 1);
+        assert!(outcome.prompts[0].prompt_text.contains("article text"));
+        assert_eq!(outcome.model_outputs.len(), 1);
+        assert_eq!(outcome.model_outputs[0].operation_index, 1);
+        assert_eq!(outcome.model_outputs[0].raw_text, "summary text");
     }
 
     // BDD: Trace mode shows AST, normalized AST, IR, prompts, and results
