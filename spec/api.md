@@ -115,13 +115,29 @@ Same request shape. Response contains `raw_ast`, `normalized_ast`, `ir`, `prompt
 
 # 10. Error Conditions
 
+Every error object in the response envelope (`ui-data-contracts.md` §1) includes a fixed `code` and `category` alongside `message`/`severity`/`location`. This table is the single authoritative source for that mapping — `ui-data-contracts.md` and `ui-viewmodels.md` both point back here rather than redefining it.
+
+| Condition | `code` | `category` | `severity` | HTTP |
+|---|---|---|---|---|
+| Malformed JSON request body | `ERR_MALFORMED_REQUEST` | `api` | `error` | 400 |
+| Missing `source` field | `ERR_MISSING_FIELD` | `api` | `error` | 400 |
+| CNL parse failure (parser stage) | `ERR_CNL_PARSE` | `pipeline` | `error` | 200 |
+| CNL normalization failure (normalizer stage) | `ERR_CNL_NORMALIZE` | `pipeline` | `error` | 200 |
+| Evaluator fatal error (e.g. missing file) | `ERR_EVALUATOR_FATAL` | `pipeline` | `fatal` | 200 |
+| Model adapter failure (any `Error::ModelAdapter*` variant, `model-adapter.md` §5) | `ERR_MODEL_ADAPTER` | `pipeline` | `fatal` | 200 |
+
+Pipeline-level rows (200) are not transport failures — they mean the request was received and processed, but the pipeline itself failed. `location` is populated for parser/normalizer failures when available, and omitted otherwise. Evaluator/model-adapter fatal rows include the operation index in `message`, per `architecture.md` §7.
+
+**Rust error → wire mapping rule**: every internal `Error` variant surfaced to `/src/api` maps to exactly one row above by error class (not by variant name) — e.g. all four `ModelAdapter*` variants (`NetworkError`, `InvalidResponse`, `MalformedResponse`, `HttpError`) map to `ERR_MODEL_ADAPTER`; the variant's `Display` text becomes the wire `message` verbatim, so the distinguishing detail (network vs. malformed vs. HTTP status) is preserved in text even though the code is shared.
+
+**Malformed-body handling**: the HTTP framework's default JSON-rejection response must be overridden so that even a syntactically invalid body returns the standard envelope shape above (`ERR_MALFORMED_REQUEST`) — never a framework-default error body. The envelope shape is identical for every response, regardless of status code.
+
+### Server Startup Errors (not HTTP responses)
+
 | Condition | Response |
 |---|---|
-| Malformed JSON request body | `success: false`, `errors: [{ message: "Malformed request body", severity: "error" }]`, HTTP 400 |
-| Missing `source` field | `success: false`, `errors: [{ message: "Missing required field 'source'", severity: "error" }]`, HTTP 400 |
-| CNL parse/normalization failure | `success: false`, `errors: [{ message: "<parser/normalizer message>", severity: "error", location: {...} }]`, HTTP 200 (pipeline-level failure, not a transport failure) |
-| Evaluator fatal error (e.g. missing file, model adapter failure) | `success: false`, `errors: [{ message: "<evaluator message>", severity: "fatal" }]`, HTTP 200, includes operation index per `architecture.md` §7 |
 | Port already in use at startup | Fatal CLI error at `llx serve` startup; process exits before binding |
+| Port unavailable for any other reason (e.g. bind permission denied) | Same as above — both "in use" and "permission denied" bind failures produce the same fatal startup error; the UI does not need to distinguish them, both handled by the existing `Category: Api, Severity: fatal` modal path (`ui-error-handling.md` §10) |
 | `ANTHROPIC_API_KEY` unset at startup | Fatal CLI error at `llx serve` startup, same message as `model-adapter.md` §5.1; process exits before binding |
 
 All error messages must be human‑readable, per CLAUDE.md §3.4.

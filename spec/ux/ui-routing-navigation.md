@@ -43,6 +43,9 @@ The workflow is strictly linear:
 Home → Editor → Execution
 ```
 
+### Startup Routing (First Launch / Broken Config)
+Before the linear workflow applies, app startup itself is a routing decision: if `llx serve` fails to start because `config.json` is missing/invalid or `ANTHROPIC_API_KEY` is unset (see `ui-deployment.md` §4.4), `NavigationViewModel.CurrentPage` is initialized to `Settings` instead of `Home`, bypassing the normal "no guard to enter Settings" default landing page. Home/Editor/Execution are not navigable (sidebar items disabled) until `SettingsViewModel.SaveSettingsCommand` succeeds, at which point normal navigation resumes and `CurrentPage` moves to `Home`. This is the only first-run experience — there is no separate onboarding page.
+
 ### HomePage
 - Entry point  
 - User selects or opens a `.llx` file  

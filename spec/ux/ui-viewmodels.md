@@ -45,13 +45,15 @@ All ViewModels use:
 
 # 2. Error Model
 
-All ViewModels use a shared base error type:
+All ViewModels use the shared base error type defined in `ui-error-handling.md` §1 (canonical — this section must match it exactly, not redefine it):
 
 ```
 UiError {
+    Code: string
     Message: string
     Severity: ErrorSeverity
-    Source: ErrorSource
+    Category: ErrorCategory
+    Location: ErrorLocation?
 }
 ```
 
@@ -65,15 +67,20 @@ ErrorSeverity {
 }
 ```
 
-### Source
+### Category
 ```
-ErrorSource {
+ErrorCategory {
     Validation,
     Pipeline,
     Api,
-    Rendering
+    Rendering,
+    Navigation,
+    Editor,
+    State
 }
 ```
+
+`Code` and `Category` are populated directly from the wire response's `code`/`category` fields (see `ui-data-contracts.md` §1, `api.md` §10) — the UI does not derive them itself. `Severity`/`Category` strings are deserialized case-insensitively from the lowercase wire values into these enums.
 
 ### Domain‑specific subtypes
 Each domain may extend `UiError`:
@@ -172,17 +179,24 @@ EnvironmentProfile {
 - `CancelSettingsCommand`
 - `ToggleApiKeyVisibilityCommand`
 
+### Persistence Model
+- `Port`, `LogPath`, `EnvironmentProfile` are read from and written to a single JSON file at `%APPDATA%\LimelightX\config.json` (see `ui-deployment.md` §4.3 for the schema).  
+- `ApiKey` is read from and written to Windows Credential Manager only — it is never written to `config.json`. There is a single shared `ApiKey`, independent of `EnvironmentProfile`; profiles only affect `Port`/`LogPath` defaults, not credential storage.
+
+### Process Ownership
+`LimelightX.exe` holds the `System.Diagnostics.Process` handle for the `llx.exe serve` process it launches at startup (`ui-deployment.md` §7). `SettingsViewModel` uses that same handle — it does not track the process by PID file or IPC.
+
 ### Behavior
 - `Port` is a bind **port number only** — the bind host is fixed at `127.0.0.1` (see `SECURITY.md`, `api.md`) and is never user-editable.
 - Editing any field sets `IsDirty = true`.
 - `SaveSettingsCommand`:
   1. Validates all fields (see `ui-error-handling.md` §10); if invalid, populates `Errors` and does not proceed.
-  2. Writes `Port`, `LogPath`, `EnvironmentProfile` to the local config file.
-  3. Writes `ApiKey` to Windows Credential Manager (never to the plaintext config file).
-  4. Sets `IsApplying = true`, stops the running `llx serve` process, and relaunches it with the new `Port`/`ApiKey`.
-  5. On success: `IsApplying = false`, `IsDirty = false`, navigates back to the previous page.
+  2. Writes `Port`, `LogPath`, `EnvironmentProfile` to `config.json`.
+  3. Writes `ApiKey` to Windows Credential Manager (never to `config.json`).
+  4. Sets `IsApplying = true`. Requests graceful shutdown of the held `llx.exe serve` process handle (the same clean-shutdown path used on normal app exit, per `api.md` §8) and awaits its exit; then calls `Process.Start()` again with the new `--port` and `ApiKey` in the environment. If no process is currently running (e.g. the previous launch failed at startup, see `ui-deployment.md` §4.4), this step skips straight to `Process.Start()`.
+  5. On success: `IsApplying = false`, `IsDirty = false`, navigates back to the previous page (or to HomePage if this was the first-launch flow, see `ui-routing-navigation.md` §2).
   6. On failure (e.g. new port unavailable, relaunch crash): `IsApplying = false`, raises a `Category: Api, Severity: fatal` error (see `ui-error-handling.md` §10) — `IsDirty` remains `true` so the user's edits are not lost.
-- `CancelSettingsCommand`: if `IsDirty`, triggers Guard 5's confirmation modal (`ui-routing-navigation.md` §4); otherwise navigates back immediately.
+- `CancelSettingsCommand`: disabled while `IsApplying == true`. Otherwise, if `IsDirty`, triggers Guard 5's confirmation modal (`ui-routing-navigation.md` §4); if not dirty, navigates back immediately.
 - `ToggleApiKeyVisibilityCommand`: toggles masked/unmasked display of `ApiKey`; does not affect `IsDirty`.
 
 ### Deterministic Behavior

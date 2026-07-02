@@ -214,8 +214,15 @@ Validation errors:
 Settings field validation (`Category: Validation`, per §1) follows the same pattern as Editor validation:
 
 - Blocks `SaveSettingsCommand`.  
-- Shows inline errors above the relevant field (e.g. "Port must be between 1 and 65535", "API key is required").  
+- Shows inline errors above the relevant field (e.g. "Port must be between 1 and 65535", "API key is required", "Log path must be a valid absolute path").  
 - Clears automatically when the user edits the field.
+
+Field-level validation is syntactic only:
+- `Port`: integer, 1–65535.  
+- `ApiKey`: non-empty.  
+- `LogPath`: syntactically valid absolute path — existence and writability are **not** checked at this stage.
+
+`LogPath` existence/writability is checked when `llx serve` actually starts. If it can't open the log file, that surfaces as a relaunch failure (below), not a field validation error.
 
 Applying settings (stopping and relaunching `llx serve` with the new port/key) is a distinct failure mode from field validation:
 

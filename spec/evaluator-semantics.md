@@ -4,10 +4,12 @@
 This document defines the deterministic execution semantics of the Limelight‑X evaluator.  
 The evaluator consumes the IR produced by the IR compiler and executes each operation in order, producing a final result.
 
-The evaluator is the only component that performs:
+The evaluator is the only **pipeline** component (parser, normalizer, IR compiler, evaluator) that performs:
 - I/O  
 - model calls  
 - async operations  
+
+(`/src/api`, which sits alongside the pipeline rather than inside it, has its own I/O and async behavior — see `api.md`.)
 
 All behavior in this document is **authoritative**.  
 The evaluator must not infer or modify behavior outside this specification.

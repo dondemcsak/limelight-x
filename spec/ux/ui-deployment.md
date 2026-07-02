@@ -55,19 +55,27 @@ The spec is organized by **deployment stages**:
 ## 4.3. Configure
 
 - **Profiles:** Dev, Stage, Prod  
-- **Configuration:**  
-  - Backend port per environment — the bind host is fixed at `127.0.0.1` and is never configurable (see `SECURITY.md`); only the port `llx serve` binds to is editable (`4747` by default, see `api.md` §8)  
-  - Log path per environment  
-  - `ANTHROPIC_API_KEY` — **required**. The installer prompts for it on first launch if unset, and stores it via Windows Credential Manager; the UI sets it in the environment of the `llx serve` process it launches. The UI must not start `llx serve` without it, since `api.md` §8/§10 specifies the server refuses to start and exits immediately without this variable.  
-  - Optional environment variables for advanced setups (e.g. `--port` override, passed to `llx serve` if the default port is unavailable)  
-- **Selection:** Environment profile chosen at first launch, via config file, or later via the **in-app Settings page** (`ui-viewmodels.md` §3.3, `ui-routing-navigation.md` §9) — the Settings page edits the same underlying values described here, using Credential Manager for `ANTHROPIC_API_KEY` and the config file for port/log path/profile, and applies changes by restarting `llx serve` in the background
+- **Configuration file:** `%APPDATA%\LimelightX\config.json`, containing:
+  ```json
+  {
+    "port": 4747,
+    "logPath": "string",
+    "environmentProfile": "Dev | Stage | Prod"
+  }
+  ```
+  This is the only place `Port`/`LogPath`/`EnvironmentProfile` are persisted. `ANTHROPIC_API_KEY` is never written here — it lives only in Windows Credential Manager, under a single shared credential (not one per profile; see `ui-viewmodels.md` §3.3).  
+- **Configuration items:**  
+  - Backend port — the bind host is fixed at `127.0.0.1` and is never configurable (see `SECURITY.md`); only the port `llx serve` binds to is editable (`4747` by default, see `api.md` §8)  
+  - Log path  
+  - `ANTHROPIC_API_KEY` — **required**. There is no separate installer-hosted prompt; see §4.4 Step 4 for how first-launch-without-a-key is actually handled. The UI sets the key in the environment of the `llx serve` process it launches. The UI must not start `llx serve` without it, since `api.md` §8/§10 specifies the server refuses to start and exits immediately without this variable.  
+- **Selection:** Environment profile chosen via `config.json` at any time, or edited live via the **in-app Settings page** (`ui-viewmodels.md` §3.3, `ui-routing-navigation.md` §9) — the Settings page edits the same `config.json` file plus Credential Manager, and applies changes by restarting `llx serve` in the background.
 
 ## 4.4. Validate
 
 - **Step 1:** Launch Limelight‑X UI  
 - **Step 2:** Confirm main window renders without errors  
 - **Step 3:** Confirm environment profile is active (e.g., backend port)  
-- **Step 4:** Confirm `llx serve` started successfully; if `ANTHROPIC_API_KEY` is missing or the port is unavailable, the UI must surface the fatal startup error from `api.md` §8 rather than failing silently  
+- **Step 4:** Confirm `llx serve` started successfully. If `config.json` is missing/invalid or `ANTHROPIC_API_KEY` is unset (first launch, or a broken config), `LimelightX.exe` navigates directly to SettingsPage instead of Home — bypassing normal navigation guards — and Home/Editor/Execution remain unreachable until the user saves valid Settings (see `ui-routing-navigation.md` §2). This is the only first-run experience; there is no separate onboarding page or installer-hosted wizard.  
 - **Step 5:** Optionally run a simple pipeline to confirm connectivity
 
 ---

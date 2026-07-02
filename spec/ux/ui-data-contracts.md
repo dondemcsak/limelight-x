@@ -51,6 +51,8 @@ All backend responses follow the same envelope:
 
 ```json
 {
+  "code": "string",
+  "category": "validation | pipeline | api | rendering | navigation | editor | state",
   "message": "string",
   "severity": "info | warning | error | fatal",
   "location": {
@@ -61,11 +63,17 @@ All backend responses follow the same envelope:
 }
 ```
 
+`code` and `category` map directly onto the UI's `UiError.Code`/`UiError.Category` (`ui-error-handling.md` §1, `ui-viewmodels.md` §2) with no client-side derivation. The full `code`/`category` value list per error condition is defined in `api.md` §10 — that table is authoritative; this schema only describes the field shapes.
+
 ### Rules
 - UI must ignore unknown fields.  
 - `success = false` → `data` may be omitted.  
 - `errors` may contain multiple structured errors.  
-- `location` is optional.
+- `location` is optional.  
+- `severity` and `category` strings are deserialized **case-insensitively** into their respective .NET enums (e.g. wire `"fatal"` → `ErrorSeverity.Fatal`).
+
+### HTTP Status Codes
+The JSON envelope shape is identical regardless of HTTP status — even a syntactically malformed request body must still receive a standard envelope response, per `api.md` §10 — but the status itself is meaningful. In short: malformed requests (bad JSON, missing required fields) return HTTP 400; pipeline-level failures (parse errors, evaluator fatal errors) return HTTP 200 with `success: false`. `PipelineService` should branch on `success` for pipeline-level results, and treat any non-2xx status as a transport-level `ApiError` using the envelope's `errors[]` for the message.
 
 ---
 

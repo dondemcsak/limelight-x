@@ -251,7 +251,7 @@ Each stage receives a well‑defined input and produces a well‑defined output.
 
 # 5. CLI Integration
 
-The CLI exposes three commands:
+The CLI exposes four commands:
 
 ### `llx run <file>`
 - parses  
