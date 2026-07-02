@@ -35,6 +35,7 @@ The repository must follow this structure:
     /ir
     /evaluator
     /model
+    /api
 /spec
     architecture.md
     cnl-grammar.md
@@ -42,8 +43,10 @@ The repository must follow this structure:
     ir.md
     evaluator-semantics.md
     model-adapter.md
+    api.md
     coding-standards.md
     bdd.md
+    bdd-api.md
     spec-template.md
 ```
 
@@ -54,6 +57,7 @@ The repository must follow this structure:
 - No shared mutable state.  
 - No “utils” or “helpers” modules.  
 - AST definitions live inside `/parser` and `/normalizer` (no `/ast` module).  
+- `/src/api` is defined in `spec/api.md`. It orchestrates calls to the existing pipeline stages over local HTTP; it does not introduce new pipeline stages or modify existing ones.
 
 ---
 
@@ -179,6 +183,20 @@ The adapter must follow `model-adapter.md`.
 
 ---
 
+## 3.6 API Layer → HTTP Wrapper (optional, for `/ui`)
+
+`/src/api` exposes the same `run`/`explain`/`trace` operations over local HTTP, for use by the `/ui` Avalonia client. It sits alongside the CLI, not inside the pipeline:
+
+```
+        ┌── CLI (llx run/explain/trace) ──┐
+CNL ──► │                                  ├──► Parser → ... → Evaluator → Model Adapter → Result
+        └── API (llx serve → /run/explain/trace) ─┘
+```
+
+Full details (port, binding, lifecycle, request/response schemas) are defined in `spec/api.md`. The API layer does not reimplement, skip, or reorder any pipeline stage — it calls the same functions the CLI calls.
+
+---
+
 # 4. Data Flow Summary
 
 ```
@@ -239,6 +257,11 @@ The CLI exposes three commands:
   - constructed prompts  
   - model outputs  
   - final result  
+
+### `llx serve [--port <N>]`
+- starts the `/src/api` HTTP server (see `spec/api.md`)
+- exposes `/run`, `/explain`, `/trace` over local HTTP for the `/ui` client
+- reuses the same pipeline invocations as the equivalent CLI commands
 
 The CLI must not perform evaluation logic.
 

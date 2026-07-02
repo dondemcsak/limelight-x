@@ -53,6 +53,14 @@ It is a **teaching and demonstration engine**.
     /ir
     /evaluator
     /model
+    /api
+/ui
+    /views
+    /viewmodels
+    /services
+    /components
+    /styles
+    /routing
 /spec
     architecture.md
     cnl-grammar.md
@@ -60,15 +68,20 @@ It is a **teaching and demonstration engine**.
     ir.md
     evaluator-semantics.md
     model-adapter.md
+    api.md
     coding-standards.md
     bdd.md
+    bdd-api.md
     spec-template.md
+    ux/
 ```
 
 ### Key points
 
 - There is **no `/ast` module** — AST types live in `/parser` and `/normalizer`.
 - There is **no provider layer** — the evaluator calls the model adapter directly.
+- `/src/api` is a thin HTTP wrapper around the existing `run`/`explain`/`trace` logic (see `api.md`) — it is the one approved exception to the "no new modules" rule.
+- `/ui` is a separate, optional Avalonia/.NET (C#) desktop client (see `spec/ux/`) that talks to `/src/api` over local HTTP. It is a deliberately-scoped second language; the core pipeline in `/src` remains single-language Rust.
 - All behavior is defined in `/spec`.
 
 ---
@@ -144,6 +157,9 @@ Runs the full pipeline and prints:
 
 Trace mode is the best way to understand the system.
 
+## `llx serve [--port <N>]`
+Starts a local, loopback-only HTTP server (`/src/api`, see `api.md`) exposing `POST /run`, `/explain`, `/trace` — the same three operations above, over HTTP. It exists so the optional `/ui` desktop client (see §11) can drive the pipeline without embedding Rust. Default port is `4747`.
+
 ---
 
 # 6. Example
@@ -218,7 +234,10 @@ Key specs:
 - `ir.md` — IR structure  
 - `evaluator-semantics.md` — prompt construction + execution  
 - `model-adapter.md` — Claude integration  
-- `bdd.md` — acceptance criteria  
+- `api.md` — `/src/api` HTTP server (`llx serve`), consumed by the optional `/ui` client  
+- `bdd.md` — acceptance criteria for the core pipeline  
+- `bdd-api.md` — acceptance criteria for `/src/api`  
+- `ux/` — specs for the optional `/ui` desktop client (Avalonia/.NET)  
 
 ---
 
@@ -239,7 +258,13 @@ These may be added in future versions.
 
 ---
 
-# 10. License
+# 10. Optional UI
+
+Limelight‑X also has an optional desktop UI (`/ui`), a separate Avalonia/.NET (C#) client that talks to `llx serve`'s local HTTP API instead of embedding Rust. It is entirely optional — the CLI is fully self-sufficient without it. See `spec/ux/` for its specs and `api.md` for the HTTP contract it depends on.
+
+---
+
+# 11. License
 
 MIT License.
 

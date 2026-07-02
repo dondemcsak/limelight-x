@@ -11,18 +11,19 @@ This grammar is the authoritative contract for the parser.
 
 # 1. General Rules
 
-1. Each instruction is a **single sentence** ending with a period (`.`).
-2. Each sentence represents **one action**.
-3. Sentences must follow one of the supported patterns defined below.
-4. Quoted strings (`"..."`) represent literal values.
-5. Expression holes use the syntax:
+1. CNL source files use the `.llx` extension. This is the canonical extension referenced by the CLI (`llx run file.llx`) and by `/src/api`/`/ui`.
+2. Each instruction is a **single sentence** ending with a period (`.`).
+3. Each sentence represents **one action**.
+4. Sentences must follow one of the supported patterns defined below.
+5. Quoted strings (`"..."`) represent literal values.
+6. Expression holes use the syntax:
 
    ```
    {{ prompt: "..." }}
    ```
 
-6. Pronouns such as **it**, **them**, **this**, **that**, **the result**, **the output** refer to the output of the previous step.
-7. Variables may be introduced using the `Let X be ...` pattern.
+7. Pronouns such as **it**, **them**, **this**, **that**, **the result**, **the output** refer to the output of the previous step.
+8. Variables may be introduced using the `Let X be ...` pattern.
 
 ---
 

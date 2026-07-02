@@ -56,13 +56,17 @@ We appreciate researchers and contributors who help keep the project safe.
 
 Limelight‑X is intentionally minimal:
 
-- no backend  
 - no user accounts  
-- no server‑side logic  
-- no network access  
 - no dependencies beyond minimal dev tooling  
+- the only outbound network call is the model adapter's request to the Anthropic API (`model-adapter.md`)  
 
-This dramatically reduces the attack surface, but not completely.  
+The optional `llx serve` command (`/src/api`, see `api.md`) starts a local HTTP server for the optional `/ui` desktop client. It:
+
+- binds to `127.0.0.1` only — it is never reachable from another machine  
+- has no authentication, by design — its trust boundary is the loopback interface itself  
+- should not be exposed via port forwarding, reverse proxies, or `0.0.0.0` binding; doing so would expose an unauthenticated pipeline executor
+
+Aside from this opt-in local server, Limelight‑X remains attack-surface-minimal.  
 We still take reports seriously and treat security as part of the craft.
 
 ---

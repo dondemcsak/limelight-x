@@ -21,6 +21,14 @@ Claude must assume the following directory layout:
     /ir
     /evaluator
     /model
+    /api
+/ui
+    /views
+    /viewmodels
+    /services
+    /components
+    /styles
+    /routing
 /spec
     architecture.md
     cnl-grammar.md
@@ -28,9 +36,12 @@ Claude must assume the following directory layout:
     ir.md
     evaluator-semantics.md
     model-adapter.md
+    api.md
     coding-standards.md
     bdd.md
+    bdd-api.md
     spec-template.md
+    ux/
 ```
 
 ### Rules
@@ -41,7 +52,16 @@ Claude must assume the following directory layout:
 - There is **no `/providers` layer** in v0.1.  
   The evaluator calls the model adapter directly.
 
-- Claude must never invent new directories or modules.
+- `/src/api` is the sole exception to the "no new modules" rule: it wraps the existing `run`/`explain`/`trace` pipeline logic behind a local HTTP interface, as defined in `spec/api.md`. It does not reimplement or bypass any pipeline stage.
+
+- Claude must never invent new directories or modules beyond what is listed here without explicit instruction.
+
+### 1.1 Multi‑Component Scope
+
+Limelight‑X now has two components governed by different rules:
+
+- **`/src` (the core pipeline, including `/src/api`)** — governed by this document in full: single‑language (Rust), deterministic, no providers, no new modules beyond `/src/api`.
+- **`/ui`** — a separate Avalonia/.NET (C#) desktop client, governed by `spec/ux/*.md`. It is a second language deliberately scoped to this one boundary and does not violate `/src`'s single‑language or determinism rules. `/ui` must not reimplement pipeline stages; it may only call `/src/api`'s HTTP endpoints.
 
 ---
 
@@ -144,6 +164,10 @@ Claude must not introduce:
 
 Unless explicitly approved.
 
+**Explicitly approved for `/src/api`:** an HTTP server crate (e.g. `axum` or `actix-web`) sufficient to implement `spec/api.md`. No other new Rust crates are approved.
+
+**Explicitly approved for `/ui`:** Avalonia, Avalonia Community Toolkit, a Fluent UI icon set, Inter and JetBrains Mono fonts, and MSIX packaging tooling, per `spec/ux/*.md`. These apply only to `/ui` and do not license any further additions without explicit approval.
+
 ---
 
 # 4. File‑Level Rules
@@ -206,7 +230,14 @@ Claude must implement:
   - model outputs  
   - final result  
 
-Claude must not add new CLI commands.
+### `llx serve [--port <N>]`
+- starts the `/src/api` HTTP server defined in `spec/api.md`
+- binds to `127.0.0.1` on the given port (default defined in `spec/api.md`)
+- fails fast if `ANTHROPIC_API_KEY` is unset or the port is unavailable
+- serves `/run`, `/explain`, `/trace` by invoking the same pipeline logic as the equivalent CLI commands, one request at a time
+- runs until interrupted (Ctrl+C), then shuts down cleanly
+
+Claude must not add CLI commands beyond these four without explicit instruction.
 
 ---
 
@@ -229,7 +260,7 @@ Claude must not:
 
 - invent new architecture  
 - introduce providers  
-- introduce multiple languages  
+- introduce multiple languages **within `/src`**  
 - introduce multiple model hosts  
 - introduce streaming  
 - introduce batching  
@@ -237,7 +268,7 @@ Claude must not:
 - introduce caching  
 - introduce optimization passes  
 
-These are explicitly out of scope for v0.1.
+These are explicitly out of scope for v0.1. The `/ui` component is the one deliberate, pre-approved exception to the single-language rule — see §1.1.
 
 ---
 
@@ -258,5 +289,5 @@ Claude must never guess.
 # Summary
 
 Claude must implement Limelight‑X exactly as defined in the `/spec` directory.  
-The architecture is fixed, deterministic, and single‑language.  
+The `/src` pipeline architecture is fixed, deterministic, and single‑language (Rust); `/ui` is a separate, deliberately-scoped Avalonia/.NET client governed by `spec/ux/*.md` (see §1.1).  
 Claude must generate code that is consistent, spec‑driven, and free of hidden behavior.
