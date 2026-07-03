@@ -49,6 +49,12 @@ async fn evaluator_fatal_error_reports_operation_index() {
     assert_eq!(error["code"], "ERR_EVALUATOR_FATAL");
     assert_eq!(error["severity"], "fatal");
     let message = error["message"].as_str().unwrap();
-    assert!(message.contains("operation 0"), "unexpected message: {message}");
-    assert!(message.contains("missing_file_abc123.txt"), "unexpected message: {message}");
+    assert!(
+        message.contains("operation 0"),
+        "unexpected message: {message}"
+    );
+    assert!(
+        message.contains("missing_file_abc123.txt"),
+        "unexpected message: {message}"
+    );
 }

@@ -13,7 +13,7 @@ use limelight_x::{api, evaluator, ir, normalizer, parser};
 
 /// Limelight-X: a minimal CNL expression layer.
 #[derive(Parser)]
-#[command(name = "llx", version = "0.1.0")]
+#[command(name = "llx", version = "0.5.1")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -127,7 +127,12 @@ fn cmd_trace(file: &PathBuf) -> Result<(), Error> {
     let program = ir::compiler::compile(&normalized_ast)?;
     let adapter = ClaudeModelAdapter::new()?;
     let outcome = evaluator::evaluate(
-        &program, &adapter, base_dir, true, Some(&raw_ast), Some(&normalized_ast),
+        &program,
+        &adapter,
+        base_dir,
+        true,
+        Some(&raw_ast),
+        Some(&normalized_ast),
     )?;
     println!("\n=== Final Result ===");
     println!("{}", outcome.final_result);

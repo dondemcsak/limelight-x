@@ -10,7 +10,8 @@ async fn successful_explain_returns_raw_and_normalized_ast_only() {
     let base_url = common::spawn_test_server("__SHOULD_NOT_BE_CALLED__").await;
     let source = "Load the article from \"article.txt\".\nSummarize it.";
 
-    let (status, body) = common::post_json(&base_url, "/explain", json!({ "source": source })).await;
+    let (status, body) =
+        common::post_json(&base_url, "/explain", json!({ "source": source })).await;
 
     assert_eq!(status, 200);
     assert_eq!(body["success"], true);
@@ -41,7 +42,8 @@ async fn explain_surfaces_normalization_errors_without_evaluating() {
     // No prior statement — "it" cannot be resolved.
     let source = "Summarize it.";
 
-    let (status, body) = common::post_json(&base_url, "/explain", json!({ "source": source })).await;
+    let (status, body) =
+        common::post_json(&base_url, "/explain", json!({ "source": source })).await;
 
     assert_eq!(status, 200);
     assert_eq!(body["success"], false);
@@ -49,7 +51,9 @@ async fn explain_surfaces_normalization_errors_without_evaluating() {
     assert_eq!(error["code"], "ERR_CNL_NORMALIZE");
     let message = error["message"].as_str().unwrap();
     assert!(
-        message.contains("No prior result for pronoun") || message.contains("'it'") || message.contains("it"),
+        message.contains("No prior result for pronoun")
+            || message.contains("'it'")
+            || message.contains("it"),
         "unexpected message: {message}"
     );
 }

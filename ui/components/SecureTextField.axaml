@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:fi="using:FluentIcons.Avalonia"
+             xmlns:dataConv="using:Avalonia.Data.Converters"
+             mc:Ignorable="d" d:DesignWidth="400"
+             x:Class="LimelightX.UI.Components.SecureTextField"
+             x:Name="Root">
+
+  <StackPanel Spacing="2">
+    <TextBlock Classes="fieldLabel" Text="{Binding Label, ElementName=Root}" />
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBox Grid.Column="0"
+               Classes="formField"
+               Classes.fieldError="{Binding ValidationError, ElementName=Root, Converter={x:Static dataConv:StringConverters.IsNotNullOrEmpty}}"
+               Text="{Binding Value, ElementName=Root, Mode=TwoWay}"
+               PasswordChar="{Binding MaskChar, ElementName=Root}"
+               AutomationProperties.Name="{Binding Label, ElementName=Root}" />
+      <Button Grid.Column="1"
+              Classes="icon"
+              Command="{Binding ToggleVisibilityCommand, ElementName=Root}"
+              AutomationProperties.Name="{Binding ToggleAccessibleName, ElementName=Root}"
+              ToolTip.Tip="{Binding ToggleAccessibleName, ElementName=Root}">
+        <fi:SymbolIcon Symbol="{Binding ToggleIconSymbol, ElementName=Root}" FontSize="16" Foreground="{StaticResource TextSecondaryBrush}" />
+      </Button>
+    </Grid>
+    <TextBlock Classes="fieldError"
+               Text="{Binding ValidationError, ElementName=Root}"
+               IsVisible="{Binding ValidationError, ElementName=Root, Converter={x:Static dataConv:StringConverters.IsNotNullOrEmpty}}" />
+  </StackPanel>
+
+</UserControl>

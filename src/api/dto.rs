@@ -236,16 +236,24 @@ fn raw_node_to_ast_node(node: &RawNode) -> AstNode {
             Some(i) => (raw_input_resource(i), raw_input_pronoun(i), false),
             None => (None, None, false),
         },
-        RawNode::Summarize { input, prompt } => {
-            (raw_input_resource(input), raw_input_pronoun(input), prompt.is_some())
+        RawNode::Summarize { input, prompt } => (
+            raw_input_resource(input),
+            raw_input_pronoun(input),
+            prompt.is_some(),
+        ),
+        RawNode::Translate { input, prompt, .. } => (
+            raw_input_resource(input),
+            raw_input_pronoun(input),
+            prompt.is_some(),
+        ),
+        RawNode::Rewrite { input, prompt } => (
+            raw_input_resource(input),
+            raw_input_pronoun(input),
+            prompt.is_some(),
+        ),
+        RawNode::Format { input, .. } => {
+            (raw_input_resource(input), raw_input_pronoun(input), false)
         }
-        RawNode::Translate { input, prompt, .. } => {
-            (raw_input_resource(input), raw_input_pronoun(input), prompt.is_some())
-        }
-        RawNode::Rewrite { input, prompt } => {
-            (raw_input_resource(input), raw_input_pronoun(input), prompt.is_some())
-        }
-        RawNode::Format { input, .. } => (raw_input_resource(input), raw_input_pronoun(input), false),
         RawNode::Bind { .. } => (None, None, false),
         RawNode::BindLoad { resource, .. } => (Some(resource.clone()), None, false),
     };
@@ -331,9 +339,16 @@ fn normalized_node_to_ast_node(node: &NormalizedNode) -> AstNode {
     let resource = normalized_node_input_ref(node).and_then(input_ref_resource);
     let expression_hole = matches!(
         node,
-        NormalizedNode::Summarize { prompt: Some(_), .. }
-            | NormalizedNode::Translate { prompt: Some(_), .. }
-            | NormalizedNode::Rewrite { prompt: Some(_), .. }
+        NormalizedNode::Summarize {
+            prompt: Some(_),
+            ..
+        } | NormalizedNode::Translate {
+            prompt: Some(_),
+            ..
+        } | NormalizedNode::Rewrite {
+            prompt: Some(_),
+            ..
+        }
     );
 
     AstNode {
@@ -480,29 +495,28 @@ fn ir_op_target(op: &IrOp) -> Option<String> {
 /// impl (used today for `llx explain`'s text output) as `normalized_source`,
 /// since no true source-text-span tracking exists yet.
 pub fn ir_response(ir: &Ir) -> IrResponse {
-    let operations = ir
-        .0
-        .iter()
-        .enumerate()
-        .map(|(i, op)| {
-            let normalized_source = op.to_string();
-            let token_count = approx_token_count(&normalized_source);
-            IrOperation {
-                operation_index: i,
-                op_type: ir_op_type(op).to_string(),
-                input: ir_op_input(op),
-                prompt: ir_op_prompt(op),
-                target: ir_op_target(op),
-                source_span: Span { start: 0, end: 0 },
-                normalized_source,
-                debug_info: DebugInfo {
-                    token_count,
-                    // No real cost model wired up for v0.1.
-                    estimated_cost: 0.0,
-                },
-            }
-        })
-        .collect();
+    let operations =
+        ir.0.iter()
+            .enumerate()
+            .map(|(i, op)| {
+                let normalized_source = op.to_string();
+                let token_count = approx_token_count(&normalized_source);
+                IrOperation {
+                    operation_index: i,
+                    op_type: ir_op_type(op).to_string(),
+                    input: ir_op_input(op),
+                    prompt: ir_op_prompt(op),
+                    target: ir_op_target(op),
+                    source_span: Span { start: 0, end: 0 },
+                    normalized_source,
+                    debug_info: DebugInfo {
+                        token_count,
+                        // No real cost model wired up for v0.1.
+                        estimated_cost: 0.0,
+                    },
+                }
+            })
+            .collect();
 
     let reference_map = (0..ir.0.len()).map(|i| (format!("${i}"), i)).collect();
 
@@ -587,7 +601,10 @@ pub fn model_output_blocks(records: &[ModelOutputRecord]) -> Vec<ModelOutputBloc
                 content_type,
                 // Markdown-to-object parsing is deferred — no markdown
                 // parser dependency is approved for v0.1.
-                parsed: ParsedContent { markdown: None, json },
+                parsed: ParsedContent {
+                    markdown: None,
+                    json,
+                },
                 metadata: ModelOutputMetadata {
                     token_usage: approx_token_count(&r.raw_text),
                     latency_ms: r.latency_ms,

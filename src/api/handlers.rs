@@ -25,8 +25,8 @@ use super::SharedState;
 /// (spec/api.md §10).
 fn extract_source(bytes: &Bytes) -> Result<String, Envelope> {
     let text = String::from_utf8_lossy(bytes);
-    let value: Value =
-        serde_json::from_str(&text).map_err(|_| Envelope::err_one(dto::malformed_request_error()))?;
+    let value: Value = serde_json::from_str(&text)
+        .map_err(|_| Envelope::err_one(dto::malformed_request_error()))?;
     match value.get("source").and_then(Value::as_str) {
         Some(s) => Ok(s.to_string()),
         None => Err(Envelope::err_one(dto::missing_field_error())),
@@ -75,7 +75,10 @@ pub async fn run(State(state): State<SharedState>, bytes: Bytes) -> (StatusCode,
 // POST /explain
 // ---------------------------------------------------------------------------
 
-pub async fn explain(State(state): State<SharedState>, bytes: Bytes) -> (StatusCode, Json<Envelope>) {
+pub async fn explain(
+    State(state): State<SharedState>,
+    bytes: Bytes,
+) -> (StatusCode, Json<Envelope>) {
     let source = match extract_source(&bytes) {
         Ok(s) => s,
         Err(envelope) => return (StatusCode::BAD_REQUEST, Json(envelope)),
@@ -127,7 +130,8 @@ pub async fn trace(State(state): State<SharedState>, bytes: Bytes) -> (StatusCod
         // trace=false: this is a server process, not a CLI invocation — no
         // stdout printing per request. Structured data still comes back via
         // EvalOutcome regardless (see evaluator::evaluate's doc comment).
-        let outcome = evaluator::evaluate(&program, adapter.as_ref(), &base_dir, false, None, None)?;
+        let outcome =
+            evaluator::evaluate(&program, adapter.as_ref(), &base_dir, false, None, None)?;
         Ok::<_, Error>((raw_ast, normalized_ast, program, outcome, source))
     })
     .await

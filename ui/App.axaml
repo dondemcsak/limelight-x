@@ -1,0 +1,28 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="LimelightX.UI.App"
+             RequestedThemeVariant="Dark">
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://LimelightX.UI/styles/Colors.axaml" />
+        <ResourceInclude Source="avares://LimelightX.UI/styles/Typography.axaml" />
+        <ResourceInclude Source="avares://LimelightX.UI/styles/Spacing.axaml" />
+        <ResourceInclude Source="avares://LimelightX.UI/styles/Effects.axaml" />
+        <ResourceInclude Source="avares://LimelightX.UI/styles/SyntaxColors.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme />
+    <!-- Required by AvaloniaEdit (CnlEditor's TextEditor) - without this the
+         control has no default template and renders as empty. -->
+    <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
+    <StyleInclude Source="avares://LimelightX.UI/styles/Buttons.axaml" />
+    <StyleInclude Source="avares://LimelightX.UI/styles/Inputs.axaml" />
+    <StyleInclude Source="avares://LimelightX.UI/styles/Cards.axaml" />
+  </Application.Styles>
+
+</Application>

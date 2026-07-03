@@ -75,19 +75,24 @@ pub fn evaluate(
         }
 
         let result = execute_op(
-            op, &results, adapter, base_dir, index, op_name, trace, &mut prompts, &mut model_outputs,
+            op,
+            &results,
+            adapter,
+            base_dir,
+            index,
+            op_name,
+            trace,
+            &mut prompts,
+            &mut model_outputs,
         )?;
         results.push(result);
     }
 
-    let final_result = results
-        .into_iter()
-        .last()
-        .ok_or_else(|| Error::EvalError {
-            index: 0,
-            op: "unknown".to_string(),
-            message: "no operations to evaluate".to_string(),
-        })?;
+    let final_result = results.into_iter().last().ok_or_else(|| Error::EvalError {
+        index: 0,
+        op: "unknown".to_string(),
+        message: "no operations to evaluate".to_string(),
+    })?;
 
     Ok(EvalOutcome {
         final_result,
@@ -116,7 +121,11 @@ fn execute_op(
         IrOp::Load { path } => {
             let resolved = {
                 let p = Path::new(path);
-                if p.is_absolute() { p.to_path_buf() } else { base_dir.join(p) }
+                if p.is_absolute() {
+                    p.to_path_buf()
+                } else {
+                    base_dir.join(p)
+                }
             };
             let content = std::fs::read_to_string(&resolved).map_err(|e| Error::EvalError {
                 index,
@@ -132,7 +141,15 @@ fn execute_op(
         IrOp::Extract { target, input } => {
             let text = resolve_ref(input, results, index, op_name)?;
             let prompt = format!("Extract the {target} from the following text:\n\n{text}");
-            call_model(adapter, &prompt, index, op_name, trace, prompts, model_outputs)
+            call_model(
+                adapter,
+                &prompt,
+                index,
+                op_name,
+                trace,
+                prompts,
+                model_outputs,
+            )
         }
 
         IrOp::Summarize { input, prompt } => {
@@ -141,7 +158,15 @@ fn execute_op(
                 Some(user_prompt) => format!("{user_prompt}\n\nInput:\n{text}"),
                 None => format!("Summarize the following text clearly and concisely:\n\n{text}"),
             };
-            call_model(adapter, &full_prompt, index, op_name, trace, prompts, model_outputs)
+            call_model(
+                adapter,
+                &full_prompt,
+                index,
+                op_name,
+                trace,
+                prompts,
+                model_outputs,
+            )
         }
 
         IrOp::Translate {
@@ -154,7 +179,15 @@ fn execute_op(
                 Some(user_prompt) => format!("{user_prompt}\n\nInput:\n{text}"),
                 None => format!("Translate the following text into {language}:\n\n{text}"),
             };
-            call_model(adapter, &full_prompt, index, op_name, trace, prompts, model_outputs)
+            call_model(
+                adapter,
+                &full_prompt,
+                index,
+                op_name,
+                trace,
+                prompts,
+                model_outputs,
+            )
         }
 
         IrOp::Rewrite { input, prompt } => {
@@ -165,7 +198,15 @@ fn execute_op(
                     format!("Rewrite the following text for clarity and readability:\n\n{text}")
                 }
             };
-            call_model(adapter, &full_prompt, index, op_name, trace, prompts, model_outputs)
+            call_model(
+                adapter,
+                &full_prompt,
+                index,
+                op_name,
+                trace,
+                prompts,
+                model_outputs,
+            )
         }
 
         IrOp::Format { input, target } => {
@@ -174,11 +215,27 @@ fn execute_op(
                 let prompt = format!(
                     "Convert the following text into a pipe-delimited Markdown table with a header row:\n\n{text}"
                 );
-                let table = call_model(adapter, &prompt, index, op_name, trace, prompts, model_outputs)?;
+                let table = call_model(
+                    adapter,
+                    &prompt,
+                    index,
+                    op_name,
+                    trace,
+                    prompts,
+                    model_outputs,
+                )?;
                 table_to_json(&table, index, op_name)
             } else {
                 let prompt = format!("Format the following text as {target}:\n\n{text}");
-                call_model(adapter, &prompt, index, op_name, trace, prompts, model_outputs)
+                call_model(
+                    adapter,
+                    &prompt,
+                    index,
+                    op_name,
+                    trace,
+                    prompts,
+                    model_outputs,
+                )
             }
         }
     }
@@ -195,7 +252,10 @@ fn table_to_json(table: &str, index: usize, op_name: &str) -> Result<String, Err
         message: msg.to_string(),
     };
 
-    let is_separator = |line: &str| line.chars().all(|c| c == '|' || c == '-' || c == ' ' || c == ':');
+    let is_separator = |line: &str| {
+        line.chars()
+            .all(|c| c == '|' || c == '-' || c == ' ' || c == ':')
+    };
 
     let data_rows: Vec<Vec<String>> = table
         .lines()
@@ -209,12 +269,16 @@ fn table_to_json(table: &str, index: usize, op_name: &str) -> Result<String, Err
         .collect();
 
     if data_rows.is_empty() {
-        return Err(make_err("model output is not a valid pipe-delimited table: no rows found"));
+        return Err(make_err(
+            "model output is not a valid pipe-delimited table: no rows found",
+        ));
     }
 
     let headers = &data_rows[0];
     if headers.is_empty() {
-        return Err(make_err("model output is not a valid pipe-delimited table: no header columns found"));
+        return Err(make_err(
+            "model output is not a valid pipe-delimited table: no header columns found",
+        ));
     }
 
     let mut json = String::from("[");
@@ -241,7 +305,9 @@ fn table_to_json(table: &str, index: usize, op_name: &str) -> Result<String, Err
 }
 
 fn strip_markdown(s: &str) -> String {
-    s.replace("**", "").replace("__", "").replace('*', "").replace('_', "")
+    s.replace("**", "")
+        .replace("__", "")
+        .replace(['*', '_'], "")
 }
 
 fn escape_json_str(s: &str) -> String {
@@ -254,11 +320,14 @@ fn resolve_ref<'a>(
     index: usize,
     op_name: &str,
 ) -> Result<&'a str, Error> {
-    results.get(ir_ref.0).map(String::as_str).ok_or_else(|| Error::EvalError {
-        index,
-        op: op_name.to_string(),
-        message: format!("undefined IR reference ${}", ir_ref.0),
-    })
+    results
+        .get(ir_ref.0)
+        .map(String::as_str)
+        .ok_or_else(|| Error::EvalError {
+            index,
+            op: op_name.to_string(),
+            message: format!("undefined IR reference ${}", ir_ref.0),
+        })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -343,8 +412,13 @@ mod tests {
         // THEN the adapter receives the built-in template
         let adapter = CapturingAdapter::new("summary text");
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("article text") },
-            IrOp::Summarize { input: IrRef(0), prompt: None },
+            IrOp::Load {
+                path: make_temp_file("article text"),
+            },
+            IrOp::Summarize {
+                input: IrRef(0),
+                prompt: None,
+            },
         ]);
         eval(ir, &adapter).unwrap();
         let prompt = adapter.last_prompt().unwrap();
@@ -363,7 +437,9 @@ mod tests {
         // THEN the adapter receives the user prompt with input appended
         let adapter = CapturingAdapter::new("bullet summary");
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("article text") },
+            IrOp::Load {
+                path: make_temp_file("article text"),
+            },
             IrOp::Summarize {
                 input: IrRef(0),
                 prompt: Some("Summarize in 3 bullets.".to_string()),
@@ -371,7 +447,10 @@ mod tests {
         ]);
         eval(ir, &adapter).unwrap();
         let prompt = adapter.last_prompt().unwrap();
-        assert!(prompt.starts_with("Summarize in 3 bullets."), "unexpected prompt: {prompt}");
+        assert!(
+            prompt.starts_with("Summarize in 3 bullets."),
+            "unexpected prompt: {prompt}"
+        );
         assert!(prompt.contains("Input:"));
         assert!(prompt.contains("article text"));
     }
@@ -384,7 +463,9 @@ mod tests {
         // THEN the adapter receives the built-in translation template
         let adapter = CapturingAdapter::new("traduction");
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("some text") },
+            IrOp::Load {
+                path: make_temp_file("some text"),
+            },
             IrOp::Translate {
                 input: IrRef(0),
                 language: "French".to_string(),
@@ -407,8 +488,13 @@ mod tests {
         // THEN the adapter receives the built-in rewrite template
         let adapter = CapturingAdapter::new("rewritten");
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("draft text") },
-            IrOp::Rewrite { input: IrRef(0), prompt: None },
+            IrOp::Load {
+                path: make_temp_file("draft text"),
+            },
+            IrOp::Rewrite {
+                input: IrRef(0),
+                prompt: None,
+            },
         ]);
         eval(ir, &adapter).unwrap();
         let prompt = adapter.last_prompt().unwrap();
@@ -428,8 +514,13 @@ mod tests {
         let table_output = "| **Name** | **Age** |\n|------|-----|\n| Alice | 30 |\n| Bob | 25 |";
         let adapter = CapturingAdapter::new(table_output);
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("some data") },
-            IrOp::Format { input: IrRef(0), target: "JSON".to_string() },
+            IrOp::Load {
+                path: make_temp_file("some data"),
+            },
+            IrOp::Format {
+                input: IrRef(0),
+                target: "JSON".to_string(),
+            },
         ]);
         let result = eval(ir, &adapter).unwrap();
         let prompt = adapter.last_prompt().unwrap();
@@ -437,7 +528,10 @@ mod tests {
             prompt.contains("pipe-delimited Markdown table with a header row"),
             "unexpected prompt: {prompt}"
         );
-        assert_eq!(result, r#"[{"Name":"Alice","Age":"30"},{"Name":"Bob","Age":"25"}]"#);
+        assert_eq!(
+            result,
+            r#"[{"Name":"Alice","Age":"30"},{"Name":"Bob","Age":"25"}]"#
+        );
     }
 
     // BDD: Evaluate Format as non-JSON target — model receives standard format prompt
@@ -448,8 +542,13 @@ mod tests {
         // THEN the model receives the built-in format template
         let adapter = CapturingAdapter::new("## Markdown output");
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("some data") },
-            IrOp::Format { input: IrRef(0), target: "Markdown".to_string() },
+            IrOp::Load {
+                path: make_temp_file("some data"),
+            },
+            IrOp::Format {
+                input: IrRef(0),
+                target: "Markdown".to_string(),
+            },
         ]);
         eval(ir, &adapter).unwrap();
         let prompt = adapter.last_prompt().unwrap();
@@ -479,8 +578,13 @@ mod tests {
     fn test_eval_outcome_collects_prompts_and_model_outputs() {
         let adapter = CapturingAdapter::new("summary text");
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("article text") },
-            IrOp::Summarize { input: IrRef(0), prompt: None },
+            IrOp::Load {
+                path: make_temp_file("article text"),
+            },
+            IrOp::Summarize {
+                input: IrRef(0),
+                prompt: None,
+            },
         ]);
         let outcome =
             evaluate(&ir, &adapter, std::path::Path::new("."), false, None, None).unwrap();
@@ -501,8 +605,13 @@ mod tests {
         // THEN it executes without error (output goes to stdout)
         let adapter = MockModelAdapter::new("summary");
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("some text") },
-            IrOp::Summarize { input: IrRef(0), prompt: None },
+            IrOp::Load {
+                path: make_temp_file("some text"),
+            },
+            IrOp::Summarize {
+                input: IrRef(0),
+                prompt: None,
+            },
         ]);
         let result = evaluate(&ir, &adapter, std::path::Path::new("."), true, None, None);
         assert!(result.is_ok());
@@ -510,8 +619,7 @@ mod tests {
 
     fn make_temp_file(content: &str) -> String {
         use std::env;
-        static COUNTER: std::sync::atomic::AtomicU64 =
-            std::sync::atomic::AtomicU64::new(0);
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let path = env::temp_dir().join(format!("llx_test_{id}.txt"));
         std::fs::write(&path, content).unwrap();

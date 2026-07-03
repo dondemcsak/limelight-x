@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:dto="using:LimelightX.UI.Services.Dto"
+             mc:Ignorable="d" d:DesignWidth="800"
+             x:Class="LimelightX.UI.Components.AstTreeView"
+             x:Name="Root">
+
+  <!--
+    VS-Code-style modern tree view (ui-components.md §4.1-4.2): chevron
+    expanders (Avalonia's default TreeViewItem chrome), indentation guides,
+    key/value pairs, syntax coloring, deterministic ordering (renders
+    Children in wire order - no re-sorting).
+  -->
+  <TreeView ItemsSource="{Binding RootItems, ElementName=Root}"
+            Background="Transparent">
+    <TreeView.DataTemplates>
+      <TreeDataTemplate DataType="dto:AstNode" ItemsSource="{Binding Children}">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="{Binding Type}"
+                     Foreground="{StaticResource SyntaxKeywordBrush}"
+                     FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                     FontSize="{StaticResource FontSizeSmall}" />
+          <TextBlock Text="{Binding Value}"
+                     Foreground="{StaticResource TextSecondaryBrush}"
+                     FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                     FontSize="{StaticResource FontSizeSmall}"
+                     TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+      </TreeDataTemplate>
+    </TreeView.DataTemplates>
+  </TreeView>
+
+</UserControl>

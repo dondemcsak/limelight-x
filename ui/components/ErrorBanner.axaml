@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:errors="using:LimelightX.UI.ViewModels.Errors"
+             mc:Ignorable="d" d:DesignWidth="800"
+             x:Class="LimelightX.UI.Components.ErrorBanner"
+             x:Name="Root">
+
+  <!--
+    Global error banner (ui-error-handling.md §4). Minimal version for Phase
+    5 - Phase 7 formalizes full severity-driven styling/dismiss/ARIA-alert
+    behavior across the whole app; this covers the page-level display need
+    now (PipelineExecutionViewModel.Errors) without blocking on that.
+  -->
+  <ItemsControl ItemsSource="{Binding Errors, ElementName=Root}"
+                IsVisible="{Binding HasErrors, ElementName=Root}">
+    <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="errors:UiError">
+        <Border Background="{StaticResource StatusErrorBrush}"
+                CornerRadius="{StaticResource BorderRadius}"
+                Padding="{StaticResource PaddingMediumThickness}"
+                Margin="0,0,0,4">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{Binding Code}" Foreground="White" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="{StaticResource FontSizeSmall}" />
+            <TextBlock Text="{Binding Message}" Foreground="White" FontFamily="{StaticResource InterFontFamily}" FontSize="{StaticResource FontSizeSmall}" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+      </DataTemplate>
+    </ItemsControl.ItemTemplate>
+  </ItemsControl>
+
+</UserControl>

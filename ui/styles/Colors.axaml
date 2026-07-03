@@ -1,0 +1,66 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    Dark theme (ui-styling-theming.md §2.1-2.3). This is the only theme with a
+    reachable entry point in v0.1 - the light-theme resources below are defined
+    for spec completeness (§2.4) but nothing in ui-routing-navigation.md or
+    SettingsViewModel exposes a toggle, so they are currently unreferenced.
+  -->
+  <Color x:Key="BackgroundPrimaryColor">#0D0D0D</Color>
+  <Color x:Key="BackgroundSecondaryColor">#1A1A1A</Color>
+  <Color x:Key="SurfaceColor">#1F1F1F</Color>
+  <Color x:Key="SurfaceHoverColor">#262626</Color>
+  <Color x:Key="BorderColor">#333333</Color>
+  <Color x:Key="TextPrimaryColor">#E5E5E5</Color>
+  <Color x:Key="TextSecondaryColor">#B3B3B3</Color>
+  <Color x:Key="TextMutedColor">#808080</Color>
+
+  <!-- Accent (neon lime) - used sparingly per §2.2 -->
+  <Color x:Key="AccentPrimaryColor">#10B981</Color>
+  <Color x:Key="AccentGlowColor">#32FF9C</Color>
+  <Color x:Key="AccentMutedColor">#0A8F63</Color>
+
+  <!-- Status colors §2.3 -->
+  <Color x:Key="StatusErrorColor">#EF4444</Color>
+  <Color x:Key="StatusWarningColor">#F59E0B</Color>
+  <Color x:Key="StatusInfoColor">#3B82F6</Color>
+  <Color x:Key="StatusSuccessColor">#10B981</Color>
+
+  <!-- Disabled button state §4.2 -->
+  <Color x:Key="DisabledBackgroundColor">#1A1A1A</Color>
+  <Color x:Key="DisabledTextColor">#555555</Color>
+  <Color x:Key="DisabledBorderColor">#2A2A2A</Color>
+
+  <SolidColorBrush x:Key="BackgroundPrimaryBrush" Color="{StaticResource BackgroundPrimaryColor}" />
+  <SolidColorBrush x:Key="BackgroundSecondaryBrush" Color="{StaticResource BackgroundSecondaryColor}" />
+  <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
+  <SolidColorBrush x:Key="SurfaceHoverBrush" Color="{StaticResource SurfaceHoverColor}" />
+  <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" />
+  <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}" />
+  <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}" />
+  <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}" />
+
+  <SolidColorBrush x:Key="AccentPrimaryBrush" Color="{StaticResource AccentPrimaryColor}" />
+  <SolidColorBrush x:Key="AccentGlowBrush" Color="{StaticResource AccentGlowColor}" />
+  <SolidColorBrush x:Key="AccentMutedBrush" Color="{StaticResource AccentMutedColor}" />
+
+  <SolidColorBrush x:Key="StatusErrorBrush" Color="{StaticResource StatusErrorColor}" />
+  <SolidColorBrush x:Key="StatusWarningBrush" Color="{StaticResource StatusWarningColor}" />
+  <SolidColorBrush x:Key="StatusInfoBrush" Color="{StaticResource StatusInfoColor}" />
+  <SolidColorBrush x:Key="StatusSuccessBrush" Color="{StaticResource StatusSuccessColor}" />
+
+  <SolidColorBrush x:Key="DisabledBackgroundBrush" Color="{StaticResource DisabledBackgroundColor}" />
+  <SolidColorBrush x:Key="DisabledTextBrush" Color="{StaticResource DisabledTextColor}" />
+  <SolidColorBrush x:Key="DisabledBorderBrush" Color="{StaticResource DisabledBorderColor}" />
+
+  <!-- Light theme (§2.4) - secondary, currently unwired. Kept for spec completeness. -->
+  <Color x:Key="LightBackgroundPrimaryColor">#FFFFFF</Color>
+  <Color x:Key="LightBackgroundSecondaryColor">#F5F5F5</Color>
+  <Color x:Key="LightSurfaceColor">#FAFAFA</Color>
+  <Color x:Key="LightBorderColor">#DDDDDD</Color>
+  <Color x:Key="LightTextPrimaryColor">#1A1A1A</Color>
+  <Color x:Key="LightTextSecondaryColor">#4D4D4D</Color>
+  <Color x:Key="LightAccentPrimaryColor">#10B981</Color>
+
+</ResourceDictionary>

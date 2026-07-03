@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:components="using:LimelightX.UI.Components"
+             xmlns:conv="using:LimelightX.UI.Components.Converters"
+             xmlns:vm="using:LimelightX.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="600"
+             x:Class="LimelightX.UI.Views.SettingsPage"
+             x:DataType="vm:SettingsViewModel">
+
+  <StackPanel Margin="{StaticResource PaddingLargeThickness}" Spacing="{StaticResource PanelSpacing}" MaxWidth="480">
+
+    <TextBlock Text="Settings"
+               Foreground="{StaticResource TextPrimaryBrush}"
+               FontFamily="{StaticResource InterFontFamily}"
+               FontSize="{StaticResource FontSizeHeading}"
+               Margin="0,0,0,8" />
+
+    <components:ValidationOverlay Errors="{Binding Errors}" />
+
+    <components:TextField Label="Port"
+                           Value="{Binding Port, Converter={x:Static conv:IntToStringConverter.Instance}}" />
+
+    <components:TextField Label="Log Path" Value="{Binding LogPath}" />
+
+    <components:SecureTextField Label="ANTHROPIC_API_KEY"
+                                 Value="{Binding ApiKey}"
+                                 IsValueVisible="{Binding IsApiKeyVisible}" />
+
+    <components:SelectField Label="Environment Profile"
+                             Options="{Binding ProfileOptions}"
+                             SelectedValue="{Binding EnvironmentProfile}" />
+
+    <StackPanel Orientation="Horizontal" Spacing="{StaticResource PanelSpacing}" Margin="0,8,0,0">
+      <Button Classes="primary" Content="Save" Command="{Binding SaveSettingsCommand}"
+              IsEnabled="{Binding !IsApplying}" AutomationProperties.Name="Save" />
+      <Button Classes="secondary" Content="Cancel" Command="{Binding CancelSettingsCommand}"
+              IsEnabled="{Binding !IsApplying}" AutomationProperties.Name="Cancel" />
+      <components:LoadingIndicator IsLoading="{Binding IsApplying}" Text="Applying settings..." />
+    </StackPanel>
+
+  </StackPanel>
+
+</UserControl>

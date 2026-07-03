@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/tests/">
+    <Project Path="tests/LimelightX.UI.Tests.csproj" />
+  </Folder>
+  <Project Path="LimelightX.UI.csproj" />
+</Solution>

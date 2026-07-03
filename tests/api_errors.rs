@@ -25,7 +25,10 @@ async fn missing_required_field_returns_structured_error() {
     assert_eq!(body["success"], false);
     assert_eq!(body["errors"][0]["code"], "ERR_MISSING_FIELD");
     let message = body["errors"][0]["message"].as_str().unwrap();
-    assert!(message.contains("'source'"), "unexpected message: {message}");
+    assert!(
+        message.contains("'source'"),
+        "unexpected message: {message}"
+    );
 }
 
 #[tokio::test]
@@ -35,6 +38,9 @@ async fn missing_required_field_check_applies_to_explain_and_trace_too() {
     for path in ["/explain", "/trace"] {
         let (status, body) = common::post_raw(&base_url, path, "{}").await;
         assert_eq!(status, 400, "path: {path}");
-        assert_eq!(body["errors"][0]["code"], "ERR_MISSING_FIELD", "path: {path}");
+        assert_eq!(
+            body["errors"][0]["code"], "ERR_MISSING_FIELD",
+            "path: {path}"
+        );
     }
 }

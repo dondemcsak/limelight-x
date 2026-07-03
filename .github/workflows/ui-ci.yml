@@ -1,0 +1,139 @@
+name: CI
+
+# ui-build-pipeline.md §3: prepare -> compile -> test -> package -> publish,
+# covering both components (Cargo for /src, dotnet for /ui) in one workflow -
+# ui-build-pipeline.md §1 describes CI building both components together, not
+# /ui in isolation.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build-test-package:
+    runs-on: windows-latest
+    steps:
+      # --- Prepare stage (§3.2) ---
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('ui/packages.lock.json', 'ui/tests/packages.lock.json') }}
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Validate lockfiles are present and committed
+        shell: bash
+        run: |
+          test -f Cargo.lock || { echo "::error::Cargo.lock is missing"; exit 1; }
+          test -f ui/packages.lock.json || { echo "::error::ui/packages.lock.json is missing"; exit 1; }
+          test -f ui/tests/packages.lock.json || { echo "::error::ui/tests/packages.lock.json is missing"; exit 1; }
+
+      - name: Restore /ui (locked mode)
+        run: dotnet restore ui/LimelightX.slnx --locked-mode
+
+      - name: Restore /src (locked mode)
+        run: cargo fetch --locked
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Dependency audit - /src (cargo audit)
+        run: cargo audit
+
+      - name: Dependency audit - /ui (dotnet vulnerable packages)
+        shell: bash
+        run: |
+          out=$(dotnet list ui/LimelightX.slnx package --vulnerable --include-transitive)
+          echo "$out"
+          if echo "$out" | grep -q "has the following vulnerable packages"; then
+            echo "::error::Vulnerable NuGet packages detected"
+            exit 1
+          fi
+
+      # --- Compile stage (§3.3) ---
+      - name: Build /ui (Release, warnings as errors)
+        run: dotnet build ui/LimelightX.slnx -c Release --no-restore -warnaserror
+
+      - name: Format check - /ui
+        run: dotnet format ui/LimelightX.slnx --verify-no-changes
+
+      - name: Build /src (Release)
+        run: cargo build --release --locked
+
+      - name: Format check - /src (rustfmt)
+        run: cargo fmt --check
+
+      - name: Lint - /src (clippy)
+        run: cargo clippy --release --all-targets --locked -- -D warnings
+
+      # --- Test stage (§3.4) ---
+      - name: Test /ui
+        run: dotnet test ui/LimelightX.slnx -c Release --no-build
+
+      - name: Test /src
+        run: cargo test --release --locked
+
+      # --- Package stage (§3.5) ---
+      - name: Publish LimelightX.UI
+        run: dotnet publish ui/LimelightX.UI.csproj -c Release --no-self-contained
+
+      - name: Build MSIX package
+        shell: pwsh
+        run: ./ui/packaging/build-msix.ps1
+
+      - name: Validate MSIX structure (unpack + inspect manifest)
+        shell: pwsh
+        run: |
+          $makeAppx = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter "makeappx.exe" -Recurse |
+            Where-Object { $_.FullName -match "\\x64\\" } | Sort-Object FullName -Descending | Select-Object -First 1
+          $unpackDir = "ui/packaging/out/unpacked"
+          & $makeAppx.FullName unpack /p ui/packaging/out/LimelightX.msix /d $unpackDir /o
+          if ($LASTEXITCODE -ne 0) { throw "makeappx unpack (structure validation) failed" }
+          if (-not (Test-Path "$unpackDir/AppxManifest.xml")) { throw "Unpacked MSIX is missing AppxManifest.xml" }
+          if (-not (Test-Path "$unpackDir/LimelightX.exe")) { throw "Unpacked MSIX is missing LimelightX.exe" }
+          if (-not (Test-Path "$unpackDir/llx.exe")) { throw "Unpacked MSIX is missing llx.exe" }
+          Write-Host "MSIX structure validated: manifest, LimelightX.exe, and llx.exe all present."
+
+      # --- Artifact publishing stage (§3.6) ---
+      - name: Upload LimelightX.exe + llx.exe bundle (stable channel)
+        uses: actions/upload-artifact@v4
+        with:
+          name: limelight-x-bundle-stable
+          path: |
+            ui/packaging/layout/**
+          if-no-files-found: error
+
+      - name: Upload MSIX installer (stable channel)
+        uses: actions/upload-artifact@v4
+        with:
+          name: limelight-x-msix-stable
+          path: ui/packaging/out/LimelightX.msix
+          if-no-files-found: error

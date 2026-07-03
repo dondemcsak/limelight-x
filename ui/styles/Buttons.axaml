@@ -1,0 +1,77 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    Button styles built purely from token resources (Colors/Spacing/Effects/
+    Typography.axaml) - no hardcoded hex anywhere here (ui-styling-theming.md §4.2).
+  -->
+
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource BorderRadius}" />
+    <Setter Property="Padding" Value="{StaticResource ButtonPadding}" />
+    <Setter Property="FontFamily" Value="{StaticResource InterFontFamily}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSizeMedium}" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.12" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+  </Style>
+  <Style Selector="Button.primary:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource AccentGlowBrush}" />
+  </Style>
+  <Style Selector="Button.primary:disabled /template/ ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource DisabledBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource DisabledBorderBrush}" />
+  </Style>
+  <Style Selector="Button.primary:disabled">
+    <Setter Property="Foreground" Value="{StaticResource DisabledTextBrush}" />
+  </Style>
+
+  <Style Selector="Button.secondary">
+    <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource BorderRadius}" />
+    <Setter Property="Padding" Value="{StaticResource ButtonPadding}" />
+    <Setter Property="FontFamily" Value="{StaticResource InterFontFamily}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSizeMedium}" />
+  </Style>
+  <Style Selector="Button.secondary:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+  </Style>
+  <Style Selector="Button.secondary:disabled /template/ ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource DisabledBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource DisabledBorderBrush}" />
+  </Style>
+  <Style Selector="Button.secondary:disabled">
+    <Setter Property="Foreground" Value="{StaticResource DisabledTextBrush}" />
+  </Style>
+
+  <!-- Sidebar "current page" indicator (ui-styling-theming.md §4.3, reflects CurrentPage) -->
+  <Style Selector="Button.secondary.active">
+    <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
+  </Style>
+
+  <!-- IconButton base look (utility component, ui-components.md §5.5) -->
+  <Style Selector="Button.icon">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="{StaticResource PaddingSmallThickness}" />
+    <Setter Property="CornerRadius" Value="{StaticResource BorderRadius}" />
+  </Style>
+  <Style Selector="Button.icon:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+  </Style>
+
+</Styles>

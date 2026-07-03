@@ -1,0 +1,65 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:components="using:LimelightX.UI.Components"
+             xmlns:conv="using:LimelightX.UI.Components.Converters"
+             xmlns:dataConv="using:Avalonia.Data.Converters"
+             xmlns:dto="using:LimelightX.UI.Services.Dto"
+             xmlns:inspectors="using:LimelightX.UI.ViewModels.Inspectors"
+             mc:Ignorable="d" d:DesignWidth="800"
+             x:Class="LimelightX.UI.Components.IrPanel"
+             x:DataType="inspectors:IrViewModel">
+
+  <components:CollapsiblePanel Title="IR" IsCollapsed="{Binding IsCollapsed}">
+    <components:CollapsiblePanel.PanelContent>
+      <StackPanel Spacing="8">
+        <components:ValidationOverlay Errors="{Binding Errors}" />
+
+        <ItemsControl ItemsSource="{Binding Operations}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="dto:IrOperation">
+              <Border Classes="card" Margin="0,0,0,8" Padding="{StaticResource PaddingMediumThickness}">
+                <StackPanel Spacing="4">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Classes="cardHeader" Text="{Binding Type}" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding OperationIndex, StringFormat='op {0}'}"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                               FontSize="{StaticResource FontSizeSmall}" />
+                  </Grid>
+
+                  <TextBlock IsVisible="{Binding Input, Converter={x:Static dataConv:ObjectConverters.IsNotNull}}"
+                             Text="{Binding Input, Converter={x:Static conv:DollarReferenceConverter.Instance}, StringFormat='input: {0}'}"
+                             Foreground="{StaticResource SyntaxPronounBrush}"
+                             FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                             FontSize="{StaticResource FontSizeSmall}" />
+
+                  <TextBlock IsVisible="{Binding Target, Converter={x:Static dataConv:StringConverters.IsNotNullOrEmpty}}"
+                             Text="{Binding Target, StringFormat='target: {0}'}"
+                             Foreground="{StaticResource SyntaxResourceBrush}"
+                             FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                             FontSize="{StaticResource FontSizeSmall}" />
+
+                  <TextBlock IsVisible="{Binding Prompt, Converter={x:Static dataConv:StringConverters.IsNotNullOrEmpty}}"
+                             Text="{Binding Prompt, StringFormat='prompt: {0}'}"
+                             Foreground="{StaticResource SyntaxExpressionHoleBrush}"
+                             FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                             FontSize="{StaticResource FontSizeSmall}"
+                             TextWrapping="Wrap" />
+
+                  <TextBlock Text="{Binding DebugInfo.TokenCount, StringFormat='~{0} tokens'}"
+                             Foreground="{StaticResource TextMutedBrush}"
+                             FontFamily="{StaticResource InterFontFamily}"
+                             FontSize="{StaticResource FontSizeSmall}" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </components:CollapsiblePanel.PanelContent>
+  </components:CollapsiblePanel>
+
+</UserControl>

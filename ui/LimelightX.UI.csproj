@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>LimelightX.UI</AssemblyName>
+    <RootNamespace>LimelightX.UI</RootNamespace>
+    <Nullable>enable</Nullable>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="styles\Fonts\**" />
+  </ItemGroup>
+
+  <!-- tests/ is its own project (LimelightX.UI.Tests.csproj) - exclude it from
+       this project's default **/*.cs and **/*.axaml globs. -->
+  <ItemGroup>
+    <Compile Remove="tests\**" />
+    <AvaloniaResource Remove="tests\**" />
+    <None Remove="tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+    <!-- Avalonia.Diagnostics has no Avalonia-12-compatible release yet (latest is
+         11.3.18). It is optional Debug-only dev-overlay tooling, not part of the
+         shipped app, so it is omitted for now rather than pinning an incompatible
+         version; revisit once a 12.x build is published. -->
+    <PackageReference Include="Avalonia.Xaml.Interactivity" Version="11.3.0.6" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <!-- AvaloniaEdit moved to official AvaloniaUI-team ownership under a new
+         package id, "Avalonia.AvaloniaEdit", starting with the Avalonia 12 line
+         (the old "AvaloniaEdit" 0.10.12 package targets pre-11.x split assemblies
+         and is no longer compatible with current Avalonia). -->
+    <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
+    <!-- FluentIcons.Avalonia.Fluent is NOT used: its nuspec pulls in FluentAvaloniaUI
+         (a full control/theme library), which exceeds CLAUDE.md §3.5's "icon set
+         only" approval. FluentIcons.Avalonia alone depends only on Avalonia itself. -->
+    <PackageReference Include="FluentIcons.Avalonia" Version="2.1.331" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,17 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ae="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
+             x:Class="LimelightX.UI.Components.CnlEditor">
+
+  <ae:TextEditor x:Name="Editor"
+                 FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                 FontSize="{StaticResource FontSizeMedium}"
+                 ShowLineNumbers="True"
+                 Background="{StaticResource BackgroundPrimaryBrush}"
+                 Foreground="{StaticResource TextPrimaryBrush}"
+                 AutomationProperties.Name="CNL editor" />
+
+</UserControl>

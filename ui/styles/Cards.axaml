@@ -1,0 +1,28 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    Card-style surfaces shared by inspector panels (§4.3) and IR operation
+    cards (§4.5) - both use the identical Surface/Border/ShadowSmall recipe,
+    differing only in HeaderAccent-when-active.
+  -->
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource BorderRadius}" />
+    <Setter Property="BoxShadow" Value="{StaticResource ShadowSmall}" />
+  </Style>
+
+  <Style Selector="TextBlock.cardHeader">
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="FontFamily" Value="{StaticResource InterFontFamily}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSizeMedium}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.cardHeader.active">
+    <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
+  </Style>
+
+</Styles>

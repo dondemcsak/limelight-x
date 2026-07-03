@@ -184,7 +184,10 @@ fn parse_extract(sentence: &str, line: usize) -> Result<RawNode, Error> {
     } else {
         // Implicit input (Pattern C)
         let target = rest.trim().to_string();
-        Ok(RawNode::Extract { target, input: None })
+        Ok(RawNode::Extract {
+            target,
+            input: None,
+        })
     }
 }
 
@@ -208,11 +211,13 @@ fn parse_translate(sentence: &str, line: usize) -> Result<RawNode, Error> {
     let (input_and_lang, prompt) = split_using(rest, line)?;
 
     // Split on " to " to separate input from language
-    let to_pos = input_and_lang.find(" to ").ok_or_else(|| Error::ParseError {
-        line,
-        column: 1,
-        message: format!("Translate statement missing 'to': '{sentence}'"),
-    })?;
+    let to_pos = input_and_lang
+        .find(" to ")
+        .ok_or_else(|| Error::ParseError {
+            line,
+            column: 1,
+            message: format!("Translate statement missing 'to': '{sentence}'"),
+        })?;
 
     let input_str = input_and_lang[..to_pos].trim();
     let language = input_and_lang[to_pos + 4..].trim().to_string();
@@ -379,7 +384,7 @@ fn parse_input(s: &str, line: usize) -> Result<RawInput, Error> {
     Err(Error::ParseError {
         line,
         column: 1,
-        message: format!("empty input reference"),
+        message: "empty input reference".to_string(),
     })
 }
 
@@ -407,11 +412,13 @@ fn parse_expression(s: &str, line: usize) -> Result<Expression, Error> {
 
 /// Strip a required prefix, returning the remainder or a parse error.
 fn strip_prefix<'a>(sentence: &'a str, prefix: &str, line: usize) -> Result<&'a str, Error> {
-    sentence.strip_prefix(prefix).ok_or_else(|| Error::ParseError {
-        line,
-        column: 1,
-        message: format!("expected '{prefix}' at start of sentence: '{sentence}'"),
-    })
+    sentence
+        .strip_prefix(prefix)
+        .ok_or_else(|| Error::ParseError {
+            line,
+            column: 1,
+            message: format!("expected '{prefix}' at start of sentence: '{sentence}'"),
+        })
 }
 
 /// Split a sentence body on ` using {{ ... }}`, returning (before, prompt).
@@ -503,10 +510,8 @@ mod tests {
         // GIVEN a file containing Summarize the article using {{ prompt: "Summarize in 3 bullets." }}.
         // WHEN the parser runs
         // THEN prompt = Some("Summarize in 3 bullets.")
-        let ast = parse(
-            r#"Summarize the article using {{ prompt: "Summarize in 3 bullets." }}."#,
-        )
-        .unwrap();
+        let ast = parse(r#"Summarize the article using {{ prompt: "Summarize in 3 bullets." }}."#)
+            .unwrap();
         assert_eq!(
             ast.0,
             vec![RawNode::Summarize {

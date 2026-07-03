@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:components="using:LimelightX.UI.Components"
+             xmlns:vm="using:LimelightX.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             x:Class="LimelightX.UI.Views.ExecutionPage"
+             x:DataType="vm:PipelineExecutionViewModel">
+
+  <!--
+    Vertical pipeline timeline (ui-architecture.md §7): Raw AST -> Normalized
+    AST -> IR -> Prompts -> Model Outputs -> Final Result, all panels always
+    present (Run mode leaves AST/IR/Prompts/ModelOutputs empty since /run
+    doesn't return that data).
+  -->
+  <ScrollViewer>
+    <StackPanel Margin="{StaticResource PaddingLargeThickness}" Spacing="0">
+      <components:ErrorBanner Errors="{Binding Errors}" Margin="0,0,0,12" />
+
+      <components:RawAstPanel DataContext="{Binding RawAstViewModel}" />
+      <components:NormalizedAstPanel DataContext="{Binding NormalizedAstViewModel}" />
+      <components:IrPanel DataContext="{Binding IrViewModel}" />
+      <components:PromptPanel DataContext="{Binding PromptViewModel}" />
+      <components:ModelOutputPanel DataContext="{Binding ModelOutputViewModel}" />
+      <components:FinalResultPanel DataContext="{Binding FinalResultViewModel}" />
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>

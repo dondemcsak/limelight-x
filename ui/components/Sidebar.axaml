@@ -1,0 +1,56 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:conv="using:LimelightX.UI.Components.Converters"
+             xmlns:routing="using:LimelightX.UI.Routing"
+             mc:Ignorable="d"
+             x:Class="LimelightX.UI.Components.Sidebar"
+             x:DataType="routing:NavigationViewModel">
+
+  <Border Background="{StaticResource BackgroundSecondaryBrush}"
+          BorderBrush="{StaticResource BorderBrush}"
+          BorderThickness="0,0,1,0"
+          AutomationProperties.Name="Main navigation"
+          Width="180">
+    <StackPanel Margin="{StaticResource PaddingMediumThickness}" Spacing="{StaticResource PanelSpacing}">
+
+      <Button Classes="secondary"
+              Classes.active="{Binding CurrentPage, Converter={x:Static conv:PageTypeEqualsConverter.Instance}, ConverterParameter={x:Static routing:PageType.Home}}"
+              Command="{Binding NavigateToHomeCommand}"
+              IsEnabled="{Binding !IsFirstRunSetupRequired}"
+              Content="Home"
+              AutomationProperties.Name="Home"
+              HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Left" />
+
+      <Button Classes="secondary"
+              Classes.active="{Binding CurrentPage, Converter={x:Static conv:PageTypeEqualsConverter.Instance}, ConverterParameter={x:Static routing:PageType.Editor}}"
+              Command="{Binding NavigateToEditorCommand}"
+              IsEnabled="{Binding !IsFirstRunSetupRequired}"
+              Content="Editor"
+              AutomationProperties.Name="Editor"
+              HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Left" />
+
+      <Button Classes="secondary"
+              Classes.active="{Binding CurrentPage, Converter={x:Static conv:PageTypeEqualsConverter.Instance}, ConverterParameter={x:Static routing:PageType.Execution}}"
+              Command="{Binding NavigateToExecutionCommand}"
+              IsEnabled="{Binding !IsFirstRunSetupRequired}"
+              Content="Execution"
+              AutomationProperties.Name="Execution"
+              HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Left" />
+
+      <Button Classes="secondary"
+              Classes.active="{Binding CurrentPage, Converter={x:Static conv:PageTypeEqualsConverter.Instance}, ConverterParameter={x:Static routing:PageType.Settings}}"
+              Command="{Binding NavigateToSettingsCommand}"
+              Content="Settings"
+              AutomationProperties.Name="Settings"
+              HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Left" />
+
+    </StackPanel>
+  </Border>
+
+</UserControl>

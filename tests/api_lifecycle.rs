@@ -14,7 +14,12 @@ use limelight_x::model::ModelAdapter;
 #[tokio::test]
 async fn server_starts_and_responds() {
     let base_url = common::spawn_test_server("ok").await;
-    let (status, body) = common::post_json(&base_url, "/explain", json!({ "source": "Load the article from \"a.txt\"." })).await;
+    let (status, body) = common::post_json(
+        &base_url,
+        "/explain",
+        json!({ "source": "Load the article from \"a.txt\"." }),
+    )
+    .await;
     assert_eq!(status, 200);
     assert_eq!(body["version"], "v1");
 }
@@ -29,7 +34,10 @@ async fn starting_on_an_occupied_port_fails() {
         Arc::new(limelight_x::model::mock::MockModelAdapter::new("unused"));
     let result = limelight_x::api::serve(port, adapter).await;
 
-    assert!(result.is_err(), "expected a bind failure on an already-occupied port");
+    assert!(
+        result.is_err(),
+        "expected a bind failure on an already-occupied port"
+    );
     drop(occupied);
 }
 
@@ -70,7 +78,9 @@ impl ModelAdapter for RecordingAdapter {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn two_concurrent_requests_are_handled_sequentially() {
     let log = Arc::new(Mutex::new(Vec::new()));
-    let adapter: Arc<dyn ModelAdapter + Send + Sync> = Arc::new(RecordingAdapter { log: Arc::clone(&log) });
+    let adapter: Arc<dyn ModelAdapter + Send + Sync> = Arc::new(RecordingAdapter {
+        log: Arc::clone(&log),
+    });
     let base_url = common::spawn_test_server_with_adapter(adapter).await;
 
     let path = common::make_temp_file("some text");
@@ -82,8 +92,12 @@ async fn two_concurrent_requests_are_handled_sequentially() {
     let source2 = source.clone();
 
     // Fire two requests concurrently from separate OS threads (reqwest::blocking).
-    let t1 = std::thread::spawn(move || common::post_json_blocking(&url1, "/run", json!({ "source": source1 })));
-    let t2 = std::thread::spawn(move || common::post_json_blocking(&url2, "/run", json!({ "source": source2 })));
+    let t1 = std::thread::spawn(move || {
+        common::post_json_blocking(&url1, "/run", json!({ "source": source1 }))
+    });
+    let t2 = std::thread::spawn(move || {
+        common::post_json_blocking(&url2, "/run", json!({ "source": source2 }))
+    });
 
     let (status1, _) = t1.join().unwrap();
     let (status2, _) = t2.join().unwrap();

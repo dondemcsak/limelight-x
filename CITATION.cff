@@ -8,7 +8,7 @@ authors:
     given-names: "Don"
     orcid: "https://orcid.org/0009-0009-0642-086X"
 
-version: "0.1.0"
+version: "0.5.1"
 date-released: 2026-06-25
 
 repository-code: "https://github.com/dondemcsak/limelight-x"

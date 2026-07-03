@@ -62,11 +62,11 @@ Enable all recommended GitHub security features:
 
 ## 5. Versioning & Release Prep
 
-- [ ] Version number set (e.g., `0.1.0`)  
+- [ ] Version number set (e.g., `0.5.1`)  
 - [ ] `CHANGELOG.md` created or updated  
 - [ ] First release tag created:  
   ```
-  git tag -a v0.1.0 -m "Initial public release"
+  git tag -a v0.5.1 -m "Initial public release"
   git push --tags
   ```
 

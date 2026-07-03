@@ -17,13 +17,16 @@ use limelight_x::model::ModelAdapter;
 /// task, using a mock model adapter that always returns `mock_response`.
 /// Returns the base URL (e.g. `http://127.0.0.1:54321`) once bound.
 pub async fn spawn_test_server(mock_response: &str) -> String {
-    let adapter: Arc<dyn ModelAdapter + Send + Sync> = Arc::new(MockModelAdapter::new(mock_response));
+    let adapter: Arc<dyn ModelAdapter + Send + Sync> =
+        Arc::new(MockModelAdapter::new(mock_response));
     spawn_test_server_with_adapter(adapter).await
 }
 
 /// Same as [`spawn_test_server`], but with a caller-provided adapter (e.g. to
 /// record call timing for the determinism scenarios).
-pub async fn spawn_test_server_with_adapter(adapter: Arc<dyn ModelAdapter + Send + Sync>) -> String {
+pub async fn spawn_test_server_with_adapter(
+    adapter: Arc<dyn ModelAdapter + Send + Sync>,
+) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("failed to bind ephemeral port");
@@ -43,7 +46,11 @@ pub async fn spawn_test_server_with_adapter(adapter: Arc<dyn ModelAdapter + Send
 // below are for call sites inside `#[tokio::test]` bodies, and run the
 // blocking call on Tokio's blocking thread pool via `spawn_blocking`.
 
-pub fn post_json_blocking(base_url: &str, path: &str, body: serde_json::Value) -> (u16, serde_json::Value) {
+pub fn post_json_blocking(
+    base_url: &str,
+    path: &str,
+    body: serde_json::Value,
+) -> (u16, serde_json::Value) {
     let client = reqwest::blocking::Client::new();
     let response = client
         .post(format!("{base_url}{path}"))
@@ -70,7 +77,11 @@ pub fn post_raw_blocking(base_url: &str, path: &str, body: &str) -> (u16, serde_
 
 /// POSTs a JSON body and returns `(status, parsed body)`. Safe to call from
 /// within a `#[tokio::test]` async body.
-pub async fn post_json(base_url: &str, path: &str, body: serde_json::Value) -> (u16, serde_json::Value) {
+pub async fn post_json(
+    base_url: &str,
+    path: &str,
+    body: serde_json::Value,
+) -> (u16, serde_json::Value) {
     let base_url = base_url.to_string();
     let path = path.to_string();
     tokio::task::spawn_blocking(move || post_json_blocking(&base_url, &path, body))

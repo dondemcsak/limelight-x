@@ -1,0 +1,30 @@
+root = true
+
+# Only [*.cs] sections apply here - Rust files (/src/**/*.rs) are governed by
+# rustfmt.toml / Cargo, untouched by this file (ui-build-pipeline.md §5).
+
+[*]
+end_of_line = crlf
+insert_final_newline = true
+charset = utf-8
+
+[*.{cs,axaml,xaml}]
+indent_style = space
+indent_size = 4
+
+[*.cs]
+csharp_new_line_before_open_brace = all
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_prefer_braces = false:suggestion
+dotnet_sort_system_directives_first = true
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+dotnet_style_qualification_for_method = false:suggestion
+
+[*.{axaml,xaml}]
+indent_size = 2
+
+[*.{yml,yaml,json}]
+indent_style = space
+indent_size = 2
+end_of_line = lf
