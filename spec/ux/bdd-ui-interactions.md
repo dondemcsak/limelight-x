@@ -21,18 +21,19 @@ Each scenario uses the extended BDD format:
 
 All scenarios assume:
 
-- strict single‑execution mode  
+- app‑wide single‑execution mode (one execution in flight at a time, across all tabs)  
 - deterministic MVVM state  
 - incremental WebSocket event streaming  
 - correlation‑ID filtering  
 - no parallel executions  
+- tab switching, opening, and closing are never blocked by execution state  
 
 ---
 
 # 2. Editor Interactions
 
 ## 2.1 Editing CNL Text
-**GIVEN** the user is on the Editor Page  
+**GIVEN** the user has a `.llx` tab active  
 **WHEN** they type valid CNL text  
 **THEN** the editor updates `SourceText`  
 **SO THAT** the UI reflects the new content  
@@ -45,46 +46,45 @@ All scenarios assume:
 **SO THAT** the user sees grammar issues immediately  
 **AS MEASURED BY** updated `SyntaxErrors` and margin markers
 
-## 2.3 Run Button Disabled During Execution
+## 2.3 Run/Explain Disabled During Execution
 **GIVEN** the user clicks Run  
 **WHEN** execution begins  
-**THEN** Run/Explain/Trace buttons disable  
+**THEN** Run and Explain disable — in this tab **and every other open tab**  
 **SO THAT** no parallel executions occur  
-**AS MEASURED BY** `PipelineExecutionViewModel.IsRunning == true`
+**AS MEASURED BY** `IExecutionLockService.IsAnyExecutionRunning == true`
 
-## 2.4 Disable All Execution Buttons When Any Execution Starts
-**GIVEN** the user is on the Editor Page  
-**AND** Run, Explain, and Trace buttons are enabled  
-**WHEN** the user clicks **Run**, **Explain**, or **Trace**  
-**THEN** all three execution buttons become disabled immediately  
+## 2.4 Disable Execution Buttons App‑Wide When Any Execution Starts
+**GIVEN** the user has a `.llx` tab active  
+**AND** Run and Explain are enabled in every open tab  
+**WHEN** the user clicks **Run** or **Explain** in any tab  
+**THEN** Run and Explain become disabled immediately in **every** open tab  
 **SO THAT** no parallel or overlapping executions can occur  
-**AS MEASURED BY** `PipelineExecutionViewModel.IsRunning == true` and `CanExecute == false` for all three commands
+**AS MEASURED BY** `IExecutionLockService.IsAnyExecutionRunning == true` and `CanExecute == false` for every tab's Run and Explain commands
 
 ---
 
 # 3. Execution Interactions (Streaming)
 
 ## 3.1 Starting Execution
-**GIVEN** the user clicks Run/Explain/Trace  
+**GIVEN** the user clicks Run or Explain in a `.llx` tab  
 **WHEN** the backend returns `{ accepted: true, correlation_id }`  
-**THEN** the UI navigates to Execution Page  
-**SO THAT** the user sees pipeline progress  
-**AS MEASURED BY** `CurrentPage == Execution`
+**THEN** the result renders in place inside that same tab's execution panel  
+**SO THAT** the user sees pipeline progress without leaving the tab  
+**AS MEASURED BY** that tab's `PipelineExecutionViewModel.IsRunning == true`; no tab or workspace-area change
 
 ## 3.2 Pipeline Started Event
-**GIVEN** the Execution Page is active  
-**WHEN** `pipeline_started` arrives  
-**THEN** all inspector ViewModels clear  
-**SO THAT** the UI begins a fresh execution  
-**AS MEASURED BY** empty inspector panels
+**GIVEN** a `.llx` tab's execution panel is showing prior results  
+**WHEN** `pipeline_started` arrives for that tab  
+**THEN** that tab's inspector ViewModels clear  
+**SO THAT** the tab begins a fresh execution  
+**AS MEASURED BY** empty inspector panels in that tab only
 
-## 3.3 Keep Buttons Disabled During Streaming
-**GIVEN** execution has begun  
-**AND** the UI has navigated to the Execution Page  
+## 3.3 Keep Buttons Disabled App‑Wide During Streaming
+**GIVEN** execution has begun in some tab  
 **WHEN** streaming events arrive (`pipeline_started`, `raw_ast_generated`, `normalized_ast_generated`, `ir_generated`, `prompts_generated`, `model_outputs_generated`)  
-**THEN** all execution buttons remain disabled  
+**THEN** Run and Explain remain disabled on every open tab  
 **SO THAT** the user cannot trigger a new execution mid‑pipeline  
-**AS MEASURED BY** `PipelineExecutionViewModel.IsRunning == true` throughout the entire event sequence
+**AS MEASURED BY** `IExecutionLockService.IsAnyExecutionRunning == true` throughout the entire event sequence
 
 ---
 
@@ -132,14 +132,14 @@ All scenarios assume:
 **SO THAT** the user sees the final pipeline output  
 **AS MEASURED BY** `FinalResultViewModel.ResultText != null`
 
-## 4.7 Re‑Enable Buttons Only After Completion or Error
-**GIVEN** execution is running  
+## 4.7 Re‑Enable Buttons App‑Wide Only After Completion or Error
+**GIVEN** execution is running in some tab  
 **WHEN** either  
 - `final_result_ready` arrives, **or**  
 - `pipeline_failed` arrives  
-**THEN** all three execution buttons re‑enable  
-**SO THAT** the user can start a new execution after the current one finishes  
-**AS MEASURED BY** `PipelineExecutionViewModel.IsRunning == false` and `CanExecute == true` for Run, Explain, and Trace
+**THEN** Run and Explain re‑enable on every open tab  
+**SO THAT** the user can start a new execution (in any tab) after the current one finishes  
+**AS MEASURED BY** `IExecutionLockService.IsAnyExecutionRunning == false` and `CanExecute == true` for Run and Explain on every tab
 
 ---
 
@@ -168,21 +168,22 @@ All scenarios assume:
 
 ---
 
-# 6. Navigation Interactions
+# 6. Workspace Interactions
 
-## 6.1 Navigation Locked During Execution
-**GIVEN** execution is running  
-**WHEN** the user attempts to navigate away  
-**THEN** navigation is blocked  
-**SO THAT** the UI remains consistent  
-**AS MEASURED BY** `CurrentPage == Execution`
+## 6.1 Tab Switching Is Never Blocked By Execution
+**GIVEN** execution is running in some tab  
+**WHEN** the user switches to a different tab, opens a new tab, or closes a different tab  
+**THEN** the action succeeds immediately  
+**SO THAT** the UI remains fully usable during a long‑running execution  
+**AS MEASURED BY** `WorkspaceViewModel.ActiveTab`/`OpenTabs` change as requested, independent of `IExecutionLockService.IsAnyExecutionRunning`
 
-## 6.2 Navigation Re‑enabled After Completion
-**GIVEN** execution has completed  
-**WHEN** the user clicks Home/Editor/Settings  
-**THEN** navigation succeeds  
-**SO THAT** the user can continue workflow  
-**AS MEASURED BY** `CurrentPage != Execution`
+## 6.2 Settings Blocked, Tabs Unaffected, During Execution
+**GIVEN** execution is running in some tab  
+**WHEN** the user clicks the Settings gear icon  
+**THEN** the Settings modal does not open  
+**AND** tab switching remains fully available  
+**SO THAT** only backend-affecting actions are gated, not workspace navigation  
+**AS MEASURED BY** `WorkspaceViewModel.IsSettingsOpen == false` while `ActiveTab` changes freely
 
 ---
 
@@ -233,7 +234,7 @@ All scenarios assume:
 
 ## 9.1 Default Location Write
 **GIVEN** no custom `LogPath` is configured  
-**WHEN** a `UiError` is added to any logged collection (`FileLoaderViewModel.Errors`, `EditorViewModel.ValidationErrors`, `PipelineExecutionViewModel.Errors`, `SettingsViewModel.Errors`)  
+**WHEN** a `UiError` is added to any logged collection (`WorkspaceViewModel.Errors`, a tab's `EditorViewModel.ValidationErrors`, a tab's `PipelineExecutionViewModel.Errors`, `SettingsViewModel.Errors`)  
 **THEN** an entry is appended to `%APPDATA%\LimelightX\Limelight-x-log.txt`  
 **SO THAT** diagnostics are recoverable without a custom setup  
 **AS MEASURED BY** the file's contents after the error occurs
@@ -290,11 +291,10 @@ All scenarios assume:
 
 These interactions do **not** cover:
 
-- parallel executions  
+- parallel executions (per‑tab concurrent execution is a possible future extension)  
 - queued executions  
 - cancellation  
 - plugin inspectors  
-- multi‑file workflows  
 - nondeterministic animations  
 
 ---

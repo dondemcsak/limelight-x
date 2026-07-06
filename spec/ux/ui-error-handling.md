@@ -29,9 +29,9 @@ All errors must be surfaced deterministically and immediately.
    - Errors may occur before streaming begins (HTTP errors).  
    - Errors may occur during streaming (WebSocket disconnect).
 
-4. **Strict Single Execution**  
-   - Errors must stop the active pipeline.  
-   - Execution buttons re‑enable only after error resolution.
+4. **App‑Wide Single Execution**  
+   - Errors must stop the active pipeline (in the tab that owns it).  
+   - Execution buttons re‑enable app‑wide only after error resolution.
 
 ---
 
@@ -67,7 +67,7 @@ These arrive via `pipeline_failed` events.
 - editor validation errors  
 
 ### 2.5 Persistent Logging
-Every `UiError` surfaced through §2.1-2.4 — i.e. everything added to `FileLoaderViewModel.Errors`, `EditorViewModel.ValidationErrors`, `PipelineExecutionViewModel.Errors`, and `SettingsViewModel.Errors` — is also logged via `Microsoft.Extensions.Logging`'s `ILogger`, at the `LogLevel` mapped from the error's `Severity` (`Info`→`Information`, `Warning`→`Warning`, `Error`→`Error`, `Fatal`→`Critical`), to the file described in `ui-deployment.md` §4.3.
+Every `UiError` surfaced through §2.1-2.4 — i.e. everything added to `WorkspaceViewModel.Errors`, a tab's `EditorViewModel.ValidationErrors`, a tab's `PipelineExecutionViewModel.Errors`, and `SettingsViewModel.Errors` — is also logged via `Microsoft.Extensions.Logging`'s `ILogger`, at the `LogLevel` mapped from the error's `Severity` (`Info`→`Information`, `Warning`→`Warning`, `Error`→`Error`, `Fatal`→`Critical`), to the file described in `ui-deployment.md` §4.3.
 
 This is purely additive to the existing UI surfacing rules above — it never changes what the user sees or where. A failure to write the log entry itself (unwritable directory, disk full, etc.) must not surface as a `UiError`, must not crash the app, and must not block the original error from reaching its normal UI surface (banner/inline/inspector) — logging failures fail silently.
 
@@ -134,8 +134,9 @@ All backend errors arrive in the standard envelope:
 
 Errors must appear in the following locations:
 
-### 6.1 Global Error Banner
-- Appears at top of Execution Page.  
+### 6.1 Tab Error Banner
+- Appears at top of the active tab's execution panel.  
+- Scoped to that tab only — switching to another tab shows that other tab's own banner state, not this one's.  
 - Shows first error message.  
 - Expands to show full error list.  
 - Dismissible.
@@ -159,38 +160,38 @@ This classification only affects which marker/message the editor shows; it does 
 - If an inspector’s data cannot be rendered, show an inline error panel.  
 - Inspector remains visible but marked as failed.
 
-### 6.4 Execution Page Errors
-- Pipeline errors appear immediately.  
-- Execution buttons re‑enable.
+### 6.4 Execution Panel Errors
+- Pipeline errors appear immediately in the owning tab's execution panel.  
+- Execution buttons re‑enable app‑wide.
 
 ---
 
 # 7. Error Handling Workflow
 
 ### 7.1 HTTP Request Errors
-If the initial `POST /run` / `/explain` / `/trace` fails:
+If the initial `POST /trace` (Run) or `POST /explain` (Explain) fails:
 
 1. Execution does not begin.  
-2. No navigation occurs.  
-3. Error banner appears on Editor Page.  
-4. Execution buttons remain enabled.
+2. No tab or workspace-area change occurs.  
+3. Error banner appears in the tab that attempted execution.  
+4. Execution buttons remain enabled (the app‑wide lock was never acquired).
 
 ### 7.2 Streaming Errors (WebSocket)
 If WebSocket disconnects during execution:
 
-1. PipelineExecutionViewModel sets `HasErrors = true`.  
-2. Global error banner appears.  
-3. Execution buttons re‑enable.  
-4. Inspectors stop updating.
+1. That tab's `PipelineExecutionViewModel` sets `HasErrors = true`.  
+2. That tab's error banner appears.  
+3. Execution buttons re‑enable app‑wide.  
+4. That tab's inspectors stop updating.
 
 ### 7.3 Pipeline Errors (`pipeline_failed`)
 When a `pipeline_failed` event arrives:
 
-1. Execution stops.  
-2. Inspectors remain visible.  
-3. Error banner appears.  
-4. Execution buttons re‑enable.  
-5. Navigation remains on Execution Page.
+1. Execution stops in the owning tab.  
+2. That tab's inspectors remain visible.  
+3. That tab's error banner appears.  
+4. Execution buttons re‑enable app‑wide.  
+5. The owning tab remains the active tab if it already was; no tab switch is forced.
 
 ### 7.4 Fatal Errors
 Fatal errors (evaluator/model adapter) must:
@@ -205,25 +206,27 @@ Fatal errors (evaluator/model adapter) must:
 Saving Settings relaunches `llx serve` (see `ui-viewmodels.md` SettingsViewModel). If the relaunch fails (port unavailable, `ANTHROPIC_API_KEY` unset, or the process exits before printing its listening line):
 
 1. The failure is synthesized client-side as a `UiError` with `category = "api"` (it reflects the backend's own fail-fast startup checks, per `api.md` §2.2, not a transport or UI-local failure).  
-2. `ErrorBannerViewModel.IsVisible` becomes `true`, showing the failure message.  
-3. The user remains on the Settings Page — this is the one case where an error does not imply the Execution/Editor error-handling flow above, since no pipeline execution was in progress.  
+2. `ErrorBannerViewModel.IsVisible` becomes `true`, showing the failure message inside the Settings modal.  
+3. The Settings modal remains open — this is the one case where an error does not imply the per‑tab error-handling flow above, since no pipeline execution was in progress.  
 4. The previous backend connection (if any) is left running until a restart succeeds, so an in-flight execution is not abandoned by a bad Settings save.
 
 ---
 
 # 8. Error Clearing Rules
 
-Errors clear when:
+Errors are scoped to the tab that produced them. A tab's errors clear when:
 
-- a new execution begins (`pipeline_started`)  
-- the user dismisses the global banner  
-- the user navigates away from Execution Page  
-- the editor performs a new validation pass
+- a new execution begins in that same tab (`pipeline_started`)  
+- the user dismisses that tab's banner  
+- that tab's editor performs a new validation pass
+
+**Switching to, or away from, another tab never clears a tab's errors.** There is no equivalent of the old "navigating away from Execution Page clears the banner" rule — each tab's error state persists independently until the tab itself re‑executes or the user dismisses it, even while the user is looking at a different tab entirely.
 
 ### Rules
 - Clearing must be deterministic.  
-- Clearing must not hide active errors.  
-- Clearing must not occur automatically during streaming.
+- Clearing must not hide active errors on other tabs.  
+- Clearing must not occur automatically during streaming.  
+- Clearing must never be triggered by switching the active tab.
 
 ---
 
@@ -274,16 +277,16 @@ State:
 
 ---
 
-# 11. Navigation & Error Interaction
+# 11. Workspace & Error Interaction
 
-### Forbidden Transitions During Errors
-- Errors must not navigate away from Execution Page.  
-- Errors must not navigate automatically to Editor Page.  
+### Forbidden Behavior During Errors
+- Errors must not force a tab switch.  
+- Errors must not close or open any tab automatically.  
 - Errors must not hide inspector state.
 
-### Allowed Transitions After Errors
-- User may navigate manually after dismissing or acknowledging errors.  
-- Execution buttons re‑enable.
+### Allowed Behavior After Errors
+- The user may switch tabs, open new tabs, or dismiss/acknowledge errors freely at any time — this was never blocked, since tab switching is not gated by execution or error state (`ui-routing-navigation.md` §7).  
+- Execution buttons re‑enable app‑wide once the error's execution reaches a terminal state.
 
 ---
 

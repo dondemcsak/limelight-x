@@ -2,7 +2,7 @@
 
 ## Purpose
 This document defines the complete architecture of the Limelight‑X UI.  
-It specifies the module boundaries, navigation model, data flow, and deterministic behavior of the Avalonia‑based workflow dashboard.  
+It specifies the module boundaries, workspace shell model, data flow, and deterministic behavior of the Avalonia‑based folder/tab workspace.  
 This specification is authoritative.  
 All implementation must follow this architecture exactly.
 
@@ -13,19 +13,23 @@ It exposes the Limelight‑X pipeline through a clean, deterministic interface b
 
 # 1. High‑Level Overview
 
-The Limelight‑X UI is a **multi‑page workflow dashboard** built using Avalonia and MVVM.  
+The Limelight‑X UI is a **folder‑explorer, tab‑based workspace** built using Avalonia and MVVM, in the style of a code editor: a folder directory tree on the left, and a tabbed panel on the right where opening a file from the tree opens (or focuses) a tab.  
 It provides:
 
-- a CNL editor with syntax highlighting, live validation, and auto‑formatting  
-- a deterministic execution workflow  
+- a folder tree (Explorer) of a user‑selected root folder  
+- a tabbed document area supporting multiple simultaneously open files  
+- for `.llx` files: a CNL editor with syntax highlighting, live validation, and auto‑formatting, paired with an execution panel in the same tab  
+- for plain text files: a generic text editor, no CNL semantics  
+- exactly two execution triggers per `.llx` tab — **Run** (full pipeline trace) and **Explain** (AST only)  
 - collapsible inspector panels for:
   - Raw AST  
   - Normalized AST  
   - IR  
   - Prompt viewer  
   - Model output viewer  
-- a vertical pipeline timeline mirroring CLI output order  
+- a vertical pipeline timeline mirroring CLI output order, scoped to each tab  
 - **real‑time integration with a streaming HTTP + WebSocket API** that emits pipeline events incrementally
+- an app‑wide execution lock: only one pipeline execution may be in flight at a time, across all tabs
 
 The UI is **deterministic**, **spec‑driven**, and **state‑derived**.  
 All nondeterminism is isolated to model output returned by the backend.
@@ -50,15 +54,16 @@ All nondeterminism is isolated to model output returned by the backend.
      - `POST /run`
      - `POST /explain`
      - `POST /trace`
+   - The **Run** button invokes `POST /trace` (full pipeline detail); the **Explain** button invokes `POST /explain` (AST only). `POST /run` remains a valid backend endpoint but is not wired to any UI control in this shell — no button, shortcut, or menu item calls it.
    - UI receives pipeline results as **incremental JSON events** over WebSocket.  
-   - UI maps each event into inspector ViewModels.
+   - UI maps each event into inspector ViewModels, scoped to the tab that started the execution.
 
 4. **Single Responsibility Modules**  
    - Each module has exactly one conceptual responsibility.  
    - No “utils” or “helpers” modules.
 
 5. **Analyst‑Friendly Workflow**  
-   - Vertical pipeline visualization.  
+   - Vertical pipeline visualization, scoped per tab.  
    - Clear separation between editing and inspection.  
    - Errors surfaced inline and in inspectors.  
    - Real‑time inspector updates as events arrive.
@@ -70,7 +75,7 @@ All nondeterminism is isolated to model output returned by the backend.
 7. **Non‑Extensible v0.1**  
    - No plugin system.  
    - No custom inspectors.  
-   - No multi‑file projects.
+   - Multiple files may be open across tabs (see §4); this is not a "multi‑file project" system in the sense of a saved workspace/project manifest — there is no project file, no per‑project settings, and no cross‑file analysis.
 
 ---
 
@@ -102,70 +107,76 @@ The UI repository must follow this structure:
 
 ---
 
-# 4. Navigation Model
+# 4. Workspace Shell Model
 
-The UI uses a **multi‑page workflow** with deterministic routing:
+The UI uses a **folder‑explorer + tab‑strip workspace**, replacing the previous page‑based navigation model entirely:
 
-1. **Home Page**  
-   - Open `.llx` file  
-   - Recent files  
-   - Quick actions  
-   - Settings icon (gear)
+1. **Explorer (left pane)**  
+   - Folder directory tree of the currently open root folder  
+   - "Open Folder" action  
+   - Expand/collapse folders  
+   - Clicking a file opens (or focuses, if already open) a tab in the Tab Content Area
 
-2. **Editor Page**  
-   - CNL editor  
-   - Live validation  
-   - Syntax highlighting  
-   - Auto‑formatting  
-   - “Run”, “Explain”, “Trace” buttons
+2. **Tab Strip + Tab Content Area (right pane)**  
+   - One tab per open file  
+   - When no folder is open, or no tabs are open, shows a welcome/empty state with an "Open Folder" action (this replaces the old Home Page as a destination)  
+   - `.llx` tab content: CNL editor (top) + execution panel (bottom), with **Run** and **Explain** buttons above the editor  
+   - Plain text tab content: generic text editor only, no execution split  
+   - Tabs are freely switchable, closable (with an unsaved‑changes confirmation for dirty tabs), and reorderable
 
-3. **Execution Page**  
-   - Vertical pipeline timeline  
-   - Collapsible inspector panels  
-   - Final result viewer  
-   - **Real‑time updates from streaming events**
+3. **Settings (modal)**  
+   - Opened via a persistent gear icon (title/activity‑bar style), not a tab  
+   - Backend port, log path, `ANTHROPIC_API_KEY`, environment profile  
+   - Disabled while any execution is running app‑wide (see §9)
 
-4. **Settings Page**  
-   - Backend port  
-   - Log path  
-   - `ANTHROPIC_API_KEY`  
-   - Environment profile (Dev/Stage/Prod)
-
-Navigation is controlled by a `NavigationViewModel` and must be deterministic.
+There is no more full‑page "Editor Page" / "Execution Page" / "Home Page" — editing and execution live together inside each `.llx` tab, and the Explorer replaces the old navigation Sidebar. The shell is controlled by a `WorkspaceViewModel` and must be deterministic (see `ui-viewmodels.md` §3–§4, `ui-routing-navigation.md`).
 
 ---
 
 # 5. ViewModels
 
-### 5.1 FileLoaderViewModel
-- Opens `.llx` files  
-- Tracks recent files  
-- Validates file existence  
-- Emits file content to EditorViewModel
+### 5.1 WorkspaceViewModel
+- Holds the open root folder path  
+- Owns the `FileTreeViewModel`  
+- Owns the collection of open tabs and the active tab  
+- Opens/focuses a tab when a file is selected in the tree
 
-### 5.2 EditorViewModel
+### 5.2 FileTreeViewModel
+- Recursively scans the open root folder (client‑side filesystem only, no backend call)  
+- Tracks expand/collapse state per node
+
+### 5.3 TabViewModel family
+- `TabViewModel` (base): header, file path, dirty state, close command  
+- `CnlTabViewModel`: owns one `EditorViewModel` instance and one `PipelineExecutionViewModel` instance (per tab, not shared)  
+- `PlainTextTabViewModel`: owns one `PlainTextEditorViewModel` instance (text only, no validation, no pipeline)
+
+### 5.4 EditorViewModel (per `.llx` tab)
 - Holds CNL text  
 - Performs live validation via `/explain`  
 - Tracks syntax errors  
 - Provides commands:
-  - `RunCommand`
-  - `ExplainCommand`
-  - `TraceCommand`
+  - `RunCommand` (invokes `/trace`)
+  - `ExplainCommand` (invokes `/explain`)
 
-### 5.3 PipelineExecutionViewModel
-- Holds structured output from streaming events  
-- Maps backend events into inspector ViewModels  
-- Tracks execution status and errors  
-- Clears state when a new pipeline begins  
+### 5.5 PipelineExecutionViewModel (per `.llx` tab)
+- Holds structured output from streaming events for that tab  
+- Maps backend events into that tab's inspector ViewModels  
+- Tracks this tab's own execution status and errors  
+- Clears state when a new pipeline begins in this tab  
 - Updates inspectors incrementally as events arrive
 
-### 5.4 SettingsViewModel
+### 5.6 IExecutionLockService
+- App‑wide: tracks whether any tab currently has an execution in flight  
+- Gates every tab's Run/Explain commands and the Settings gear icon  
+- Does **not** gate tab switching, tab open/close, or folder‑tree browsing
+
+### 5.7 SettingsViewModel
 - Holds backend port, log path, API key, environment profile  
 - Validates input  
 - Relaunches `llx serve` when settings change
 
-### 5.5 Inspector ViewModels
-Each inspector has its own ViewModel:
+### 5.8 Inspector ViewModels
+Each inspector has its own ViewModel, instantiated per `.llx` tab:
 
 - `RawAstViewModel`  
 - `NormalizedAstViewModel`  
@@ -220,15 +231,16 @@ ws://127.0.0.1:<port>/events
 
 - UI must not call Rust directly.  
 - UI must not reconstruct pipeline stages manually.  
-- UI must update inspector ViewModels incrementally as events arrive.  
+- UI must update inspector ViewModels incrementally as events arrive, scoped to the tab that owns the active `correlation_id`.  
 - UI must surface backend errors immediately.  
-- UI must maintain deterministic ordering of events.
+- UI must maintain deterministic ordering of events.  
+- Only one execution may be in flight app‑wide at a time (see §9 and `IExecutionLockService`, §5.6).
 
 ---
 
 # 7. Inspector Panels
 
-Inspector panels appear as **collapsible vertical sections** in the Execution Page:
+Inspector panels appear as **collapsible vertical sections** in the bottom half of a `.llx` tab:
 
 ```
 Raw AST
@@ -252,6 +264,7 @@ Final Result
 - IR panel appears when `ir_generated` arrives.  
 - Prompt and Model Output panels appear when their events arrive.  
 - Final Result panel appears when `final_result_ready` arrives.
+- Since Run now invokes `/trace`, all six panels are reachable from Run; Explain only ever populates Raw AST and Normalized AST (see `ui-data-contracts.md` §2).
 
 ### Rules
 
@@ -263,7 +276,7 @@ Final Result
 
 # 8. Editor Requirements
 
-The editor must support:
+The `.llx` editor (CNL editor) must support:
 
 ### 8.1 Syntax Highlighting
 - CNL keywords  
@@ -289,6 +302,8 @@ The editor must support:
 - Validation must be deterministic.  
 - No nondeterministic UI behavior.
 
+Plain text tabs use a separate, generic text editor with none of the above CNL‑specific behavior (see `ui-components.md` §4).
+
 ---
 
 # 9. Deterministic State Model
@@ -297,9 +312,11 @@ UI state must be fully derived from ViewModels.
 
 ### Allowed UI State
 - panel collapse/expand  
-- selected tab  
-- selected file  
-- editor cursor position
+- open tabs and tab order  
+- active tab  
+- expanded/collapsed folder tree nodes  
+- editor cursor position  
+- whether any execution is in flight app‑wide (`IExecutionLockService.IsAnyExecutionRunning`)
 
 ### Forbidden UI State
 - implicit transitions  
@@ -325,9 +342,9 @@ The UI must surface:
 Errors must appear:
 
 - inline in the editor  
-- in the Execution Page  
+- in that tab's execution panel  
 - in inspector panels  
-- in a global error banner
+- in that tab's error banner
 
 All errors must be human‑readable.
 
@@ -341,13 +358,13 @@ The UI does **not** support:
 
 - plugins  
 - custom inspectors  
-- multi‑file projects  
 - direct Rust integration  
 - macOS (v0.1)  
 - nondeterministic UI behavior  
 - pipeline visualization beyond vertical timeline  
 - reimplementing pipeline stages  
 - **single‑response API mode** (removed)
+- a saved project/workspace manifest (open tabs and folder are session state only, not persisted as a project file)
 
 ---
 
@@ -360,14 +377,14 @@ Potential future enhancements:
 - visual IR graph  
 - workflow templates  
 - richer inspectors  
-- multi‑file project support  
 - integrated model output diffing  
 - additional streaming observability events (timing, resource usage)
+- per‑tab independent execution (concurrent executions across tabs), superseding the app‑wide single‑execution lock
 
 ---
 
 # Summary
 
-The Limelight‑X UI is a deterministic workflow dashboard built using Avalonia and MVVM.  
-It integrates with a streaming HTTP + WebSocket API, provides a CNL editor with live validation, and exposes the full pipeline through collapsible vertical inspector panels that update in real time as events arrive.  
+The Limelight‑X UI is a deterministic folder‑explorer and tab‑based workspace built using Avalonia and MVVM.  
+It integrates with a streaming HTTP + WebSocket API, provides a CNL editor with live validation inside each `.llx` tab, and exposes the full pipeline through collapsible vertical inspector panels that update in real time as events arrive, scoped to the tab that started the execution.  
 All behavior is spec‑driven, deterministic, and aligned with the Limelight‑X architecture.

@@ -21,11 +21,12 @@ Each scenario uses the extended BDD format:
 
 All scenarios assume:
 
-- strict single‑execution mode  
+- app‑wide single‑execution mode (one execution in flight at a time, across all tabs)  
 - deterministic MVVM state  
 - incremental WebSocket event streaming  
 - correlation‑ID filtering  
 - no parallel executions  
+- tab switching is never blocked by execution or error state  
 
 ---
 
@@ -73,9 +74,9 @@ All scenarios assume:
 ## 3.1 Malformed Request Body
 **GIVEN** the user clicks Run  
 **WHEN** the backend rejects the request with `ERR_MALFORMED_REQUEST`  
-**THEN** no navigation occurs  
-**SO THAT** the user stays on Editor Page  
-**AS MEASURED BY** `CurrentPage == Editor`
+**THEN** no tab or workspace-area change occurs  
+**SO THAT** the user stays on the same tab, editing  
+**AS MEASURED BY** `WorkspaceViewModel.ActiveTab` unchanged, error banner appears in that tab
 
 ## 3.2 Missing `source` Field
 **GIVEN** the user triggers execution with empty text  
@@ -85,10 +86,10 @@ All scenarios assume:
 **AS MEASURED BY** `SyntaxErrors.Count > 0`
 
 ## 3.3 Backend Startup Failure
-**GIVEN** the user opens Settings Page  
+**GIVEN** the user opens the Settings modal  
 **WHEN** they save invalid backend configuration  
 **THEN** backend fails to start  
-**SO THAT** error banner appears  
+**SO THAT** error banner appears inside the Settings modal  
 **AS MEASURED BY** `ErrorBannerViewModel.IsVisible == true`
 
 ---
@@ -182,23 +183,23 @@ All scenarios assume:
 
 ---
 
-# 7. Navigation Error Scenarios
+# 7. Execution Concurrency Error Scenarios
 
-General navigation-guard mechanics (when navigation/buttons lock and unlock) are authoritative in `bdd-ui-navigation.md` §7. The scenarios below are the error-triggered special case of those same rules and should stay consistent with it — if the two ever appear to disagree, `bdd-ui-navigation.md` §7 wins.
+General execution-lock mechanics (when Run/Explain/Settings lock and unlock, and what remains free) are authoritative in `bdd-ui-navigation.md` §7. The scenarios below are the error-triggered special case of those same rules and should stay consistent with it — if the two ever appear to disagree, `bdd-ui-navigation.md` §7 wins.
 
-## 7.1 Navigation Blocked During Execution
-**GIVEN** execution is running  
-**WHEN** user clicks Home  
-**THEN** navigation is blocked  
+## 7.1 New Execution Blocked While Another Is In Flight
+**GIVEN** execution is running in some tab  
+**WHEN** the user clicks Run or Explain in a different tab  
+**THEN** the click has no effect (buttons disabled)  
 **SO THAT** UI remains consistent  
-**AS MEASURED BY** `CurrentPage == Execution`
+**AS MEASURED BY** that other tab's `EditorViewModel.CanExecute == false`
 
-## 7.2 Navigation Allowed After Error
-**GIVEN** pipeline failed  
-**WHEN** user clicks Editor  
-**THEN** navigation succeeds  
-**SO THAT** user can continue editing  
-**AS MEASURED BY** `CurrentPage == Editor`
+## 7.2 Execution Allowed Again After Error
+**GIVEN** a pipeline failed in some tab  
+**WHEN** the user clicks Run or Explain in any tab  
+**THEN** execution succeeds  
+**SO THAT** the user can retry or continue elsewhere  
+**AS MEASURED BY** `IExecutionLockService.IsAnyExecutionRunning` becomes `true` for the new execution
 
 ---
 
@@ -236,12 +237,15 @@ General navigation-guard mechanics (when navigation/buttons lock and unlock) are
 **SO THAT** user can continue workflow  
 **AS MEASURED BY** `ErrorBannerViewModel.IsVisible == false`
 
-## 9.3 Clear on Navigation
-**GIVEN** error banner is visible  
-**WHEN** user navigates away from Execution Page  
-**THEN** banner clears  
-**SO THAT** UI remains clean  
-**AS MEASURED BY** banner hidden on new page
+## 9.3 Switching Tabs Does Not Clear Another Tab's Banner
+**GIVEN** a tab's error banner is visible  
+**WHEN** the user switches to a different tab and back  
+**THEN** the banner is still visible on the original tab, unchanged  
+**AND** no other tab shows this banner while it was the active tab  
+**SO THAT** each tab's error state stays independent and predictable  
+**AS MEASURED BY** the owning tab's `ErrorBannerViewModel.IsVisible` unchanged by the tab switch; no other tab's `ErrorBannerViewModel.IsVisible` becomes `true` as a side effect
+
+This reverses the previous single‑page‑model rule ("navigating away from Execution Page clears the banner") — see `ui-error-handling.md` §8 for the full per‑tab clearing rules.
 
 ---
 
@@ -249,11 +253,10 @@ General navigation-guard mechanics (when navigation/buttons lock and unlock) are
 
 These scenarios do **not** cover:
 
-- parallel executions  
+- parallel executions (per‑tab concurrent execution is a possible future extension)  
 - queued executions  
 - cancellation  
 - plugin inspectors  
-- multi‑file workflows  
 - nondeterministic animations  
 
 ---

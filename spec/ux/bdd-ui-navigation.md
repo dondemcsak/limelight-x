@@ -1,8 +1,8 @@
-# BDD — UI Navigation (Streaming Edition)
+# BDD — UI Workspace & Execution Concurrency (Streaming Edition)
 
 ## Purpose
-This document defines all deterministic navigation scenarios for the Limelight‑X UI under the **event‑streaming API**.  
-It specifies how the UI must transition between pages during editing, execution, streaming, error handling, and settings updates.
+This document defines all deterministic workspace scenarios for the Limelight‑X UI under the **event‑streaming API**.  
+It specifies how the UI must behave across folder browsing, tab opening/switching/closing, execution, streaming, error handling, and Settings, now that the previous four‑page model has been replaced by a folder‑tree + tab‑strip workspace.
 
 This specification is authoritative.  
 All implementation must follow these scenarios exactly.
@@ -21,96 +21,107 @@ Each scenario uses the extended BDD format:
 
 All scenarios assume:
 
-- strict single‑execution mode  
+- app‑wide single‑execution mode (one execution in flight at a time, across all tabs)  
 - deterministic MVVM state  
 - incremental WebSocket event streaming  
 - correlation‑ID filtering  
 - no parallel executions  
+- tab switching, tab open/close, and folder browsing are never blocked by execution state
 
 ---
 
-# 2. Page Definitions
+# 2. Workspace Areas
 
-The UI contains four pages:
+The UI contains four workspace areas:
 
-1. **Home Page**  
-2. **Editor Page**  
-3. **Execution Page**  
-4. **Settings Page**
+1. **Explorer** — folder directory tree of the open root folder  
+2. **Tab Strip** — one tab per open file  
+3. **Tab Content Area** — the active tab's content, or a welcome/empty state  
+4. **Settings** — a modal, opened via a persistent gear icon
 
-Navigation is controlled exclusively by `NavigationViewModel`.
+The workspace shell is controlled exclusively by `WorkspaceViewModel`. There is no `PageType`/`CurrentPage` concept.
 
 ---
 
-# 3. Startup Navigation Scenarios
+# 3. Startup Scenarios
 
-## 3.1 Application Startup
+## 3.1 Application Startup, No Prior Folder
 **GIVEN** the application launches  
-**WHEN** no file is provided  
-**THEN** UI navigates to Home Page  
-**SO THAT** the user sees entry‑point actions  
-**AS MEASURED BY** `CurrentPage == Home`
+**AND** no folder was previously opened  
+**WHEN** startup completes  
+**THEN** the Tab Content Area shows the welcome/empty state with an "Open Folder" action  
+**SO THAT** the user has an entry point  
+**AS MEASURED BY** `WorkspaceViewModel.RootFolderPath == null` and `OpenTabs.Count == 0`
 
-## 3.2 Startup With File
+## 3.2 Application Startup, Folder Restored
+**GIVEN** the application launches  
+**AND** a folder was open in the previous session  
+**WHEN** startup completes  
+**THEN** the Explorer shows that folder's tree  
+**SO THAT** the user resumes where they left off  
+**AS MEASURED BY** `WorkspaceViewModel.RootFolderPath` equals the previously open folder
+
+## 3.3 Startup With File (OS File Association)
 **GIVEN** the application launches with a `.llx` file  
 **WHEN** the file loads successfully  
-**THEN** UI navigates to Editor Page  
+**THEN** the file's containing folder opens in the Explorer  
+**AND** a `CnlTabViewModel` for that file opens and becomes the active tab  
 **SO THAT** the user can begin editing immediately  
-**AS MEASURED BY** `CurrentPage == Editor`
+**AS MEASURED BY** `WorkspaceViewModel.ActiveTab.FilePath` equals the opened file's path
 
 ---
 
-# 4. Editor Navigation Scenarios
+# 4. Opening Files
 
-## 4.1 Navigate to Editor
-**GIVEN** the user is on Home Page  
-**WHEN** they click “Open File” or “Editor”  
-**THEN** UI navigates to Editor Page  
-**SO THAT** the user can edit CNL  
-**AS MEASURED BY** `CurrentPage == Editor`
+## 4.1 Open a `.llx` File From the Tree
+**GIVEN** the Explorer shows an open folder  
+**WHEN** the user clicks a `.llx` file in the tree  
+**THEN** a `CnlTabViewModel` opens (editor + execution panel) and becomes the active tab  
+**SO THAT** the user can edit and execute CNL  
+**AS MEASURED BY** `WorkspaceViewModel.ActiveTab is CnlTabViewModel`
 
-## 4.2 Editor → Settings
-**GIVEN** the user is on Editor Page  
-**WHEN** they click the gear icon  
-**THEN** UI navigates to Settings Page  
-**SO THAT** backend configuration can be updated  
-**AS MEASURED BY** `CurrentPage == Settings`
+## 4.2 Open a Plain Text File From the Tree
+**GIVEN** the Explorer shows an open folder  
+**WHEN** the user clicks a non‑`.llx` file in the tree  
+**THEN** a `PlainTextTabViewModel` opens (generic text editor only) and becomes the active tab  
+**SO THAT** the user can view/edit the file without CNL semantics  
+**AS MEASURED BY** `WorkspaceViewModel.ActiveTab is PlainTextTabViewModel`
+
+## 4.3 Re‑Open an Already‑Open File
+**GIVEN** a file already has an open tab  
+**WHEN** the user clicks that file again in the tree  
+**THEN** the existing tab is focused, no duplicate tab is created  
+**SO THAT** the workspace stays uncluttered  
+**AS MEASURED BY** `WorkspaceViewModel.OpenTabs.Count` unchanged, `ActiveTab` set to the existing tab
 
 ---
 
-# 5. Execution Navigation Scenarios (Streaming)
+# 5. Execution Scenarios (Streaming)
 
-## 5.1 Editor → Execution on Run
-**GIVEN** the user is on Editor Page  
+## 5.1 Run Executes In Place
+**GIVEN** the user has a `.llx` tab active  
 **WHEN** they click Run  
-**THEN** UI navigates to Execution Page  
-**SO THAT** the user sees pipeline progress  
-**AS MEASURED BY** `CurrentPage == Execution`
+**THEN** `POST /trace` is invoked and results render inside that same tab's execution panel  
+**SO THAT** the user sees full pipeline progress without leaving the tab  
+**AS MEASURED BY** that tab's `PipelineExecutionViewModel.IsRunning == true`, no tab or workspace-area change
 
-## 5.2 Editor → Execution on Explain
-**GIVEN** the user is on Editor Page  
+## 5.2 Explain Executes In Place
+**GIVEN** the user has a `.llx` tab active  
 **WHEN** they click Explain  
-**THEN** UI navigates to Execution Page  
-**SO THAT** the user sees AST and normalized AST  
-**AS MEASURED BY** `CurrentPage == Execution`
-
-## 5.3 Editor → Execution on Trace
-**GIVEN** the user is on Editor Page  
-**WHEN** they click Trace  
-**THEN** UI navigates to Execution Page  
-**SO THAT** the user sees full pipeline details  
-**AS MEASURED BY** `CurrentPage == Execution`
+**THEN** `POST /explain` is invoked and Raw AST / Normalized AST render inside that same tab's execution panel  
+**SO THAT** the user sees AST-level detail without leaving the tab  
+**AS MEASURED BY** that tab's `RawAstViewModel`/`NormalizedAstViewModel` populate; `IrViewModel`/`PromptViewModel`/`ModelOutputViewModel`/`FinalResultViewModel` remain empty
 
 ---
 
-# 6. Streaming Event Navigation Scenarios
+# 6. Streaming Event Scenarios
 
-## 6.1 Stay on Execution During Streaming
-**GIVEN** execution is running  
+## 6.1 Stay In Tab During Streaming
+**GIVEN** execution is running in a tab  
 **WHEN** any streaming event arrives  
-**THEN** UI remains on Execution Page  
-**SO THAT** pipeline progress is visible  
-**AS MEASURED BY** `CurrentPage == Execution`
+**THEN** the event updates that tab's execution panel in place  
+**SO THAT** pipeline progress is visible without navigation  
+**AS MEASURED BY** the executing tab's inspector state updates; `WorkspaceViewModel.ActiveTab` is unaffected
 
 Events include:
 - `pipeline_started`  
@@ -119,116 +130,131 @@ Events include:
 - `ir_generated`  
 - `prompts_generated`  
 - `model_outputs_generated`  
-- `final_result_ready`  
+- `final_result_ready`
 
-## 6.2 Final Result Does Not Trigger Navigation
-**GIVEN** `final_result_ready` arrives  
+## 6.2 Switching Tabs During Streaming Is Allowed
+**GIVEN** execution is running in tab A  
+**WHEN** the user switches the active tab to tab B  
+**THEN** the switch succeeds immediately  
+**AND** tab A's execution continues streaming in the background, unaffected  
+**SO THAT** the user can keep working while a long‑running pipeline executes  
+**AS MEASURED BY** `WorkspaceViewModel.ActiveTab == tab B` and tab A's `PipelineExecutionViewModel.IsRunning` remains `true` until its terminal event
+
+## 6.3 Final Result Does Not Force a Tab Switch
+**GIVEN** `final_result_ready` arrives for tab A while tab B is active  
 **WHEN** execution completes  
-**THEN** UI stays on Execution Page  
-**SO THAT** user can inspect results  
-**AS MEASURED BY** `CurrentPage == Execution`
+**THEN** the active tab remains tab B  
+**SO THAT** the user is not interrupted  
+**AS MEASURED BY** `WorkspaceViewModel.ActiveTab == tab B` unchanged
 
 ---
 
-# 7. Navigation Lock Scenarios (Strict Single Execution)
+# 7. Execution Concurrency Lock Scenarios (App‑Wide Single Execution)
 
-This section is the authoritative source for navigation-guard mechanics (when navigation/buttons lock and unlock). `bdd-ui-error-cases.md` §7 covers only the error-triggered variant of these same transitions (navigation behavior specifically after a `pipeline_failed`) and should be read as a special case of the rules here, not a duplicate — if the two ever appear to disagree, this section wins.
+This section is the authoritative source for execution‑lock mechanics (when Run/Explain/Settings lock and unlock, and what remains free). `bdd-ui-error-cases.md` §7 covers only the error-triggered variant of these same rules and should be read as a special case of the rules here — if the two ever appear to disagree, this section wins.
 
-## 7.1 Block Navigation During Execution
-**GIVEN** execution is running  
-**WHEN** the user attempts to navigate to Home, Editor, or Settings  
-**THEN** navigation is blocked  
-**SO THAT** UI remains consistent  
-**AS MEASURED BY** `CurrentPage == Execution`
+## 7.1 Block New Execution In Other Tabs
+**GIVEN** execution is running in tab A  
+**WHEN** the user clicks Run or Explain in tab B  
+**THEN** the click has no effect (the buttons are disabled)  
+**SO THAT** only one execution is ever in flight  
+**AS MEASURED BY** tab B's `EditorViewModel.CanExecute == false`
 
-## 7.2 Disable All Execution Buttons During Execution
-**GIVEN** the user clicks Run, Explain, or Trace  
+## 7.2 Disable Execution Buttons App‑Wide
+**GIVEN** the user clicks Run or Explain in any tab  
 **WHEN** execution begins  
-**THEN** all three execution buttons become disabled  
+**THEN** Run and Explain become disabled in **every** open tab  
 **SO THAT** no parallel or overlapping executions can occur  
-**AS MEASURED BY** `PipelineExecutionViewModel.IsRunning == true` and all execution commands reporting `CanExecute == false`
+**AS MEASURED BY** `IExecutionLockService.IsAnyExecutionRunning == true` and every tab's `CanExecute == false`
 
-## 7.3 Allow Navigation After Completion
-**GIVEN** execution has completed  
-**WHEN** user clicks Home/Editor/Settings  
-**THEN** navigation succeeds  
-**SO THAT** workflow continues  
-**AS MEASURED BY** `CurrentPage != Execution`
+## 7.3 Tab Switching, Opening, and Closing Remain Allowed
+**GIVEN** execution is running in some tab  
+**WHEN** the user switches tabs, opens a new tab from the Explorer, or closes a different tab  
+**THEN** the action succeeds immediately  
+**SO THAT** the workspace stays fully usable during a long‑running execution  
+**AS MEASURED BY** `WorkspaceViewModel.OpenTabs`/`ActiveTab` change as requested, independent of `IExecutionLockService.IsAnyExecutionRunning`
 
-## 7.4 Re‑Enable Execution Buttons After Completion or Error
+## 7.4 Settings Gear Disabled During Execution
+**GIVEN** execution is running in some tab  
+**WHEN** the user clicks the Settings gear icon  
+**THEN** the Settings modal does not open (the gear is disabled)  
+**SO THAT** a backend restart cannot abandon an in‑flight execution  
+**AS MEASURED BY** `WorkspaceViewModel.IsSettingsOpen == false`
+
+## 7.5 Re‑Enable After Completion or Error
 **GIVEN** execution is running  
 **WHEN** either `final_result_ready` or `pipeline_failed` arrives  
-**THEN** Run, Explain, and Trace buttons re‑enable  
-**SO THAT** the user can begin a new execution or navigate away  
-**AS MEASURED BY** `PipelineExecutionViewModel.IsRunning == false` and all execution commands reporting `CanExecute == true`
+**THEN** Run and Explain re‑enable in every open tab, and the Settings gear re‑enables  
+**SO THAT** the user can begin a new execution or open Settings  
+**AS MEASURED BY** `IExecutionLockService.IsAnyExecutionRunning == false` and every tab's `CanExecute == true`
 
 ---
 
-# 8. Error Navigation Scenarios
+# 8. Error Scenarios
 
-## 8.1 Pipeline Failure Does Not Navigate
-**GIVEN** execution is running  
+## 8.1 Pipeline Failure Stays In Its Tab
+**GIVEN** execution is running in a tab  
 **WHEN** `pipeline_failed` arrives  
-**THEN** UI stays on Execution Page  
-**SO THAT** user sees error context  
-**AS MEASURED BY** `CurrentPage == Execution`
+**THEN** that tab's error banner appears, in that tab  
+**SO THAT** the user sees error context without a forced tab switch  
+**AS MEASURED BY** that tab's `ErrorBannerViewModel.IsVisible == true`; `ActiveTab` unchanged
 
-## 8.2 Navigation Allowed After Error
-**GIVEN** pipeline failed  
-**WHEN** user clicks Editor  
-**THEN** navigation succeeds  
-**SO THAT** user can fix CNL  
-**AS MEASURED BY** `CurrentPage == Editor`
+## 8.2 Execution Lock Released After Error
+**GIVEN** a pipeline failed in some tab  
+**WHEN** the user clicks Run/Explain in any tab  
+**THEN** execution succeeds (the lock was released)  
+**SO THAT** the user can retry or work elsewhere  
+**AS MEASURED BY** `IExecutionLockService.IsAnyExecutionRunning` becoming `true` for the new execution
 
-## 8.3 Transport Error Does Not Navigate
-**GIVEN** execution is running  
-**WHEN** WebSocket disconnects  
-**THEN** UI stays on Execution Page  
-**SO THAT** user sees transport failure  
-**AS MEASURED BY** `CurrentPage == Execution`
+## 8.3 Transport Error Stays In Its Tab
+**GIVEN** execution is running in a tab  
+**WHEN** the WebSocket disconnects  
+**THEN** that tab's error banner appears, in that tab  
+**SO THAT** the user sees the transport failure without a forced tab switch  
+**AS MEASURED BY** that tab's `PipelineExecutionViewModel.HasErrors == true`
 
 ---
 
-# 9. Settings Navigation Scenarios
+# 9. Settings Scenarios
 
-## 9.1 Navigate to Settings
-**GIVEN** user is on any page  
-**WHEN** they click the gear icon  
-**THEN** UI navigates to Settings Page  
+## 9.1 Open Settings
+**GIVEN** no execution is in flight  
+**WHEN** the user clicks the gear icon  
+**THEN** the Settings modal opens  
 **SO THAT** backend configuration can be updated  
-**AS MEASURED BY** `CurrentPage == Settings`
+**AS MEASURED BY** `WorkspaceViewModel.IsSettingsOpen == true`
 
 ## 9.2 Block Settings During Execution
-**GIVEN** execution is running  
-**WHEN** user clicks Settings  
-**THEN** navigation is blocked  
+**GIVEN** execution is running in some tab  
+**WHEN** the user clicks the gear icon  
+**THEN** the Settings modal does not open  
 **SO THAT** execution remains stable  
-**AS MEASURED BY** `CurrentPage == Execution`
+**AS MEASURED BY** `WorkspaceViewModel.IsSettingsOpen == false`
 
-## 9.3 Return From Settings
-**GIVEN** user is on Settings Page  
-**WHEN** they click Home or Editor  
-**THEN** navigation succeeds  
-**SO THAT** workflow continues  
-**AS MEASURED BY** `CurrentPage != Settings`
+## 9.3 Close Settings
+**GIVEN** the Settings modal is open  
+**WHEN** the user saves or cancels  
+**THEN** the modal closes and the previously active tab is shown again  
+**SO THAT** the workflow continues where it left off  
+**AS MEASURED BY** `WorkspaceViewModel.IsSettingsOpen == false`
 
 ---
 
-# 10. Correlation‑ID Navigation Scenarios
+# 10. Correlation‑ID Scenarios
 
 ## 10.1 Ignore Events From Old Executions
-**GIVEN** active correlation ID = `abc-123`  
-**WHEN** event arrives with `xyz-999`  
-**THEN** UI ignores the event  
-**SO THAT** navigation remains stable  
-**AS MEASURED BY** unchanged `CurrentPage`
+**GIVEN** a tab's active correlation ID = `abc-123`  
+**WHEN** an event arrives with `xyz-999`  
+**THEN** the UI ignores the event  
+**SO THAT** workspace state remains stable  
+**AS MEASURED BY** unchanged tab/inspector state
 
-## 10.2 Reset Navigation on New Execution
-**GIVEN** previous execution completed  
-**WHEN** new `pipeline_started` arrives  
-**THEN** UI navigates to Execution Page  
-**SO THAT** user sees new pipeline progress  
-**AS MEASURED BY** `CurrentPage == Execution`
+## 10.2 New Execution Clears Only Its Own Tab
+**GIVEN** a previous execution completed in tab A  
+**WHEN** a new `pipeline_started` arrives for tab A  
+**THEN** tab A's inspectors clear; tab B's inspectors (if any) are unaffected  
+**SO THAT** each tab's results remain independent  
+**AS MEASURED BY** tab A's inspector state resets; tab B's inspector state unchanged
 
 ---
 
@@ -236,16 +262,16 @@ This section is the authoritative source for navigation-guard mechanics (when na
 
 These scenarios do **not** cover:
 
-- parallel executions  
+- parallel executions (per‑tab concurrent execution is a possible future extension)  
 - queued executions  
 - cancellation  
-- plugin pages  
-- multi‑file workflows  
+- plugin panels  
 - nondeterministic animations  
+- a persisted project/workspace manifest (open folder/tabs are session state only)
 
 ---
 
 # Summary
 
-These BDD navigation scenarios define all deterministic routing behavior in the Limelight‑X UI under the streaming API.  
-They ensure predictable page transitions, strict execution locks, stable error handling, and correct incremental updates throughout the entire workflow.
+These BDD workspace scenarios define all deterministic folder/tab behavior in the Limelight‑X UI under the streaming API.  
+They ensure predictable tab opening/switching/closing, an app‑wide execution lock that never blocks workspace navigation, stable per‑tab error handling, and correct incremental updates throughout the entire workflow.

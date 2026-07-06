@@ -167,14 +167,16 @@ HeaderAccent: AccentPrimary (only when active)
 
 ---
 
-## 4.4 Tree Views (AST Panels)
+## 4.4 Tree Views (AST Panels & File Tree)
 Tree views follow **VS Code dark theme**:
 
 - Chevron expanders  
 - Indentation guides  
-- Syntax‑colored node text  
+- Syntax‑colored node text (AST panels) / file‑type icon + name (file tree)  
 - Hover highlight: `SurfaceHover`  
 - Selected node: subtle lime border (`AccentMuted`)
+
+`FileTreeView` (`ui-components.md` §3.1) reuses these same tree‑styling tokens rather than introducing new ones — it is styled as a sibling of the AST inspector tree views, not a distinct component style.
 
 ---
 
@@ -202,7 +204,7 @@ Rendered using:
 
 ---
 
-## 4.7 Form Inputs (Settings Page)
+## 4.7 Form Inputs (Settings Modal)
 `TextField`, `SecureTextField`, and `SelectField` (see `ui-components.md` §5.6–5.8) reuse existing tokens rather than introducing new ones:
 
 ```
@@ -216,6 +218,25 @@ Error Border: Error (#EF4444)
 
 - No new colors, shadows, or animation timings beyond those already defined in §2, §4.1, and §7.  
 - `SecureTextField`'s show/hide toggle uses a Fluent UI icon (eye / eye-off), per §6.
+
+---
+
+## 4.8 Tab Strip
+The tab strip (`ui-components.md` §3.2) is a genuinely new component with no prior analog (the retired Sidebar had no tab concept). It reuses existing tokens:
+
+```
+Background: BackgroundSecondary
+ActiveTab Background: Surface
+ActiveTab Indicator: AccentPrimary (top or bottom border, 2px)
+InactiveTab Text: TextSecondary
+ActiveTab Text: TextPrimary
+DirtyIndicator: a small filled dot in AccentPrimary, replacing the close icon on hover
+CloseIcon: Fluent UI Dismiss icon, per §6
+Hover: SurfaceHover
+```
+
+- No new shadow or animation timing — collapse/expand's existing 100–150ms linear/ease‑out rule applies to tab open/close if animated at all.  
+- Explorer pane width (previously the Sidebar's fixed 180px) is **resizable** with a minimum width; exact default/minimum values are left to implementation, not fixed by this spec.
 
 ---
 
@@ -239,10 +260,11 @@ Limelight‑X uses **VS Code Dark+** as the base theme.
 Limelight‑X uses **Fluent UI icons** exclusively.
 
 ### Rules
-- Chevron icons for collapsible panels  
-- Fluent folder/file icons for file loader  
-- Fluent run/explain/trace icons  
-- Fluent gear icon for the Settings entry point (HomePage and sidebar)  
+- Chevron icons for collapsible panels and file tree folder nodes  
+- Fluent folder/file icons for the file tree (`FileTreeView`), including distinct icons per common file type where available  
+- Fluent run/explain icons (no Trace icon — the Trace trigger is removed, see `ui-viewmodels.md` §6)  
+- Fluent Dismiss icon for tab close buttons  
+- Fluent gear icon for the Settings entry point (persistent title/activity‑bar icon, `ui-components.md` §3.4)  
 - No Material icons  
 - No custom SVGs in v0.1  
 

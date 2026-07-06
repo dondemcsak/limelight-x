@@ -2,13 +2,13 @@
 
 ## Purpose
 This document defines the complete testing strategy for the Limelight‑X UI.  
-It specifies unit tests, integration tests, streaming tests, inspector tests, navigation tests, and error‑handling tests under the **event‑streaming API**.
+It specifies unit tests, integration tests, streaming tests, inspector tests, tab/workspace tests, and error‑handling tests under the **event‑streaming API**.
 
 This specification is authoritative.  
 All implementation must follow this testing model exactly.
 
 The UI is deterministic, MVVM‑pure, and driven entirely by ViewModels and streaming events.  
-All tests must validate deterministic behavior, strict single‑execution mode, and correct incremental updates.
+All tests must validate deterministic behavior, app‑wide single‑execution mode, and correct incremental updates.
 
 ---
 
@@ -29,10 +29,10 @@ All tests must validate deterministic behavior, strict single‑execution mode, 
    - Tests validate incremental inspector updates.  
    - Tests validate correlation‑ID filtering.
 
-4. **Strict Single Execution**  
-   - Tests ensure execution commands disable correctly.  
-   - Tests ensure navigation locks during execution.  
-   - Tests ensure state resets on `pipeline_started`.
+4. **App‑Wide Single Execution**  
+   - Tests ensure execution commands disable correctly, app‑wide, across all tabs.  
+   - Tests ensure tab switching/opening/closing is never blocked by execution state.  
+   - Tests ensure state resets on `pipeline_started`, scoped to the executing tab.
 
 ---
 
@@ -44,7 +44,7 @@ The UI requires the following test suites:
 2. **Integration Tests**
 3. **Streaming Tests**
 4. **Inspector Tests**
-5. **Navigation Tests**
+5. **Tab & Workspace Tests**
 6. **Error‑Handling Tests**
 7. **Settings Tests**
 8. **Execution Workflow Tests**
@@ -59,21 +59,22 @@ Each suite is described below.
 Unit tests validate individual ViewModels and services.
 
 ### 3.1 EditorViewModel Tests
-- Run/Explain/Trace commands disable during execution.  
-- Live validation updates syntax errors deterministically.  
+- Run/Explain commands disable app‑wide while any tab has an execution in flight.  
+- Live validation updates syntax errors deterministically, and is unaffected by the app‑wide execution lock.  
 - Invalid CNL triggers inline errors.  
-- `CanExecute` reflects correct state.
+- `CanExecute` reflects `IExecutionLockService.IsAnyExecutionRunning` correctly.
 
 ### 3.2 PipelineExecutionViewModel Tests
-- State clears on `pipeline_started`.  
-- Events update correct inspector ViewModels.  
+- State clears on `pipeline_started`, scoped to that instance's tab.  
+- Events update correct inspector ViewModels for that tab only.  
 - Mismatched correlation IDs are ignored.  
-- `IsRunning` toggles correctly.  
-- `HasErrors` toggles on `pipeline_failed`.
+- `IsRunning` toggles correctly per tab.  
+- `HasErrors` toggles on `pipeline_failed`.  
+- A second tab's `PipelineExecutionViewModel` is unaffected by another tab's event stream.
 
 ### 3.3 Inspector ViewModel Tests
 Each inspector must:
-- clear state on `pipeline_started`  
+- clear state on `pipeline_started` (for its own tab)  
 - update deterministically on its event  
 - remain stable when collapsed  
 - never reorder or buffer data  
@@ -83,27 +84,39 @@ Each inspector must:
 - Valid settings restart backend.  
 - Errors surface deterministically.
 
+### 3.5 IExecutionLockService Tests
+- `TryAcquire` succeeds only when no tab currently holds the lock.  
+- `TryAcquire` fails while another tab holds the lock.  
+- `Release` allows a subsequent `TryAcquire` to succeed.  
+- `ExecutionLockChanged` fires exactly when `IsAnyExecutionRunning` changes.
+
+### 3.6 WorkspaceViewModel / FileTreeViewModel Tests
+- Opening a folder populates the tree from the filesystem.  
+- Opening a `.llx` file creates/focuses a `CnlTabViewModel`; opening any other file creates/focuses a `PlainTextTabViewModel`.  
+- Opening a file already open in a tab focuses the existing tab rather than creating a duplicate.  
+- Closing a dirty tab triggers the unsaved‑changes confirmation dialog; closing a clean tab does not.
+
 ---
 
 # 4. Integration Tests
 
 Integration tests validate multi‑ViewModel workflows.
 
-### 4.1 Editor → Execution Workflow
-- Clicking Run navigates to Execution Page.  
-- Inspectors clear immediately.  
-- Streaming events populate inspectors incrementally.  
-- Execution buttons re‑enable only after final_result_ready.
+### 4.1 Editor → Execution Workflow (Run)
+- Clicking Run invokes `/trace` and renders in place, inside the same tab.  
+- Inspectors clear immediately in that tab.  
+- Streaming events populate all six inspectors incrementally, in that tab.  
+- Execution buttons re‑enable app‑wide only after `final_result_ready`.
 
 ### 4.2 Explain Workflow
-- Raw AST and Normalized AST appear in correct order.  
+- Raw AST and Normalized AST appear in correct order, in that tab.  
 - No final result, prompts, or model outputs appear (`/explain` never invokes the evaluator; the sequence ends at `normalized_ast_generated`).
 
-### 4.3 Trace Workflow
-- All inspector panels appear in correct order.  
-- IR appears after normalized AST.  
-- Prompts appear before model outputs.  
-- Final result appears last.
+### 4.3 Cross‑Tab Execution Lock Workflow
+- Starting Run in tab A disables Run/Explain in tab B (and every other open tab) and disables the Settings gear.  
+- Switching the active tab from A to B and back does not affect tab A's in‑flight execution or its lock ownership.  
+- Closing tab B (not the executing tab) while tab A's execution is in flight has no effect on the lock.  
+- Once tab A's execution reaches `final_result_ready`/`pipeline_failed`, Run/Explain re‑enable in every open tab.
 
 ---
 
@@ -123,7 +136,7 @@ model_outputs_generated
 final_result_ready
 ```
 The UI must:
-- update inspectors in exact order  
+- update the owning tab's inspectors in exact order  
 - never reorder events  
 - never buffer events  
 - never drop events  
@@ -143,13 +156,13 @@ Simulate missing events:
 - UI must remain stable  
 - UI must not crash  
 - UI must not auto‑complete pipeline  
-- UI must surface transport errors
+- UI must surface transport errors in the owning tab
 
 ### 5.4 WebSocket Disconnect Tests
 Simulate disconnect mid‑pipeline:
-- UI must show global error banner  
-- UI must stop updating inspectors  
-- UI must re‑enable execution buttons  
+- UI must show the owning tab's error banner  
+- UI must stop updating that tab's inspectors  
+- UI must re‑enable execution buttons app‑wide  
 
 ---
 
@@ -175,25 +188,32 @@ Each inspector must be tested for:
 
 ---
 
-# 7. Navigation Tests
+# 7. Tab & Workspace Tests
 
-### 7.1 Execution Lock Tests
-While `IsRunning == true`:
-- Navigation to Home is blocked  
-- Navigation to Editor is blocked  
-- Navigation to Settings is blocked  
-- Navigation to Execution is allowed  
+### 7.1 Tab Lifecycle Tests
+- Opening a file from the tree creates a tab of the correct type (`CnlTabViewModel` vs `PlainTextTabViewModel`).  
+- Opening an already‑open file focuses the existing tab.  
+- Closing a tab removes it from `WorkspaceViewModel.OpenTabs` and disposes its owned ViewModels.
 
-### 7.2 Post‑Execution Navigation
+### 7.2 Execution Lock Tests
+While `IExecutionLockService.IsAnyExecutionRunning == true`:
+- Starting Run/Explain in the executing tab is blocked (already running)  
+- Starting Run/Explain in any other tab is blocked  
+- Opening the Settings modal is blocked  
+- Switching tabs is allowed  
+- Opening a new tab is allowed  
+- Closing any tab is allowed
+
+### 7.3 Post‑Execution Tests
 After `final_result_ready` or `pipeline_failed`:
-- All navigation commands re‑enable  
-- User may leave Execution Page  
+- Run/Explain re‑enable on every open tab  
+- The Settings gear re‑enables  
 
-### 7.3 Error Navigation Tests
-Errors must:
-- not trigger navigation  
-- not hide inspector state  
-- not reset pipeline state  
+### 7.4 Error Persistence Across Tab Switch Tests
+- Errors must:
+  - remain visible on their owning tab after switching away and back  
+  - not appear on, or affect, any other tab  
+  - not reset pipeline state
 
 ---
 
@@ -201,16 +221,16 @@ Errors must:
 
 ### 8.1 Pipeline Error Tests
 Simulate `pipeline_failed`:
-- Global error banner appears  
-- Inspectors remain visible  
-- Execution buttons re‑enable  
-- Navigation remains on Execution Page  
+- The owning tab's error banner appears  
+- That tab's inspectors remain visible  
+- Execution buttons re‑enable app‑wide  
+- No tab switch is forced
 
 ### 8.2 Fatal Error Tests
 Simulate evaluator/model adapter fatal error:
-- Fatal styling appears  
-- Streaming stops  
-- Execution buttons re‑enable  
+- Fatal styling appears on the owning tab  
+- Streaming stops for that tab  
+- Execution buttons re‑enable app‑wide  
 
 ### 8.3 Inline Editor Error Tests
 Simulate `/explain` validation errors:
@@ -225,9 +245,9 @@ Simulate:
 - WebSocket disconnect  
 
 UI must:
-- surface error immediately  
-- stop execution  
-- re‑enable buttons  
+- surface error immediately in the owning tab  
+- stop that tab's execution  
+- re‑enable buttons app‑wide  
 
 ---
 
@@ -240,25 +260,26 @@ UI must:
 
 ### 9.2 Backend Restart Tests
 - Save triggers backend restart  
-- Errors surface deterministically  
+- Errors surface deterministically inside the Settings modal  
 - UI remains stable during restart  
+
+### 9.3 Gate Tests
+- The Settings gear icon is disabled while `IExecutionLockService.IsAnyExecutionRunning == true`  
+- The gear re‑enables once the in‑flight execution reaches a terminal state
 
 ---
 
 # 10. Execution Workflow Tests
 
 ### 10.1 Run Workflow
-- Only final_result_ready appears  
-- No AST/IR/prompts/model outputs appear  
+- Run invokes `/trace`.  
+- All six inspector panels (Raw AST, Normalized AST, IR, Prompts, Model Outputs, Final Result) appear in order.  
+- Final result appears last.
 
 ### 10.2 Explain Workflow
 - Raw AST appears  
 - Normalized AST appears  
 - No final result, prompts, or model outputs appear  
-
-### 10.3 Trace Workflow
-- All inspectors appear in correct order  
-- Final result appears last  
 
 ---
 
@@ -266,7 +287,7 @@ UI must:
 
 ### 11.1 Default Location
 - No custom `LogPath` configured  
-- An error is added to any of the four logged collections  
+- An error is added to any of the four logged collections (`WorkspaceViewModel.Errors`, a tab's `EditorViewModel.ValidationErrors`, a tab's `PipelineExecutionViewModel.Errors`, `SettingsViewModel.Errors`)  
 - Entry is appended to `%APPDATA%\LimelightX\Limelight-x-log.txt`
 
 ### 11.2 Custom LogPath
@@ -301,7 +322,6 @@ UI testing does **not** include:
 - queued executions  
 - cancellation  
 - plugin inspectors  
-- multi‑file project workflows  
 
 ---
 
@@ -311,7 +331,7 @@ Potential enhancements:
 
 - automated inspector diffing  
 - visual IR graph testing  
-- multi‑file project testing  
+- per‑tab concurrent execution testing (if per‑tab independent execution is implemented, see `ui-viewmodels.md` §14)  
 - performance tests for large pipelines  
 - timing‑based observability tests  
 
@@ -319,5 +339,5 @@ Potential enhancements:
 
 # Summary
 
-Limelight‑X UI testing validates deterministic MVVM behavior, strict single‑execution mode, and real‑time streaming updates.  
-All tests simulate WebSocket event streams, verify incremental inspector updates, enforce navigation constraints, and ensure robust error handling across the entire workflow.
+Limelight‑X UI testing validates deterministic MVVM behavior, app‑wide single‑execution mode, and real‑time streaming updates.  
+All tests simulate WebSocket event streams, verify incremental inspector updates scoped to the correct tab, enforce the cross‑tab execution lock and free tab/workspace navigation, and ensure robust error handling across the entire workflow.

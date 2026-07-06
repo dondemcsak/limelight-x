@@ -69,6 +69,8 @@ pipeline_started
 final_result_ready
 ```
 
+Note: in the current UI shell, no button, shortcut, or menu item calls `/run` — the **Run** button invokes `/trace` (§2 below), and `/run` remains a valid, unchanged backend endpoint simply not wired to any UI control (see `ui-viewmodels.md` §6). This is a UI wiring choice only; the endpoint itself and its contract are unchanged.
+
 #### `/explain`
 ```
 pipeline_started

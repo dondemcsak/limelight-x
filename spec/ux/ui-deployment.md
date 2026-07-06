@@ -63,7 +63,7 @@ The spec is organized by **deployment stages**:
     "environmentProfile": "Dev | Stage | Prod"
   }
   ```
-  This is the only place `Port`/`LogPath`/`EnvironmentProfile` are persisted. `ANTHROPIC_API_KEY` is never written here — it lives only in Windows Credential Manager, under a single shared credential (not one per profile; see `ui-viewmodels.md` §3.3).  
+  This is the only place `Port`/`LogPath`/`EnvironmentProfile` are persisted. `ANTHROPIC_API_KEY` is never written here — it lives only in Windows Credential Manager, under a single shared credential (not one per profile; see `ui-viewmodels.md` §9).  
 - **Configuration items:**  
   - Backend port — the bind host is fixed at `127.0.0.1` and is never configurable (see `SECURITY.md`); only the port `llx serve` binds to is editable (`4747` by default, see `api.md` §8)  
   - Log path — see "Persistent log file" below  
@@ -75,14 +75,14 @@ The spec is organized by **deployment stages**:
   - **Format:** plain text, one line per entry: `[<UTC ISO-8601 timestamp>] [<LogLevel>] <Code>: <Message>`, with `(line L, column C)` appended when the error has a location, and the error's category included in the message. Example: `[2026-07-04T18:22:31Z] [Error] ERR_CNL_PARSE: Missing period. (Category=Pipeline)`.  
   - **Severity mapping:** `UiError.Severity` → `LogLevel`: `Info`→`Information`, `Warning`→`Warning`, `Error`→`Error`, `Fatal`→`Critical`.  
   - **Failure safety:** a failure to create the log directory or write to the log file must never surface as a user-facing error, crash the app, or block any other functionality — it fails silently. See `ui-error-handling.md` for what gets logged.
-- **Selection:** Environment profile chosen via `config.json` at any time, or edited live via the **in-app Settings page** (`ui-viewmodels.md` §3.3, `ui-routing-navigation.md` §9) — the Settings page edits the same `config.json` file plus Credential Manager, and applies changes by restarting `llx serve` in the background.
+- **Selection:** Environment profile chosen via `config.json` at any time, or edited live via the **in-app Settings modal** (`ui-viewmodels.md` §9, `ui-routing-navigation.md` §8) — the Settings modal edits the same `config.json` file plus Credential Manager, and applies changes by restarting `llx serve` in the background.
 
 ## 4.4. Validate
 
 - **Step 1:** Launch Limelight‑X UI  
 - **Step 2:** Confirm main window renders without errors  
 - **Step 3:** Confirm environment profile is active (e.g., backend port)  
-- **Step 4:** Confirm `llx serve` started successfully. If `config.json` is missing/invalid or `ANTHROPIC_API_KEY` is unset (first launch, or a broken config), `LimelightX.exe` navigates directly to SettingsPage instead of Home — bypassing normal navigation guards — and Home/Editor/Execution remain unreachable until the user saves valid Settings (see `ui-routing-navigation.md` §2). This is the only first-run experience; there is no separate onboarding page or installer-hosted wizard.  
+- **Step 4:** Confirm `llx serve` started successfully. If `config.json` is missing/invalid or `ANTHROPIC_API_KEY` is unset (first launch, or a broken config), `LimelightX.exe` auto‑opens the Settings modal on launch instead of restoring the last workspace. The Explorer and Tab Strip remain fully usable in this state (browsing folders and opening tabs needs no backend), but Run/Explain stay disabled on every `.llx` tab until the user saves valid Settings (see `ui-routing-navigation.md` §9). This is the only first-run experience; there is no separate onboarding page or installer-hosted wizard.  
 - **Step 5:** Optionally run a simple pipeline to confirm connectivity
 
 ---

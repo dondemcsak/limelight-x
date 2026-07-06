@@ -32,7 +32,8 @@ Limelight‑X provides **full keyboard accessibility**.
 ### Supported Keys
 - `Tab` — move forward through interactive elements  
 - `Shift+Tab` — move backward  
-- Arrow keys — navigate tree views, inspectors, and sidebar  
+- Arrow keys — navigate the folder tree, inspectors, and the tab strip  
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` — move to the next/previous open tab  
 - `Enter` — activate focused element  
 - `Escape` — close inspectors or dismiss banners where applicable  
 
@@ -40,7 +41,7 @@ Limelight‑X provides **full keyboard accessibility**.
 - All interactive elements must be reachable via keyboard.  
 - No keyboard traps are permitted.  
 - Keyboard order must follow visual order.  
-- Sidebar navigation must be fully keyboard operable.
+- The folder tree and tab strip must be fully keyboard operable.
 
 ---
 
@@ -48,10 +49,10 @@ Limelight‑X provides **full keyboard accessibility**.
 
 Focus moves to the **first interactive element** when:
 
-- Navigating to a new page  
+- Opening or switching to a tab  
 - Opening an inspector  
 - Closing a modal dialog  
-- Loading ExecutionPage after pipeline completion  
+- A tab's execution panel finishes streaming (`final_result_ready`/`pipeline_failed`), if that tab is currently active  
 
 ### Requirements
 - Focus must never be lost or placed on non‑interactive elements.  
@@ -131,13 +132,16 @@ Limelight‑X does **not** provide a reduced‑motion mode.
 
 Limelight‑X provides **basic keyboard shortcuts**:
 
-| Action   | Shortcut |
-|----------|----------|
-| Run      | Ctrl+R   |
-| Explain  | Ctrl+E   |
-| Trace    | Ctrl+T   |
-| Save     | Ctrl+S   |
-| Settings | Ctrl+,   |
+| Action       | Shortcut |
+|--------------|----------|
+| Run          | Ctrl+R   |
+| Explain      | Ctrl+E   |
+| Save         | Ctrl+S   |
+| Settings     | Ctrl+,   |
+| Close Tab    | Ctrl+W   |
+| Open Folder  | Ctrl+K, Ctrl+O |
+
+There is no Trace shortcut — the Trace trigger is removed entirely (see `ui-viewmodels.md` §6). Run and Explain act on the active tab.
 
 ### Requirements
 - Shortcuts must not conflict with OS‑level shortcuts.  
@@ -171,6 +175,9 @@ The editor exposes **full ARIA textfield semantics**.
 - Editor must expose validation errors via ARIA descriptions.  
 - Editor must expose selection and cursor position.
 
+### PlainTextEditor
+The generic text editor used for non‑`.llx` tabs (`ui-components.md` §4.3) follows the same base pattern as the CNL editor above — role="textbox", exposed cursor/selection position — but without CNL‑specific ARIA descriptions (no syntax error descriptions, since it has no validation).
+
 ### Settings Form Fields
 `TextField`, `SecureTextField`, and `SelectField` (`ui-components.md` §5.6–5.8) reuse the same pattern:
 - Each field must expose an accessible label (role="textbox" for `TextField`/`SecureTextField`, appropriate combobox role for `SelectField`).  
@@ -180,16 +187,26 @@ The editor exposes **full ARIA textfield semantics**.
 
 ---
 
-# 12. Navigation Accessibility
+# 12. Workspace Accessibility (File Tree & Tabs)
 
-Sidebar navigation uses **ARIA navigation roles**.
+The folder tree and tab strip (`ui-components.md` §3.1–3.2) use **ARIA tree and tab roles**, replacing the previous Sidebar's navigation-role pattern.
 
-### Requirements
-- Sidebar must expose role="navigation".  
-- Each navigation item must expose role="link".  
-- Current page must expose aria-current="page".  
-- Keyboard navigation must follow visual order.  
-- The sidebar's Settings item and the HomePage gear icon (`IconButton`, `ui-components.md` §5.5) both follow the same role and accessible-name rules; the gear icon exposes an accessible name of "Open Settings" since it has no visible text label.
+### File Tree Requirements
+- The file tree container must expose role="tree".  
+- Each file/folder entry must expose role="treeitem".  
+- Folder nodes must expose `aria-expanded` (true/false) reflecting `FileTreeNodeViewModel.IsExpanded`.  
+- The currently open (focused) file's tree node must expose `aria-selected="true"`.  
+- Keyboard navigation must follow visual (hierarchical) order.
+
+### Tab Strip Requirements
+- The tab strip container must expose role="tablist".  
+- Each tab must expose role="tab" with `aria-selected` reflecting whether it is `WorkspaceViewModel.ActiveTab`.  
+- Each tab's content area must expose role="tabpanel", associated with its tab via `aria-labelledby`.  
+- Each tab's close button must expose an accessible name of "Close `<filename>`" — the icon alone must not carry this meaning.  
+- Tab dirty state must be exposed accessibly (e.g. via the accessible name, not by color/dot alone).
+
+### Settings Gear Icon
+The gear icon (`ui-components.md` §3.4) exposes an accessible name of "Open Settings" since it has no visible text label, and exposes its disabled state (via the standard disabled-control semantics) while `IExecutionLockService.IsAnyExecutionRunning == true`.
 
 ---
 
