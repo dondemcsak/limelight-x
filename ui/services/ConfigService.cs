@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using LimelightX.UI.Routing;
 
 namespace LimelightX.UI.Services;
 
@@ -46,6 +45,8 @@ public sealed class ConfigService(string? configFilePathOverride = null) : IConf
                 EnvironmentProfile = Enum.TryParse<EnvironmentProfile>(dto.EnvironmentProfile, ignoreCase: true, out var profile)
                     ? profile
                     : EnvironmentProfile.Dev,
+                LastOpenedFolder = dto.LastOpenedFolder,
+                RecentFolders = dto.RecentFolders ?? [],
             };
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -67,6 +68,8 @@ public sealed class ConfigService(string? configFilePathOverride = null) : IConf
             Port = config.Port,
             LogPath = config.LogPath,
             EnvironmentProfile = config.EnvironmentProfile.ToString(),
+            LastOpenedFolder = config.LastOpenedFolder,
+            RecentFolders = config.RecentFolders,
         };
 
         File.WriteAllText(ConfigFilePath, JsonSerializer.Serialize(dto, JsonOptions));
@@ -79,5 +82,9 @@ public sealed class ConfigService(string? configFilePathOverride = null) : IConf
         public string? LogPath { get; init; }
 
         public string? EnvironmentProfile { get; init; }
+
+        public string? LastOpenedFolder { get; init; }
+
+        public IReadOnlyList<string>? RecentFolders { get; init; }
     }
 }

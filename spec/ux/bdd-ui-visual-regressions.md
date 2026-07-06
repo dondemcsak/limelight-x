@@ -1,6 +1,6 @@
 # BDD UI Visual Regressions
 
-> **Status: Deferred — out of scope for v0.1.**  
+> **Status: Deferred — out of scope for v1.**  
 > `ui-testing.md` explicitly excludes snapshot/pixel‑diff tests from v0.1 scope, and no visual‑diff tooling is specified in `ui-build-pipeline.md` or `ui-testing.md`. The scenarios below are retained as a reference for a future revision, once a snapshot‑testing tool is selected and added to the testing spec, but must not be treated as active acceptance criteria for v0.1.
 >
 > **Superseded by the folder/tab workspace redesign.** The scenarios below still describe the retired HomePage/EditorPage/ExecutionPage/Sidebar layout (see `ui-architecture.md` §4, `ui-routing-navigation.md`, `ui-components.md` §3). They are left as-is rather than rewritten line-by-line, since this document is already non-authoritative for v0.1 — a future revision should replace "page" scenarios with Explorer/Tab Strip/Tab Content/Settings-modal equivalents at the same time a snapshot-testing tool is adopted.

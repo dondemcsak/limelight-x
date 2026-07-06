@@ -9,11 +9,13 @@ using LimelightX.UI.ViewModels.Errors;
 namespace LimelightX.UI.ViewModels;
 
 /// <summary>
-/// Primary ViewModel for CNL editing (ui-viewmodels.md §5). Live validation
-/// calls PipelineService.ExplainAsync on a debounce timer and subscribes to
-/// its own (independent) slice of the shared event stream, filtered by its
-/// own CorrelationId - it never touches PipelineExecutionViewModel's state
-/// or navigates to the Execution Page, per ui-viewmodels.md §5 Live Validation.
+/// Primary ViewModel for CNL editing (ui-viewmodels.md §6), one instance per
+/// open .llx tab (owned by CnlTabViewModel). Live validation calls
+/// PipelineService.ExplainAsync on a debounce timer and subscribes to its own
+/// (independent) slice of the shared event stream, filtered by its own
+/// CorrelationId - it never touches this tab's PipelineExecutionViewModel
+/// state, and is exempt from IExecutionLockService (ui-viewmodels.md §6 Live
+/// Validation).
 /// Completion/quick-fix/hover (CompletionItems, QuickFixes, HoverInfo,
 /// SelectCompletionItemCommand, ApplyQuickFixCommand) are stubbed pending
 /// Phase 4b's grammar-driven completion engine - a materially separate,
@@ -21,7 +23,7 @@ namespace LimelightX.UI.ViewModels;
 /// FormatCommand is stubbed: no formatting-rule spec content exists anywhere
 /// in spec/ux/*, so it cannot be implemented yet (flagged ambiguity).
 /// </summary>
-public partial class EditorViewModel : ObservableObject
+public partial class EditorViewModel : ObservableObject, IDisposable
 {
     // Live-validation debounce: not specified anywhere in spec/ux/*
     // (flagged ambiguity) - 450ms is a reasonable editor-validation debounce,
@@ -29,20 +31,36 @@ public partial class EditorViewModel : ObservableObject
     private static readonly TimeSpan ValidationDebounce = TimeSpan.FromMilliseconds(450);
 
     private readonly IPipelineService _pipelineService;
+    private readonly IEventStreamService _eventStream;
+    private readonly IExecutionLockService _executionLock;
     private CancellationTokenSource? _validationDebounceCts;
     private string? _validationCorrelationId;
 
-    public EditorViewModel(IPipelineService pipelineService, IEventStreamService eventStream)
+    public EditorViewModel(IPipelineService pipelineService, IEventStreamService eventStream, IExecutionLockService executionLock)
     {
         _pipelineService = pipelineService;
+        _eventStream = eventStream;
+        _executionLock = executionLock;
         eventStream.EventReceived += OnValidationEventReceived;
-        ValidationErrors.CollectionChanged += (_, _) => NotifyPipelineCommandsCanExecuteChanged();
+        _executionLock.ExecutionLockChanged += NotifyPipelineCommandsCanExecuteChanged;
+    }
+
+    /// <summary>Unsubscribes from the shared event stream/lock so a closed tab's EditorViewModel no longer reacts to anything (ui-viewmodels.md §5.2: disposed alongside its owning CnlTabViewModel).</summary>
+    public void Dispose()
+    {
+        _validationDebounceCts?.Cancel();
+        _eventStream.EventReceived -= OnValidationEventReceived;
+        _executionLock.ExecutionLockChanged -= NotifyPipelineCommandsCanExecuteChanged;
     }
 
     [ObservableProperty]
     private string _text = string.Empty;
 
-    partial void OnTextChanged(string value) => QueueValidation();
+    partial void OnTextChanged(string value)
+    {
+        QueueValidation();
+        NotifyPipelineCommandsCanExecuteChanged();
+    }
 
     [ObservableProperty]
     private int _cursorPosition;
@@ -68,7 +86,10 @@ public partial class EditorViewModel : ObservableObject
 
     public ObservableCollection<QuickFixItem> QuickFixes { get; } = [];
 
-    public ObservableCollection<UiError> Errors { get; } = [];
+    /// <summary>Error-or-higher validation errors promoted to this tab's banner (ui-error-handling.md §9) - the ErrorBanner component binds directly to this.</summary>
+    public ErrorBannerViewModel ErrorBanner { get; } = new();
+
+    public ObservableCollection<UiError> Errors => ErrorBanner.Errors;
 
     // See EditorAction's doc comment: these stay empty by design. Real
     // undo/redo state lives in AvaloniaEdit's TextDocument, reached via the
@@ -103,25 +124,14 @@ public partial class EditorViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Set by the composition root once PipelineExecutionViewModel exists:
-    /// calls the corresponding PipelineExecutionViewModel method with Text
-    /// and navigates to ExecutionPage on a non-Blocked outcome. Plain Func
-    /// delegates (not events) since the caller must await the full
-    /// call+navigate sequence, matching NavigationViewModel's existing
-    /// guard-delegate pattern.
+    /// Wired by the owning CnlTabViewModel to this tab's own
+    /// PipelineExecutionViewModel.RunPipelineAsync/ExplainPipelineAsync. Plain
+    /// Func delegates rather than a direct reference, keeping EditorViewModel
+    /// free of a compile-time dependency on PipelineExecutionViewModel.
     /// </summary>
     public Func<string, Task>? RunRequested { get; set; }
 
     public Func<string, Task>? ExplainRequested { get; set; }
-
-    public Func<string, Task>? TraceRequested { get; set; }
-
-    /// <summary>
-    /// Set by the composition root to PipelineExecutionViewModel.IsRunning:
-    /// the single canonical execution-state flag (ui-viewmodels.md §5) that
-    /// gates all three commands - EditorViewModel keeps no copy of its own.
-    /// </summary>
-    public Func<bool> IsPipelineRunning { get; set; } = () => false;
 
     [RelayCommand(CanExecute = nameof(CanExecutePipelineCommand))]
     private Task RunAsync() => RunRequested?.Invoke(Text) ?? Task.CompletedTask;
@@ -129,18 +139,21 @@ public partial class EditorViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanExecutePipelineCommand))]
     private Task ExplainAsync() => ExplainRequested?.Invoke(Text) ?? Task.CompletedTask;
 
-    [RelayCommand(CanExecute = nameof(CanExecutePipelineCommand))]
-    private Task TraceAsync() => TraceRequested?.Invoke(Text) ?? Task.CompletedTask;
+    /// <summary>
+    /// ui-viewmodels.md §6: Run/Explain are blocked only while any tab's
+    /// execution is in flight app-wide, or the editor is empty. Unlike the
+    /// old page-based model, a known validation error no longer blocks these
+    /// commands client-side - the backend's own pipeline_failed/ERR_CNL_PARSE
+    /// response is now the sole gate for invalid CNL (confirmed decision,
+    /// see the approved migration plan).
+    /// </summary>
+    private bool CanExecutePipelineCommand() => !_executionLock.IsAnyExecutionRunning && !string.IsNullOrWhiteSpace(Text);
 
-    /// <summary>Guard 2 (ui-routing-navigation.md §4): validation errors or an in-flight execution block Run/Explain/Trace.</summary>
-    private bool CanExecutePipelineCommand() => ValidationErrors.Count == 0 && !IsPipelineRunning();
-
-    /// <summary>Called by the composition root when PipelineExecutionViewModel.IsRunning changes.</summary>
+    /// <summary>Called whenever IExecutionLockService.IsAnyExecutionRunning changes, or this tab's own text changes.</summary>
     public void NotifyPipelineCommandsCanExecuteChanged()
     {
         RunCommand.NotifyCanExecuteChanged();
         ExplainCommand.NotifyCanExecuteChanged();
-        TraceCommand.NotifyCanExecuteChanged();
     }
 
     private void QueueValidation()
@@ -151,7 +164,7 @@ public partial class EditorViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(Text))
         {
             ValidationErrors.Clear();
-            Errors.Clear();
+            ErrorBanner.Clear();
             return;
         }
 
@@ -185,7 +198,7 @@ public partial class EditorViewModel : ObservableObject
         }
 
         ValidationErrors.Clear();
-        Errors.Clear();
+        ErrorBanner.Clear();
 
         if (!result.Accepted)
         {
@@ -256,7 +269,7 @@ public partial class EditorViewModel : ObservableObject
             // banner when severity is error-or-higher (info/warning stay inline-only).
             if (error.Severity is ErrorSeverity.Error or ErrorSeverity.Fatal)
             {
-                Errors.Add(validationError);
+                ErrorBanner.Show(validationError);
             }
         }
     }

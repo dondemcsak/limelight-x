@@ -1,0 +1,49 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:components="using:LimelightX.UI.Components"
+             xmlns:tabs="using:LimelightX.UI.ViewModels.Tabs"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="LimelightX.UI.Components.CnlTabView"
+             x:DataType="tabs:CnlTabViewModel">
+
+  <!--
+    Composite view for an open .llx tab (ui-components.md §4.1): CNL editor
+    with Run/Explain above, execution panel (timeline + six inspectors)
+    below - both halves share this tab's own Editor/PipelineExecution
+    instances, so there is no separate "Execution Page" to navigate to.
+  -->
+  <ScrollViewer>
+    <StackPanel Margin="{StaticResource PaddingLargeThickness}" Spacing="0">
+
+      <StackPanel Orientation="Horizontal" Spacing="{StaticResource PanelSpacing}" Margin="0,0,0,12">
+        <Button Classes="primary" Content="Run" Command="{Binding Editor.RunCommand}"
+                AutomationProperties.Name="Run" ToolTip.Tip="Run (Ctrl+R)" />
+        <Button Classes="secondary" Content="Explain" Command="{Binding Editor.ExplainCommand}"
+                AutomationProperties.Name="Explain" ToolTip.Tip="Explain (Ctrl+E)" />
+      </StackPanel>
+
+      <components:ErrorBanner DataContext="{Binding Editor.ErrorBanner}" Margin="0,0,0,12" />
+      <components:ErrorBanner DataContext="{Binding PipelineExecution.ErrorBanner}" Margin="0,0,0,12" />
+
+      <components:ValidationOverlay Errors="{Binding Editor.ValidationErrors}" Margin="0,0,0,12" />
+
+      <components:CnlEditor Text="{Binding Editor.Text}"
+                             CursorPosition="{Binding Editor.CursorPosition}"
+                             SelectionRange="{Binding Editor.SelectionRange}"
+                             MinHeight="200"
+                             Margin="0,0,0,12" />
+
+      <components:ExecutionTimeline DataContext="{Binding PipelineExecution}" />
+      <components:RawAstPanel DataContext="{Binding PipelineExecution.RawAstViewModel}" />
+      <components:NormalizedAstPanel DataContext="{Binding PipelineExecution.NormalizedAstViewModel}" />
+      <components:IrPanel DataContext="{Binding PipelineExecution.IrViewModel}" />
+      <components:PromptPanel DataContext="{Binding PipelineExecution.PromptViewModel}" />
+      <components:ModelOutputPanel DataContext="{Binding PipelineExecution.ModelOutputViewModel}" />
+      <components:FinalResultPanel DataContext="{Binding PipelineExecution.FinalResultViewModel}" />
+
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>

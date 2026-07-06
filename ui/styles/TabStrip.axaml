@@ -1,0 +1,38 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    Tab strip item chrome (ui-styling-theming.md §4.8) - built purely from
+    token resources (Colors.axaml), no hardcoded hex here.
+  -->
+  <Style Selector="Border.tabStripItem">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0,0,0,2" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.12" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Border.tabStripItem:pointerover">
+    <Setter Property="Background" Value="{StaticResource TabHoverBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.tabStripItem.active">
+    <Setter Property="Background" Value="{StaticResource TabActiveBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource TabActiveIndicatorBrush}" />
+  </Style>
+
+  <Style Selector="Button.tabStripHeaderButton">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Foreground" Value="{StaticResource TabInactiveTextBrush}" />
+    <Setter Property="FontFamily" Value="{StaticResource InterFontFamily}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSizeSmall}" />
+  </Style>
+  <Style Selector="Border.tabStripItem.active Button.tabStripHeaderButton">
+    <Setter Property="Foreground" Value="{StaticResource TabActiveTextBrush}" />
+  </Style>
+
+</Styles>

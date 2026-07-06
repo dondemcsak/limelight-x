@@ -2,9 +2,9 @@ using Avalonia.Controls;
 
 namespace LimelightX.UI.Components;
 
-public partial class ErrorBanner : UserControl
+public partial class SettingsModalView : UserControl
 {
-    public ErrorBanner()
+    public SettingsModalView()
     {
         InitializeComponent();
     }

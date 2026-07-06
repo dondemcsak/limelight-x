@@ -1,4 +1,3 @@
-using LimelightX.UI.Routing;
 using LimelightX.UI.Services;
 using Xunit;
 
@@ -31,6 +30,59 @@ public class ConfigServiceTests
             Assert.Equal(5000, loaded!.Port);
             Assert.Equal(@"C:\logs\llx.log", loaded.LogPath);
             Assert.Equal(EnvironmentProfile.Stage, loaded.EnvironmentProfile);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public void SaveThenLoad_RoundTripsLastOpenedFolderAndRecentFolders()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        try
+        {
+            var service = new ConfigService(path);
+            var config = new AppConfig
+            {
+                LastOpenedFolder = @"C:\projects\a",
+                RecentFolders = [@"C:\projects\a", @"C:\projects\b"],
+            };
+
+            service.Save(config);
+            var loaded = service.Load();
+
+            Assert.NotNull(loaded);
+            Assert.Equal(@"C:\projects\a", loaded!.LastOpenedFolder);
+            Assert.Equal([@"C:\projects\a", @"C:\projects\b"], loaded.RecentFolders);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public void Load_MissingFolderFieldsInOldConfigFile_DefaultsHarmlessly()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        try
+        {
+            File.WriteAllText(path, """{"port":4747,"logPath":"","environmentProfile":"Dev"}""");
+            var service = new ConfigService(path);
+
+            var loaded = service.Load();
+
+            Assert.NotNull(loaded);
+            Assert.Null(loaded!.LastOpenedFolder);
+            Assert.Empty(loaded.RecentFolders);
         }
         finally
         {

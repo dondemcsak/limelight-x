@@ -1,4 +1,3 @@
-using LimelightX.UI.Routing;
 using LimelightX.UI.Services;
 using LimelightX.UI.ViewModels;
 using Xunit;
@@ -108,8 +107,8 @@ public class SettingsViewModelTests
     public async Task SaveSettingsAsync_ValidInput_SavesAndRelaunchesAndClearsDirty()
     {
         var (viewModel, config, credential, process) = CreateViewModel();
-        var navigatedBack = false;
-        viewModel.NavigateBackRequested = () => { navigatedBack = true; return Task.CompletedTask; };
+        var closed = false;
+        viewModel.CloseRequested = () => closed = true;
 
         viewModel.Port = 5001;
         viewModel.ApiKey = "sk-new-key";
@@ -122,23 +121,25 @@ public class SettingsViewModelTests
         Assert.Equal(1, process.StartCallCount);
         Assert.False(viewModel.IsDirty);
         Assert.False(viewModel.IsApplying);
-        Assert.True(navigatedBack);
+        Assert.True(closed);
     }
 
     [Fact]
-    public async Task SaveSettingsAsync_RelaunchFails_RaisesRelaunchFailedAndKeepsDirty()
+    public async Task SaveSettingsAsync_RelaunchFails_ShowsErrorBannerAndKeepsModalOpenAndDirty()
     {
         var (viewModel, _, _, process) = CreateViewModel();
         process.OutcomeToReturn = new ProcessStartOutcome(false, "port already in use");
-        string? failureMessage = null;
-        viewModel.RelaunchFailed += message => failureMessage = message;
+        var closed = false;
+        viewModel.CloseRequested = () => closed = true;
 
         viewModel.Port = 5002;
         await viewModel.SaveSettingsCommand.ExecuteAsync(null);
 
-        Assert.Equal("port already in use", failureMessage);
+        Assert.True(viewModel.ErrorBanner.IsVisible);
+        Assert.Contains(viewModel.ErrorBanner.Errors, e => e.Message == "port already in use");
         Assert.True(viewModel.IsDirty);
         Assert.False(viewModel.IsApplying);
+        Assert.False(closed);
     }
 
     [Fact]
@@ -170,14 +171,49 @@ public class SettingsViewModelTests
     }
 
     [Fact]
-    public async Task CancelSettingsCommand_InvokesCancelRequested()
+    public async Task CancelSettingsCommand_NotDirty_ClosesWithoutConfirmation()
     {
         var (viewModel, _, _, _) = CreateViewModel();
-        var invoked = false;
-        viewModel.CancelRequested = () => { invoked = true; return Task.CompletedTask; };
+        var closed = false;
+        var promptCount = 0;
+        viewModel.CloseRequested = () => closed = true;
+        viewModel.ConfirmDiscardChangesAsync = () => { promptCount++; return Task.FromResult(true); };
 
         await viewModel.CancelSettingsCommand.ExecuteAsync(null);
 
-        Assert.True(invoked);
+        Assert.True(closed);
+        Assert.Equal(0, promptCount);
+    }
+
+    [Fact]
+    public async Task CancelSettingsCommand_Dirty_PromptsAndStaysOpenIfUserDoesNotDiscard()
+    {
+        var (viewModel, _, _, _) = CreateViewModel();
+        viewModel.Port = 5003;
+        var closed = false;
+        viewModel.CloseRequested = () => closed = true;
+        viewModel.ConfirmDiscardChangesAsync = () => Task.FromResult(false);
+
+        await viewModel.CancelSettingsCommand.ExecuteAsync(null);
+
+        Assert.False(closed);
+        Assert.True(viewModel.IsDirty);
+        Assert.Equal(5003, viewModel.Port);
+    }
+
+    [Fact]
+    public async Task CancelSettingsCommand_Dirty_RevertsAndClosesWhenUserDiscards()
+    {
+        var (viewModel, _, _, _) = CreateViewModel();
+        viewModel.Port = 5004;
+        var closed = false;
+        viewModel.CloseRequested = () => closed = true;
+        viewModel.ConfirmDiscardChangesAsync = () => Task.FromResult(true);
+
+        await viewModel.CancelSettingsCommand.ExecuteAsync(null);
+
+        Assert.True(closed);
+        Assert.False(viewModel.IsDirty);
+        Assert.Equal(4747, viewModel.Port);
     }
 }

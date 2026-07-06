@@ -27,7 +27,7 @@ public class EditorViewModelTests
     private static async Task WaitForDebounceAsync() => await Task.Delay(700);
 
     [Fact]
-    public async Task TextChanged_InvalidCnl_AckPhaseFailure_PopulatesValidationErrorsAndBlocksCommands()
+    public async Task TextChanged_InvalidCnl_AckPhaseFailure_PopulatesValidationErrorsButDoesNotBlockCommands()
     {
         var eventStream = new FakeEventStreamService();
         var pipeline = new FakePipelineService
@@ -47,16 +47,19 @@ public class EditorViewModelTests
                 ],
             },
         };
-        var viewModel = new EditorViewModel(pipeline, eventStream);
+        var viewModel = new EditorViewModel(pipeline, eventStream, new ExecutionLockService());
 
         viewModel.Text = "Load the article from \"a.txt\"";
         await WaitForDebounceAsync();
 
         Assert.Single(viewModel.ValidationErrors);
         Assert.Equal("ERR_CNL_PARSE", viewModel.ValidationErrors[0].Code);
-        Assert.False(viewModel.RunCommand.CanExecute(null));
-        Assert.False(viewModel.ExplainCommand.CanExecute(null));
-        Assert.False(viewModel.TraceCommand.CanExecute(null));
+
+        // ui-viewmodels.md §6: CanExecute no longer checks ValidationErrors -
+        // known validation errors no longer block Run/Explain client-side
+        // (confirmed decision, see the approved migration plan).
+        Assert.True(viewModel.RunCommand.CanExecute(null));
+        Assert.True(viewModel.ExplainCommand.CanExecute(null));
 
         // ui-error-handling.md §9: error-or-higher severity also raises the global banner.
         Assert.Single(viewModel.Errors);
@@ -71,7 +74,7 @@ public class EditorViewModelTests
         {
             ExplainResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-1" },
         };
-        var viewModel = new EditorViewModel(pipeline, eventStream);
+        var viewModel = new EditorViewModel(pipeline, eventStream, new ExecutionLockService());
 
         viewModel.Text = "Summarize them.";
         await WaitForDebounceAsync();
@@ -96,7 +99,7 @@ public class EditorViewModelTests
         {
             ExplainResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-2" },
         };
-        var viewModel = new EditorViewModel(pipeline, eventStream);
+        var viewModel = new EditorViewModel(pipeline, eventStream, new ExecutionLockService());
 
         viewModel.Text = "Load the article from \"a.txt\".\nSummarize it.";
         await WaitForDebounceAsync();
@@ -108,14 +111,13 @@ public class EditorViewModelTests
         Assert.False(viewModel.IsValidating);
         Assert.True(viewModel.RunCommand.CanExecute(null));
         Assert.True(viewModel.ExplainCommand.CanExecute(null));
-        Assert.True(viewModel.TraceCommand.CanExecute(null));
     }
 
     [Fact]
     public async Task TextChanged_EmptyText_DoesNotCallBackend()
     {
         var pipeline = new FakePipelineService();
-        var viewModel = new EditorViewModel(pipeline, new FakeEventStreamService());
+        var viewModel = new EditorViewModel(pipeline, new FakeEventStreamService(), new ExecutionLockService());
 
         viewModel.Text = "   ";
         await WaitForDebounceAsync();
@@ -128,7 +130,7 @@ public class EditorViewModelTests
     public async Task TextChanged_RapidTyping_OnlyValidatesOnceAfterDebounceSettles()
     {
         var pipeline = new FakePipelineService { ExplainResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-3" } };
-        var viewModel = new EditorViewModel(pipeline, new FakeEventStreamService());
+        var viewModel = new EditorViewModel(pipeline, new FakeEventStreamService(), new ExecutionLockService());
 
         viewModel.Text = "L";
         viewModel.Text = "Lo";
@@ -139,23 +141,53 @@ public class EditorViewModelTests
     }
 
     [Fact]
-    public void RunExplainTraceCommands_BlockedWhilePipelineRunning()
+    public void RunExplainCommands_BlockedWhileAnyTabExecutionRunning()
     {
         var pipeline = new FakePipelineService();
-        var viewModel = new EditorViewModel(pipeline, new FakeEventStreamService())
+        var executionLock = new ExecutionLockService();
+        executionLock.TryAcquire(new object());
+        var viewModel = new EditorViewModel(pipeline, new FakeEventStreamService(), executionLock)
         {
-            IsPipelineRunning = () => true,
+            Text = "Load the article from \"a.txt\".",
         };
 
         Assert.False(viewModel.RunCommand.CanExecute(null));
         Assert.False(viewModel.ExplainCommand.CanExecute(null));
-        Assert.False(viewModel.TraceCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void RunExplainCommands_BlockedWhileTextEmpty()
+    {
+        var pipeline = new FakePipelineService();
+        var viewModel = new EditorViewModel(pipeline, new FakeEventStreamService(), new ExecutionLockService());
+
+        Assert.False(viewModel.RunCommand.CanExecute(null));
+        Assert.False(viewModel.ExplainCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void RunExplainCommands_ReenableWhenExecutionLockReleases()
+    {
+        var pipeline = new FakePipelineService();
+        var executionLock = new ExecutionLockService();
+        var token = new object();
+        executionLock.TryAcquire(token);
+        var viewModel = new EditorViewModel(pipeline, new FakeEventStreamService(), executionLock)
+        {
+            Text = "Load the article from \"a.txt\".",
+        };
+        Assert.False(viewModel.RunCommand.CanExecute(null));
+
+        executionLock.Release(token);
+
+        Assert.True(viewModel.RunCommand.CanExecute(null));
+        Assert.True(viewModel.ExplainCommand.CanExecute(null));
     }
 
     [Fact]
     public void UndoCommand_RaisesUndoRequested()
     {
-        var viewModel = new EditorViewModel(new FakePipelineService(), new FakeEventStreamService());
+        var viewModel = new EditorViewModel(new FakePipelineService(), new FakeEventStreamService(), new ExecutionLockService());
         var raised = false;
         viewModel.UndoRequested += () => raised = true;
 
@@ -167,7 +199,7 @@ public class EditorViewModelTests
     [Fact]
     public void RedoCommand_RaisesRedoRequested()
     {
-        var viewModel = new EditorViewModel(new FakePipelineService(), new FakeEventStreamService());
+        var viewModel = new EditorViewModel(new FakePipelineService(), new FakeEventStreamService(), new ExecutionLockService());
         var raised = false;
         viewModel.RedoRequested += () => raised = true;
 

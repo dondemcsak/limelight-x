@@ -23,6 +23,7 @@
     <StyleInclude Source="avares://LimelightX.UI/styles/Buttons.axaml" />
     <StyleInclude Source="avares://LimelightX.UI/styles/Inputs.axaml" />
     <StyleInclude Source="avares://LimelightX.UI/styles/Cards.axaml" />
+    <StyleInclude Source="avares://LimelightX.UI/styles/TabStrip.axaml" />
   </Application.Styles>
 
 </Application>

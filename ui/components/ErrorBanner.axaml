@@ -5,29 +5,36 @@
              xmlns:errors="using:LimelightX.UI.ViewModels.Errors"
              mc:Ignorable="d" d:DesignWidth="800"
              x:Class="LimelightX.UI.Components.ErrorBanner"
-             x:Name="Root">
+             x:DataType="errors:ErrorBannerViewModel">
 
   <!--
-    Global error banner (ui-error-handling.md §4). Minimal version for Phase
-    5 - Phase 7 formalizes full severity-driven styling/dismiss/ARIA-alert
-    behavior across the whole app; this covers the page-level display need
-    now (PipelineExecutionViewModel.Errors) without blocking on that.
+    Tab-scoped error banner (ui-components.md §7.1, ui-error-handling.md §9).
+    Bound directly to an ErrorBannerViewModel instance (one per tab's
+    PipelineExecutionViewModel, one on SettingsViewModel) - never a single
+    app-wide instance, so switching tabs never shows or hides another tab's
+    banner.
   -->
-  <ItemsControl ItemsSource="{Binding Errors, ElementName=Root}"
-                IsVisible="{Binding HasErrors, ElementName=Root}">
-    <ItemsControl.ItemTemplate>
-      <DataTemplate x:DataType="errors:UiError">
-        <Border Background="{StaticResource StatusErrorBrush}"
-                CornerRadius="{StaticResource BorderRadius}"
-                Padding="{StaticResource PaddingMediumThickness}"
-                Margin="0,0,0,4">
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBlock Text="{Binding Code}" Foreground="White" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="{StaticResource FontSizeSmall}" />
-            <TextBlock Text="{Binding Message}" Foreground="White" FontFamily="{StaticResource InterFontFamily}" FontSize="{StaticResource FontSizeSmall}" TextWrapping="Wrap" />
-          </StackPanel>
-        </Border>
-      </DataTemplate>
-    </ItemsControl.ItemTemplate>
-  </ItemsControl>
+  <Border IsVisible="{Binding IsVisible}"
+          Background="{StaticResource StatusErrorBrush}"
+          CornerRadius="{StaticResource BorderRadius}"
+          Padding="{StaticResource PaddingMediumThickness}">
+    <StackPanel Spacing="{StaticResource PanelSpacing}">
+      <ItemsControl ItemsSource="{Binding Errors}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="errors:UiError">
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
+              <TextBlock Text="{Binding Code}" Foreground="White" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="{StaticResource FontSizeSmall}" />
+              <TextBlock Text="{Binding Message}" Foreground="White" FontFamily="{StaticResource InterFontFamily}" FontSize="{StaticResource FontSizeSmall}" TextWrapping="Wrap" />
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <Button Classes="icon" HorizontalAlignment="Right"
+              Command="{Binding DismissCommand}"
+              Content="Dismiss"
+              AutomationProperties.Name="Dismiss errors" />
+    </StackPanel>
+  </Border>
 
 </UserControl>

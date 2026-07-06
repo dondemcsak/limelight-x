@@ -1,89 +1,86 @@
-using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using LimelightX.UI.Routing;
 using LimelightX.UI.ViewModels;
+using LimelightX.UI.ViewModels.Workspace;
 
 namespace LimelightX.UI.Views;
 
 public partial class MainWindow : Window
 {
-    private readonly HomePage _homePage;
-    private readonly EditorPage _editorPage;
-    private readonly ExecutionPage _executionPage;
-    private readonly SettingsPage _settingsPage;
+    // Ctrl+K, Ctrl+O chord (ui-accessibility.md §9: Open Folder) - VS-Code-style:
+    // Ctrl+K arms a short pending window; Ctrl+O within it opens the folder
+    // picker, anything else (or the timeout) cancels silently. Avalonia's
+    // KeyBinding/KeyGesture has no multi-key chord primitive, so this listens
+    // at the Window's Tunnel routing stage to see the keys before whichever
+    // control is focused (e.g. the CNL editor) would otherwise consume them.
+    private static readonly TimeSpan ChordTimeout = TimeSpan.FromMilliseconds(1500);
 
+    private DispatcherTimer? _chordTimer;
+    private bool _chordArmed;
+
+    /// <summary>Design-time/XAML-runtime-loader constructor only (AVLN3001) - the composition root always uses the constructor below.</summary>
     public MainWindow()
     {
         InitializeComponent();
-        _homePage = new HomePage();
-        _editorPage = new EditorPage();
-        _executionPage = new ExecutionPage();
-        _settingsPage = new SettingsPage();
-        DataContextChanged += (_, _) => AttachNavigation();
     }
 
-    public MainWindow(
-        NavigationViewModel navigation,
-        FileLoaderViewModel fileLoader,
-        EditorViewModel editor,
-        PipelineExecutionViewModel pipelineExecution,
-        SettingsViewModel settings)
+    public MainWindow(WorkspaceViewModel workspace, SettingsViewModel settings)
         : this()
     {
-        DataContext = navigation;
-        _homePage.DataContext = fileLoader;
-        _homePage.Navigation = navigation;
-        _editorPage.DataContext = editor;
-        _executionPage.DataContext = pipelineExecution;
-        _settingsPage.DataContext = settings;
+        DataContext = workspace;
+        SettingsModal.DataContext = settings;
 
-        // ui-accessibility.md §9: basic keyboard shortcuts. Editor's commands
-        // are already CanExecute-gated (Guard 2), and NavigationViewModel's
-        // guards apply to Settings the same as sidebar navigation - binding
-        // directly to the target commands here doesn't bypass either.
-        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.R, KeyModifiers.Control), Command = editor.RunCommand });
-        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.E, KeyModifiers.Control), Command = editor.ExplainCommand });
-        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.T, KeyModifiers.Control), Command = editor.TraceCommand });
+        // Ctrl+S only matters while the Settings modal is open; SettingsViewModel
+        // is a single composition-root instance (ui-viewmodels.md §9), so a
+        // fixed command reference here is safe (unlike Run/Explain, which must
+        // track whichever tab is active - see the XAML KeyBindings).
         KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.S, KeyModifiers.Control), Command = settings.SaveSettingsCommand });
-        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.OemComma, KeyModifiers.Control), Command = navigation.NavigateToSettingsCommand });
-    }
 
-    private void AttachNavigation()
-    {
-        if (DataContext is NavigationViewModel navigation)
-        {
-            navigation.PropertyChanged += OnNavigationPropertyChanged;
-            SetPage(navigation.CurrentPage);
-        }
-    }
-
-    private void OnNavigationPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(NavigationViewModel.CurrentPage) && sender is NavigationViewModel navigation)
-        {
-            SetPage(navigation.CurrentPage);
-        }
-    }
-
-    private void SetPage(PageType page)
-    {
-        var control = page switch
-        {
-            PageType.Home => (Control)_homePage,
-            PageType.Editor => _editorPage,
-            PageType.Execution => _executionPage,
-            PageType.Settings => _settingsPage,
-            _ => _homePage,
-        };
-
-        PageHost.Content = control;
+        AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
 
         // ui-accessibility.md §3: focus moves to the first interactive element
-        // on page navigation.
-        Dispatcher.UIThread.Post(() => FocusFirstDescendant(control), DispatcherPriority.Loaded);
+        // after switching tabs or opening/closing Settings.
+        workspace.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(WorkspaceViewModel.ActiveTab) or nameof(WorkspaceViewModel.IsSettingsOpen))
+            {
+                Dispatcher.UIThread.Post(() => FocusFirstDescendant(this), DispatcherPriority.Loaded);
+            }
+        };
+    }
+
+    private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_chordArmed)
+        {
+            DisarmChord();
+            if (e.Key == Key.O && e.KeyModifiers == KeyModifiers.Control && DataContext is WorkspaceViewModel workspace)
+            {
+                e.Handled = true;
+                workspace.OpenFolderCommand.Execute(null);
+            }
+
+            return;
+        }
+
+        if (e.Key == Key.K && e.KeyModifiers == KeyModifiers.Control)
+        {
+            e.Handled = true;
+            _chordArmed = true;
+            _chordTimer = new DispatcherTimer { Interval = ChordTimeout };
+            _chordTimer.Tick += (_, _) => DisarmChord();
+            _chordTimer.Start();
+        }
+    }
+
+    private void DisarmChord()
+    {
+        _chordTimer?.Stop();
+        _chordTimer = null;
+        _chordArmed = false;
     }
 
     private static void FocusFirstDescendant(Control root)

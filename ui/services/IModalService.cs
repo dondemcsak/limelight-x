@@ -7,13 +7,11 @@ namespace LimelightX.UI.Services;
 /// </summary>
 public interface IModalService
 {
-    /// <summary>Shows the {Title:"Navigation Blocked", Buttons:[OK]} dialog and awaits acknowledgment.</summary>
-    Task ShowBlockedNavigationAsync(string reason);
-
     /// <summary>
-    /// Guard 5's distinct confirmation (ui-routing-navigation.md §4):
-    /// {Title:"Unsaved Changes", Buttons:[Stay, Discard Changes]}. Returns
-    /// true if the user chose Discard Changes, false if Stay.
+    /// Unsaved-changes confirmation (ui-routing-navigation.md §3, reused for
+    /// both tab-close and Settings-close): {Title:"Unsaved Changes",
+    /// Buttons:[Stay, Discard Changes]}. Returns true if the user chose
+    /// Discard Changes, false if Stay.
     /// </summary>
     Task<bool> ShowUnsavedChangesConfirmationAsync();
 

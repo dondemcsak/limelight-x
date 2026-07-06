@@ -3,19 +3,76 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:components="using:LimelightX.UI.Components"
-        xmlns:routing="using:LimelightX.UI.Routing"
+        xmlns:workspace="using:LimelightX.UI.ViewModels.Workspace"
         mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="700"
         x:Class="LimelightX.UI.Views.MainWindow"
-        x:DataType="routing:NavigationViewModel"
+        x:DataType="workspace:WorkspaceViewModel"
         Title="Limelight-X"
         Width="1200" Height="800"
         Background="{StaticResource BackgroundPrimaryBrush}">
 
-  <DockPanel>
-    <components:Sidebar DockPanel.Dock="Left" DataContext="{Binding}" />
+  <!--
+    Folder-explorer + tab-strip workspace shell (ui-architecture.md §4,
+    ui-routing-navigation.md §2): title bar with the Settings gear, a
+    resizable Explorer pane, and a tab strip + content area. Settings is an
+    overlay (IsSettingsOpen), not a separate page - the previously active tab
+    remains underneath, unaffected, while it is shown.
+  -->
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+R" Command="{Binding ActiveCnlEditor.RunCommand}" />
+    <KeyBinding Gesture="Ctrl+E" Command="{Binding ActiveCnlEditor.ExplainCommand}" />
+    <KeyBinding Gesture="Ctrl+OemComma" Command="{Binding OpenSettingsCommand}" />
+    <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseActiveTabCommand}" />
+    <KeyBinding Gesture="Ctrl+Tab" Command="{Binding NextTabCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+Tab" Command="{Binding PreviousTabCommand}" />
+    <!-- Ctrl+K, Ctrl+O (Open Folder) is a two-key chord - Avalonia's KeyBinding
+         has no chord primitive, so it is handled in code-behind (see the
+         tunnel-routed KeyDown handler in MainWindow.axaml.cs). -->
+  </Window.KeyBindings>
 
-    <ContentControl x:Name="PageHost" x:FieldModifier="public"
-                     Background="{StaticResource BackgroundPrimaryBrush}" />
-  </DockPanel>
+  <Panel>
+    <Grid RowDefinitions="Auto,*">
+
+      <Border Grid.Row="0"
+              Background="{StaticResource BackgroundSecondaryBrush}"
+              BorderBrush="{StaticResource BorderBrush}"
+              BorderThickness="0,0,0,1"
+              Padding="{StaticResource PaddingMediumThickness}">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Text="Limelight-X"
+                     Foreground="{StaticResource TextPrimaryBrush}"
+                     FontFamily="{StaticResource InterFontFamily}"
+                     FontSize="{StaticResource FontSizeMedium}"
+                     VerticalAlignment="Center" />
+          <components:SettingsGearButton Grid.Column="1" />
+        </Grid>
+      </Border>
+
+      <Grid Grid.Row="1">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="220" MinWidth="150" MaxWidth="480" />
+          <ColumnDefinition Width="4" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <components:FileTreeView Grid.Column="0" />
+
+        <GridSplitter Grid.Column="1" Width="4"
+                      Background="{StaticResource BorderBrush}"
+                      ResizeDirection="Columns"
+                      HorizontalAlignment="Stretch" />
+
+        <DockPanel Grid.Column="2">
+          <components:TabStrip DockPanel.Dock="Top" />
+          <components:TabContentHost />
+        </DockPanel>
+      </Grid>
+
+    </Grid>
+
+    <Border Background="#CC000000" IsVisible="{Binding IsSettingsOpen}">
+      <components:SettingsModalView x:Name="SettingsModal" />
+    </Border>
+  </Panel>
 
 </Window>

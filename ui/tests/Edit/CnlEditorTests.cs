@@ -4,10 +4,6 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using AvaloniaEdit;
 using LimelightX.UI.Components;
-using LimelightX.UI.Services;
-using LimelightX.UI.Tests.TestDoubles;
-using LimelightX.UI.ViewModels;
-using LimelightX.UI.Views;
 using Xunit;
 
 namespace LimelightX.UI.Tests.Edit;
@@ -22,60 +18,48 @@ namespace LimelightX.UI.Tests.Edit;
 /// Headless tests don't apply real templates/rendering by default, so this
 /// specific failure mode wasn't visible in tests alone; the
 /// HasTemplateApplied assertion below at least confirms a template exists.
+/// Hosts a bare CnlEditor directly (rather than a full tab/page) since this
+/// suite exercises the component itself, not its owning view.
 /// </summary>
 public class CnlEditorTests
 {
-    private sealed class FakePipelineService : IPipelineService
-    {
-        public Task<PipelineStartResult> ExplainAsync(string source) =>
-            Task.FromResult(new PipelineStartResult { Accepted = true, CorrelationId = "corr-0" });
-
-        public Task<PipelineStartResult> RunAsync(string source) => throw new NotImplementedException();
-
-        public Task<PipelineStartResult> TraceAsync(string source) => throw new NotImplementedException();
-    }
-
     [AvaloniaFact]
-    public void SettingViewModelText_BeforeAttach_PropagatesToAvaloniaEditOnceAttached()
+    public void SettingText_BeforeAttach_PropagatesToAvaloniaEditOnceAttached()
     {
-        var editorViewModel = new EditorViewModel(new FakePipelineService(), new FakeEventStreamService());
-        var editorPage = new EditorPage { DataContext = editorViewModel };
+        var cnlEditor = new CnlEditor { Text = "Load the article from \"a.txt\".\nSummarize it." };
 
-        editorViewModel.Text = "Load the article from \"a.txt\".\nSummarize it.";
-
-        var window = new Window { Content = editorPage, Width = 800, Height = 600 };
+        var window = new Window { Content = cnlEditor, Width = 800, Height = 600 };
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
-        var innerEditor = GetInnerTextEditor(editorPage);
-        Assert.Equal(editorViewModel.Text, innerEditor.Text);
+        var innerEditor = GetInnerTextEditor(cnlEditor);
+        Assert.Equal(cnlEditor.Text, innerEditor.Text);
     }
 
     [AvaloniaFact]
-    public void SettingViewModelText_AfterAttach_PropagatesToAvaloniaEditImmediately()
+    public void SettingText_AfterAttach_PropagatesToAvaloniaEditImmediately()
     {
-        var editorViewModel = new EditorViewModel(new FakePipelineService(), new FakeEventStreamService());
-        var editorPage = new EditorPage { DataContext = editorViewModel };
-        var window = new Window { Content = editorPage, Width = 800, Height = 600 };
+        var cnlEditor = new CnlEditor();
+        var window = new Window { Content = cnlEditor, Width = 800, Height = 600 };
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
-        editorViewModel.Text = "Load the article from \"a.txt\".\nSummarize it.";
+        cnlEditor.Text = "Load the article from \"a.txt\".\nSummarize it.";
         Dispatcher.UIThread.RunJobs();
 
-        var innerEditor = GetInnerTextEditor(editorPage);
-        Assert.Equal(editorViewModel.Text, innerEditor.Text);
+        var innerEditor = GetInnerTextEditor(cnlEditor);
+        Assert.Equal(cnlEditor.Text, innerEditor.Text);
     }
 
     [AvaloniaFact]
     public void TextEditor_HasTemplateApplied()
     {
-        var editorPage = new EditorPage { DataContext = new EditorViewModel(new FakePipelineService(), new FakeEventStreamService()) };
-        var window = new Window { Content = editorPage, Width = 800, Height = 600 };
+        var cnlEditor = new CnlEditor();
+        var window = new Window { Content = cnlEditor, Width = 800, Height = 600 };
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
-        var innerEditor = GetInnerTextEditor(editorPage);
+        var innerEditor = GetInnerTextEditor(cnlEditor);
 
         // A missing control theme (the Phase 4 bug) leaves the TextArea with no
         // visual children at all - this would have caught it directly.
@@ -83,12 +67,9 @@ public class CnlEditorTests
         Assert.True(innerEditor.GetVisualDescendants().Any(), "TextEditor has no visual children - its control theme is likely not merged into App.axaml.");
     }
 
-    private static TextEditor GetInnerTextEditor(EditorPage editorPage)
+    private static TextEditor GetInnerTextEditor(CnlEditor cnlEditor)
     {
-        var cnlEditor = editorPage.GetVisualDescendants().OfType<CnlEditor>().FirstOrDefault();
-        Assert.NotNull(cnlEditor);
-
-        var textEditor = cnlEditor!.GetVisualDescendants().OfType<TextEditor>().FirstOrDefault();
+        var textEditor = cnlEditor.GetVisualDescendants().OfType<TextEditor>().FirstOrDefault();
         Assert.NotNull(textEditor);
         return textEditor!;
     }

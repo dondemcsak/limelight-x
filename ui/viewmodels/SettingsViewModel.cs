@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using LimelightX.UI.Routing;
 using LimelightX.UI.Services;
 using LimelightX.UI.ViewModels.Errors;
 
@@ -55,20 +54,27 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _isApiKeyVisible;
 
+    /// <summary>Client-side field validation errors (Validate(), below) - rendered inline via ValidationOverlay, distinct from ErrorBanner's relaunch-failure banner.</summary>
     public ObservableCollection<UiError> Errors { get; } = [];
 
-    /// <summary>Set by the composition root; invoked on successful save to return to the previous page (or Home on first-launch).</summary>
-    public Func<Task>? NavigateBackRequested { get; set; }
+    /// <summary>
+    /// Relaunch-failure banner (ui-error-handling.md §7.5): on a failed
+    /// relaunch the modal stays open and shows this instead of closing.
+    /// SettingsViewModel is a single composition-root instance, not per-tab
+    /// (ui-viewmodels.md §9).
+    /// </summary>
+    public ErrorBannerViewModel ErrorBanner { get; } = new();
+
+    /// <summary>Set by the composition root to WorkspaceViewModel.CloseSettingsCommand - invoked on successful Save or a resolved Cancel.</summary>
+    public Action? CloseRequested { get; set; }
 
     /// <summary>
-    /// Set by the composition root: implements Guard 5's Stay/Discard
-    /// confirmation (ui-routing-navigation.md §4) if IsDirty, then navigates
-    /// back immediately either way once resolved.
+    /// Set by the composition root to show the unsaved-changes Stay/Discard
+    /// confirmation (same dialog as tab-close, ui-routing-navigation.md §3)
+    /// when Cancel is clicked while IsDirty. Returns true if the user chose
+    /// Discard.
     /// </summary>
-    public Func<Task>? CancelRequested { get; set; }
-
-    /// <summary>Raised with a Category:Api, Severity:Fatal message on relaunch failure (ui-error-handling.md §10).</summary>
-    public event Action<string>? RelaunchFailed;
+    public Func<Task<bool>>? ConfirmDiscardChangesAsync { get; set; }
 
     /// <summary>
     /// Raised with the new port on a successful relaunch, so the composition
@@ -99,7 +105,12 @@ public partial class SettingsViewModel : ObservableObject
         IsApplying = true;
         try
         {
-            var config = new AppConfig { Port = Port, LogPath = LogPath, EnvironmentProfile = EnvironmentProfile };
+            // Preserve LastOpenedFolder/RecentFolders (fields this ViewModel
+            // never edits) via `with`, rather than resetting them to defaults -
+            // note this can still lose a folder opened elsewhere in the same
+            // session after this ViewModel's _lastSaved was last refreshed;
+            // an acceptable narrow edge case for a persistence nicety.
+            var config = _lastSaved with { Port = Port, LogPath = LogPath, EnvironmentProfile = EnvironmentProfile };
 
             _configService.Save(config);
             _credentialService.WriteApiKey(ApiKey);
@@ -112,20 +123,27 @@ public partial class SettingsViewModel : ObservableObject
             var outcome = await _llxProcessService.StartAsync(Port, ApiKey);
             if (!outcome.Success)
             {
-                RelaunchFailed?.Invoke(outcome.ErrorMessage ?? "Failed to start llx serve with the new settings.");
+                // ui-error-handling.md §7.5: keep the modal open, show the
+                // failure inline, and leave the previous backend connection
+                // (if any) running until a restart succeeds.
+                ErrorBanner.Show(new ApiError
+                {
+                    Code = "ERR_RELAUNCH_FAILED",
+                    Message = outcome.ErrorMessage ?? "Failed to start llx serve with the new settings.",
+                    Severity = ErrorSeverity.Fatal,
+                    Category = ErrorCategory.Api,
+                });
                 return;
             }
 
+            ErrorBanner.Clear();
             RelaunchSucceeded?.Invoke(Port);
 
             _lastSaved = config;
             _lastSavedApiKey = ApiKey;
             IsDirty = false;
 
-            if (NavigateBackRequested is not null)
-            {
-                await NavigateBackRequested();
-            }
+            CloseRequested?.Invoke();
         }
         finally
         {
@@ -144,7 +162,21 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private Task CancelSettingsAsync() => CancelRequested?.Invoke() ?? Task.CompletedTask;
+    private async Task CancelSettingsAsync()
+    {
+        if (IsDirty)
+        {
+            var discard = ConfirmDiscardChangesAsync is not null && await ConfirmDiscardChangesAsync();
+            if (!discard)
+            {
+                return;
+            }
+
+            RevertToLastSavedCommand.Execute(null);
+        }
+
+        CloseRequested?.Invoke();
+    }
 
     private void LoadFromDisk()
     {

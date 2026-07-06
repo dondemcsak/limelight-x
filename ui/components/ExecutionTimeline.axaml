@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:components="using:LimelightX.UI.Components"
+             xmlns:vm="using:LimelightX.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800"
+             x:Class="LimelightX.UI.Components.ExecutionTimeline"
+             x:DataType="vm:PipelineExecutionViewModel">
+
+  <!--
+    Vertical pipeline timeline for this tab (ui-components.md §5.1,
+    ui-viewmodels.md §7): a read-only, append-only log of streamed events,
+    scoped to this tab's own PipelineExecutionViewModel instance.
+  -->
+  <StackPanel Spacing="{StaticResource PanelSpacing}" Margin="{StaticResource PanelBottomSpacingThickness}">
+    <components:LoadingIndicator IsLoading="{Binding IsRunning}" Text="Running..." />
+
+    <ItemsControl ItemsSource="{Binding PipelineEvents}">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate DataType="vm:PipelineEvent">
+          <TextBlock Text="{Binding EventType}"
+                     Foreground="{StaticResource TextMutedBrush}"
+                     FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                     FontSize="{StaticResource FontSizeSmall}" />
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </StackPanel>
+
+</UserControl>

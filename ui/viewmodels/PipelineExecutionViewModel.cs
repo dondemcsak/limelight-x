@@ -11,40 +11,60 @@ namespace LimelightX.UI.ViewModels;
 /// <summary>
 /// Which endpoint the active correlation_id belongs to - needed because
 /// /explain's event sequence ends at normalized_ast_generated (no
-/// final_result_ready, since it never invokes the evaluator), while /run and
-/// /trace both end at final_result_ready (api.md §2.1).
+/// final_result_ready, since it never invokes the evaluator), while Run
+/// (which now invokes /trace, ui-viewmodels.md §6) ends at final_result_ready
+/// (api.md §2.1).
 /// </summary>
 internal enum PipelineJobKind
 {
     Run,
     Explain,
-    Trace,
 }
 
 /// <summary>
-/// Coordinates pipeline execution and inspector ViewModels (ui-viewmodels.md
-/// §6). Triggered by the composition root in response to EditorViewModel's
-/// Run/Explain/TraceRequested events, not bound to directly from any View -
-/// EditorPage's buttons bind to EditorViewModel's own commands.
+/// Coordinates one .llx tab's pipeline execution and inspector ViewModels
+/// (ui-viewmodels.md §7) - one instance per CnlTabViewModel, not an app-wide
+/// singleton. Triggered by that tab's own EditorViewModel via
+/// RunRequested/ExplainRequested, wired directly by CnlTabViewModel's
+/// constructor; not bound to directly from any View.
 ///
-/// Unlike the old single-response model, Run/Explain/TracePipelineAsync only
-/// await the immediate ack; actual stage/result data arrives via
-/// OnEventReceived, subscribed once to the shared IEventStreamService and
-/// filtered by CorrelationId (ui-data-contracts.md §10).
+/// Run/Explain only await the immediate ack; actual stage/result data
+/// arrives via OnEventReceived, subscribed to the shared IEventStreamService
+/// and filtered by this tab's own CorrelationId (ui-data-contracts.md §10).
 /// </summary>
-public partial class PipelineExecutionViewModel : ObservableObject
+public partial class PipelineExecutionViewModel : ObservableObject, IDisposable
 {
     private readonly IPipelineService _pipelineService;
+    private readonly IEventStreamService _eventStream;
+    private readonly IExecutionLockService _executionLock;
 
     private string? _activeCorrelationId;
     private PipelineJobKind _activeKind;
 
-    public PipelineExecutionViewModel(IPipelineService pipelineService, IEventStreamService eventStream)
+    public PipelineExecutionViewModel(IPipelineService pipelineService, IEventStreamService eventStream, IExecutionLockService executionLock)
     {
         _pipelineService = pipelineService;
+        _eventStream = eventStream;
+        _executionLock = executionLock;
         eventStream.EventReceived += OnEventReceived;
         eventStream.TransportFaulted += OnTransportFaulted;
+
+        // HasErrors is a computed proxy over ErrorBanner.IsVisible (below) -
+        // forward its change notification so existing bindings/subscribers to
+        // HasErrors keep working unchanged.
+        ErrorBanner.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ErrorBannerViewModel.IsVisible))
+            {
+                OnPropertyChanged(nameof(HasErrors));
+            }
+        };
     }
+
+    /// <summary>Read-only display log backing this tab's ExecutionTimeline component (ui-viewmodels.md §7, ui-components.md §5.1) - not part of delivery/ordering logic.</summary>
+    public ObservableCollection<PipelineEvent> PipelineEvents { get; } = [];
+
+    public string? CorrelationId => _activeCorrelationId;
 
     public RawAstViewModel RawAstViewModel { get; } = new();
 
@@ -67,39 +87,27 @@ public partial class PipelineExecutionViewModel : ObservableObject
     [ObservableProperty]
     private bool _isRunning;
 
-    [ObservableProperty]
-    private bool _hasErrors;
+    /// <summary>This tab's error banner (ui-components.md §7.1, ui-viewmodels.md §7) - "populate this tab's error banner" on pipeline_failed means this.</summary>
+    public ErrorBannerViewModel ErrorBanner { get; } = new();
 
-    public ObservableCollection<UiError> Errors { get; } = [];
+    public ObservableCollection<UiError> Errors => ErrorBanner.Errors;
 
-    /// <summary>
-    /// ui-routing-navigation.md §9: sidebar cannot navigate to Execution
-    /// unless a pipeline has produced a result. Set as soon as an execution
-    /// is accepted (even one that later fails still has inspector data to show).
-    /// </summary>
-    public bool HasResult { get; private set; }
+    public bool HasErrors => ErrorBanner.IsVisible;
 
     /// <summary>
-    /// Clears the global error banner - called by the composition root when
-    /// the user navigates away from the Execution Page (only reachable once
-    /// IsRunning is false), per ui-viewmodels.md §10 / ui-error-handling.md §8.
+    /// Clears this tab's error banner - called on user dismiss
+    /// (ui-error-handling.md §8) or before starting a new execution.
     /// </summary>
-    public void ClearErrors()
-    {
-        Errors.Clear();
-        HasErrors = false;
-    }
+    public void ClearErrors() => ErrorBanner.Clear();
 
-    public Task<PipelineCallOutcome> RunPipelineAsync(string source) =>
-        StartAsync(PipelineJobKind.Run, _pipelineService.RunAsync, source);
+    /// <summary>Run now invokes /trace (ui-viewmodels.md §6) - the old bare-/run two-event sequence is no longer reachable from the UI.</summary>
+    public Task RunPipelineAsync(string source) =>
+        StartAsync(PipelineJobKind.Run, _pipelineService.TraceAsync, source);
 
-    public Task<PipelineCallOutcome> ExplainPipelineAsync(string source) =>
+    public Task ExplainPipelineAsync(string source) =>
         StartAsync(PipelineJobKind.Explain, _pipelineService.ExplainAsync, source);
 
-    public Task<PipelineCallOutcome> TracePipelineAsync(string source) =>
-        StartAsync(PipelineJobKind.Trace, _pipelineService.TraceAsync, source);
-
-    private async Task<PipelineCallOutcome> StartAsync(
+    private async Task StartAsync(
         PipelineJobKind kind,
         Func<string, Task<PipelineStartResult>> start,
         string source)
@@ -107,27 +115,25 @@ public partial class PipelineExecutionViewModel : ObservableObject
         // Must resume on the UI thread: Errors/inspector state below are bound
         // to Avalonia controls (ErrorBanner etc.), which throw on cross-thread
         // access - ConfigureAwait(false) here previously dropped the captured
-        // UI SynchronizationContext and crashed the app on every Run/Explain/Trace.
+        // UI SynchronizationContext and crashed the app on every Run/Explain.
         var result = await start(source);
 
-        Errors.Clear();
+        ErrorBanner.Clear();
         if (!result.Accepted)
         {
-            foreach (var error in result.Errors)
-            {
-                Errors.Add(error);
-            }
-
-            return PipelineCallOutcome.Blocked;
+            // Ack-phase failure (e.g. transport unreachable) - nothing to
+            // stream, so there's no lock to acquire in the first place.
+            ErrorBanner.Show(result.Errors);
+            return;
         }
 
         ResetInspectors();
+        PipelineEvents.Clear();
         _activeKind = kind;
         _activeCorrelationId = result.CorrelationId;
-        IsRunning = true;
-        HasErrors = false;
-        HasResult = true;
-        return PipelineCallOutcome.NavigateToExecution;
+        // IsRunning/lock-acquire happen on pipeline_started (OnEventReceived
+        // below), not here - the ack only confirms the request was accepted,
+        // not that the server has actually begun streaming yet.
     }
 
     private void ResetInspectors()
@@ -150,12 +156,15 @@ public partial class PipelineExecutionViewModel : ObservableObject
             return;
         }
 
+        PipelineEvents.Add(new PipelineEvent { EventType = wsEvent.EventType, Timestamp = DateTimeOffset.UtcNow });
+
         switch (wsEvent.EventType)
         {
             case "pipeline_started":
                 ResetInspectors();
-                HasErrors = false;
-                Errors.Clear();
+                ErrorBanner.Clear();
+                IsRunning = true;
+                _executionLock.TryAcquire(this);
                 break;
 
             case "raw_ast_generated":
@@ -168,6 +177,7 @@ public partial class PipelineExecutionViewModel : ObservableObject
                 {
                     // /explain never evaluates - this is its terminal event.
                     IsRunning = false;
+                    _executionLock.Release(this);
                 }
 
                 break;
@@ -195,17 +205,14 @@ public partial class PipelineExecutionViewModel : ObservableObject
             case "final_result_ready":
                 ApplyFinalResult(Deserialize<RunData>(wsEvent).FinalResult);
                 IsRunning = false;
+                _executionLock.Release(this);
                 break;
 
             case "pipeline_failed":
-                HasErrors = true;
-                foreach (var error in wsEvent.Errors)
-                {
-                    Errors.Add(error);
-                }
-
+                ErrorBanner.Show(wsEvent.Errors);
                 DistributeErrorsToInspectors(wsEvent.Errors);
                 IsRunning = false;
+                _executionLock.Release(this);
                 break;
         }
     }
@@ -217,9 +224,25 @@ public partial class PipelineExecutionViewModel : ObservableObject
             return;
         }
 
-        Errors.Add(error);
-        HasErrors = true;
+        ErrorBanner.Show(error);
         IsRunning = false;
+        _executionLock.Release(this);
+    }
+
+    /// <summary>
+    /// Confirmed decision (approved migration plan): if this tab is closed
+    /// while its execution is still in flight, the app-wide lock releases
+    /// immediately rather than waiting for a terminal event that a disposed
+    /// ViewModel should no longer react to.
+    /// </summary>
+    public void Dispose()
+    {
+        _eventStream.EventReceived -= OnEventReceived;
+        _eventStream.TransportFaulted -= OnTransportFaulted;
+        if (IsRunning)
+        {
+            _executionLock.Release(this);
+        }
     }
 
     private static TEventData Deserialize<TEventData>(WsEvent wsEvent) =>

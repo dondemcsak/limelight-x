@@ -32,6 +32,19 @@
   <Color x:Key="DisabledTextColor">#555555</Color>
   <Color x:Key="DisabledBorderColor">#2A2A2A</Color>
 
+  <!--
+    Tab Strip (ui-styling-theming.md §4.8) - "a genuinely new component with
+    no prior analog." Given its own semantic tokens (even where today's
+    values match existing Surface/Text/AccentPrimary tokens) so tabs can be
+    retinted independently later without touching shared brushes.
+  -->
+  <Color x:Key="TabActiveBackgroundColor">#1F1F1F</Color>
+  <Color x:Key="TabHoverBackgroundColor">#262626</Color>
+  <Color x:Key="TabInactiveTextColor">#B3B3B3</Color>
+  <Color x:Key="TabActiveTextColor">#E5E5E5</Color>
+  <Color x:Key="TabActiveIndicatorColor">#10B981</Color>
+  <Color x:Key="TabDirtyIndicatorColor">#10B981</Color>
+
   <SolidColorBrush x:Key="BackgroundPrimaryBrush" Color="{StaticResource BackgroundPrimaryColor}" />
   <SolidColorBrush x:Key="BackgroundSecondaryBrush" Color="{StaticResource BackgroundSecondaryColor}" />
   <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
@@ -53,6 +66,13 @@
   <SolidColorBrush x:Key="DisabledBackgroundBrush" Color="{StaticResource DisabledBackgroundColor}" />
   <SolidColorBrush x:Key="DisabledTextBrush" Color="{StaticResource DisabledTextColor}" />
   <SolidColorBrush x:Key="DisabledBorderBrush" Color="{StaticResource DisabledBorderColor}" />
+
+  <SolidColorBrush x:Key="TabActiveBackgroundBrush" Color="{StaticResource TabActiveBackgroundColor}" />
+  <SolidColorBrush x:Key="TabHoverBackgroundBrush" Color="{StaticResource TabHoverBackgroundColor}" />
+  <SolidColorBrush x:Key="TabInactiveTextBrush" Color="{StaticResource TabInactiveTextColor}" />
+  <SolidColorBrush x:Key="TabActiveTextBrush" Color="{StaticResource TabActiveTextColor}" />
+  <SolidColorBrush x:Key="TabActiveIndicatorBrush" Color="{StaticResource TabActiveIndicatorColor}" />
+  <SolidColorBrush x:Key="TabDirtyIndicatorBrush" Color="{StaticResource TabDirtyIndicatorColor}" />
 
   <!-- Light theme (§2.4) - secondary, currently unwired. Kept for spec completeness. -->
   <Color x:Key="LightBackgroundPrimaryColor">#FFFFFF</Color>

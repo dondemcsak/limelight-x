@@ -11,9 +11,6 @@ namespace LimelightX.UI.Services;
 /// </summary>
 public sealed class ModalService(Func<Window?> ownerAccessor) : IModalService
 {
-    public Task ShowBlockedNavigationAsync(string reason) =>
-        ShowAsync("Navigation Blocked", reason, [("OK", true)], errorBorder: false);
-
     public Task<bool> ShowUnsavedChangesConfirmationAsync() =>
         ShowAsync(
             "Unsaved Changes",

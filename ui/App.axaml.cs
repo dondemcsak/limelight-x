@@ -4,10 +4,11 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using LimelightX.UI.Routing;
 using LimelightX.UI.Services;
 using LimelightX.UI.ViewModels;
 using LimelightX.UI.ViewModels.Errors;
+using LimelightX.UI.ViewModels.Tabs;
+using LimelightX.UI.ViewModels.Workspace;
 using LimelightX.UI.Views;
 using Microsoft.Extensions.Logging;
 
@@ -26,8 +27,6 @@ public partial class App : Application
         {
             // Composition root (manual wiring - no DI container, per CLAUDE.md §3.5
             // approved-dependency list).
-            var navigation = new NavigationViewModel();
-
             MainWindow? mainWindowRef = null;
             var filePicker = new FilePickerService(() => mainWindowRef);
             var modal = new ModalService(() => mainWindowRef);
@@ -39,165 +38,43 @@ public partial class App : Application
             var initialConfig = loadedConfig ?? new AppConfig();
             var pipelineService = new PipelineService(initialConfig.Port);
             var eventStream = new EventStreamService();
+            var executionLock = new ExecutionLockService();
 
-            var fileLoader = new FileLoaderViewModel(filePicker);
-            var editor = new EditorViewModel(pipelineService, eventStream);
-            var pipelineExecution = new PipelineExecutionViewModel(pipelineService, eventStream);
+            var tabFactory = new TabFactory(pipelineService, eventStream, executionLock);
+            var workspace = new WorkspaceViewModel(tabFactory, filePicker, modal, executionLock);
             var settings = new SettingsViewModel(configService, credentialService, llxProcessService);
 
             // Persistent diagnostic log (ui-deployment.md §4.3, ui-error-handling.md
             // §2.5) - Microsoft.Extensions.Logging backed by Serilog's file sink.
-            // `logger` is a reassignable local (like `pipelineExecution`/`navigation`
-            // elsewhere in this file): SubscribeLogging closes over `() => logger`
-            // so a later rebuild (Settings LogPath change, below) is picked up by
-            // the same four subscriptions without re-subscribing.
+            // `logger` is a reassignable local: SubscribeLogging closes over
+            // `() => logger` so a later rebuild (Settings LogPath change, below)
+            // is picked up by every subscription without re-subscribing.
             var loggerFactory = AppLogging.CreateLoggerFactory(initialConfig.LogPath, configService.ConfigFilePath);
             var logger = loggerFactory.CreateLogger("LimelightX");
-            SubscribeLogging(fileLoader.Errors, () => logger);
-            SubscribeLogging(editor.ValidationErrors, () => logger);
-            SubscribeLogging(pipelineExecution.Errors, () => logger);
+            SubscribeLogging(workspace.Errors, () => logger);
             SubscribeLogging(settings.Errors, () => logger);
+            SubscribeLogging(settings.ErrorBanner.Errors, () => logger);
 
-            fileLoader.FileLoaded += content => editor.Text = content;
-
-            // Run/Explain/Trace sequence (ui-routing-navigation.md §5): EditorViewModel
-            // already blocked the click via CanExecutePipelineCommand if CNL is
-            // invalid (Guard 2); here we call the backend and, per the BDD
-            // refinement in bdd-ui-navigation.md, only block navigation (guard
-            // modal, stay on Editor) when there's no inspector data at all - a
-            // partial pipeline failure still navigates and shows inline/banner errors.
-            editor.RunRequested = async source =>
+            // Tabs (and their EditorViewModel/PipelineExecutionViewModel) are
+            // created dynamically, not once at startup - hook logging as each
+            // new .llx tab opens (ui-viewmodels.md §5.2).
+            workspace.TabOpened += tab =>
             {
-                var outcome = await pipelineExecution.RunPipelineAsync(source);
-                await HandleOutcomeAsync(outcome);
-            };
-            editor.ExplainRequested = async source =>
-            {
-                var outcome = await pipelineExecution.ExplainPipelineAsync(source);
-                await HandleOutcomeAsync(outcome);
-            };
-            editor.TraceRequested = async source =>
-            {
-                var outcome = await pipelineExecution.TracePipelineAsync(source);
-                await HandleOutcomeAsync(outcome);
-            };
-
-            async Task HandleOutcomeAsync(PipelineCallOutcome outcome)
-            {
-                if (outcome == PipelineCallOutcome.NavigateToExecution)
+                if (tab is CnlTabViewModel cnl)
                 {
-                    await navigation.NavigateDirectAsync(PageType.Execution);
-                    return;
-                }
-
-                // Blocked: no inspector data at all. Surface whatever the backend
-                // actually said (e.g. a confirmed-empirical ERR_EVALUATOR_FATAL
-                // message) rather than a generic string, and use the fatal-styled
-                // modal specifically when severity says so (ui-error-handling.md §5).
-                if (pipelineExecution.Errors.Count == 0)
-                {
-                    await modal.ShowBlockedNavigationAsync("The server could not be reached. Check the connection and try again.");
-                    return;
-                }
-
-                var message = string.Join(" ", pipelineExecution.Errors.Select(e => e.Message));
-
-                if (pipelineExecution.Errors.Any(e => e.Severity == ViewModels.Errors.ErrorSeverity.Fatal))
-                {
-                    await modal.ShowFatalErrorAsync(message);
-                }
-                else
-                {
-                    await modal.ShowBlockedNavigationAsync(message);
-                }
-            }
-
-            // Guard 1 (ui-routing-navigation.md §4): Home -> Editor requires a loaded file.
-            navigation.EditorGuard = () => fileLoader.FileContent is not null
-                ? NavigationGuardResult.Allowed()
-                : NavigationGuardResult.Blocked("Open a file before continuing to the editor.");
-
-            // Guard 3/9: direct sidebar navigation to Execution requires a pipeline
-            // to have produced a result at least once (ui-routing-navigation.md §9) -
-            // automatic post-pipeline navigation above bypasses this via NavigateDirectAsync.
-            navigation.ExecutionGuard = () => pipelineExecution.HasResult
-                ? NavigationGuardResult.Allowed()
-                : NavigationGuardResult.Blocked("Run, Explain, or Trace a program before viewing execution results.");
-
-            // Guard 4: no navigation while a pipeline call is in flight.
-            navigation.IsExecutionBusy = () => pipelineExecution.IsRunning;
-
-            // EditorViewModel keeps no execution-state copy of its own -
-            // PipelineExecutionViewModel.IsRunning is the single canonical
-            // flag (ui-viewmodels.md §5); re-evaluate CanExecute whenever it changes.
-            editor.IsPipelineRunning = () => pipelineExecution.IsRunning;
-            pipelineExecution.PropertyChanged += (_, e) =>
-            {
-                if (e.PropertyName == nameof(PipelineExecutionViewModel.IsRunning))
-                {
-                    editor.NotifyPipelineCommandsCanExecuteChanged();
+                    SubscribeLogging(cnl.Editor.ValidationErrors, () => logger);
+                    SubscribeLogging(cnl.PipelineExecution.Errors, () => logger);
                 }
             };
 
-            // Guard 5 (ui-routing-navigation.md §4): leaving Settings with unsaved
-            // changes shows the Stay/Discard confirmation; Discard reverts fields.
-            navigation.SettingsLeaveGuard = async () =>
-            {
-                if (!settings.IsDirty)
-                {
-                    return true;
-                }
-
-                var discard = await modal.ShowUnsavedChangesConfirmationAsync();
-                if (discard)
-                {
-                    settings.RevertToLastSavedCommand.Execute(null);
-                }
-
-                return discard;
-            };
-
-            navigation.NavigationBlocked += reason => _ = modal.ShowBlockedNavigationAsync(reason);
-
-            // ui-viewmodels.md §10: leaving Execution Page clears the global
-            // error banner (only reachable once IsRunning is false, so this
-            // never clears an error mid-execution).
-            var wasOnExecutionPage = navigation.CurrentPage == PageType.Execution;
-            navigation.PropertyChanged += (_, e) =>
-            {
-                if (e.PropertyName != nameof(NavigationViewModel.CurrentPage))
-                {
-                    return;
-                }
-
-                if (wasOnExecutionPage && navigation.CurrentPage != PageType.Execution)
-                {
-                    pipelineExecution.ClearErrors();
-                }
-
-                wasOnExecutionPage = navigation.CurrentPage == PageType.Execution;
-            };
-
-            settings.NavigateBackRequested = async () =>
-            {
-                navigation.IsFirstRunSetupRequired = false;
-                await navigation.NavigateBackFromSettingsAsync();
-            };
-            settings.CancelRequested = async () =>
-            {
-                var canLeave = await navigation.SettingsLeaveGuard();
-                if (canLeave)
-                {
-                    await navigation.NavigateBackFromSettingsAsync();
-                }
-            };
-            settings.RelaunchFailed += message => _ = modal.ShowFatalErrorAsync(message);
+            settings.ConfirmDiscardChangesAsync = () => modal.ShowUnsavedChangesConfirmationAsync();
+            settings.CloseRequested = () => workspace.CloseSettingsCommand.Execute(null);
             settings.RelaunchSucceeded += port =>
             {
                 pipelineService.SetPort(port);
                 _ = eventStream.ConnectAsync(port);
 
-                // ui-viewmodels.md §7: a successful Save redirects logging to the
+                // ui-viewmodels.md §9: a successful Save redirects logging to the
                 // new LogPath immediately - dispose the old factory (closing its
                 // Serilog file handle) before building the new one.
                 loggerFactory.Dispose();
@@ -205,11 +82,31 @@ public partial class App : Application
                 logger = loggerFactory.CreateLogger("LimelightX");
             };
 
-            var mainWindow = new MainWindow(navigation, fileLoader, editor, pipelineExecution, settings);
+            // Folder/recent-folder persistence (ui-routing-navigation.md §4.1).
+            // WorkspaceViewModel itself has no IConfigService dependency (it
+            // must not depend on services beyond ITabFactory/IFilePickerService/
+            // IModalService/IExecutionLockService) - the composition root
+            // persists on its behalf via FolderOpened.
+            workspace.FolderOpened += path =>
+            {
+                var recentFolders = new List<string> { path };
+                recentFolders.AddRange(initialConfig.RecentFolders.Where(f => !string.Equals(f, path, StringComparison.OrdinalIgnoreCase)));
+                configService.Save(initialConfig with { LastOpenedFolder = path, RecentFolders = recentFolders.Take(5).ToList() });
+            };
+
+            var mainWindow = new MainWindow(workspace, settings);
             mainWindowRef = mainWindow;
             desktop.MainWindow = mainWindow;
 
-            _ = RunStartupSequenceAsync(navigation, credentialService, llxProcessService, eventStream, initialConfig, modal, configFileExisted: loadedConfig is not null);
+            // Restoring the last-opened folder needs no backend and is never
+            // gated by first-run/broken-config status (ui-routing-navigation.md
+            // §9) - it happens independently of RunStartupSequenceAsync below.
+            if (!string.IsNullOrEmpty(initialConfig.LastOpenedFolder) && Directory.Exists(initialConfig.LastOpenedFolder))
+            {
+                workspace.OpenRoot(initialConfig.LastOpenedFolder);
+            }
+
+            _ = RunStartupSequenceAsync(workspace, credentialService, llxProcessService, eventStream, initialConfig, modal, configFileExisted: loadedConfig is not null);
 
             desktop.ShutdownRequested += (_, _) =>
             {
@@ -224,16 +121,13 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// App startup sequence (proposed - ui-deployment.md §7 says LimelightX.exe
-    /// launches llx.exe serve "when the UI starts" but doesn't sequence it
-    /// relative to config-loading/first-run detection): load config -> read
-    /// API key -> if either missing/invalid, route to Settings and leave
-    /// Home/Editor/Execution unreachable (ui-routing-navigation.md §2) without
-    /// starting llx serve; otherwise start it and route to Home, or fall back
-    /// to the same Settings-bypass with a fatal modal if that start fails.
+    /// App startup sequence: load config -> read API key -> if either
+    /// missing/invalid, auto-open the Settings modal and leave Run/Explain
+    /// disabled on every .llx tab until it's saved (ui-routing-navigation.md
+    /// §9) - the Explorer and Tab Strip need no backend and are never gated.
     /// </summary>
     private static async Task RunStartupSequenceAsync(
-        NavigationViewModel navigation,
+        WorkspaceViewModel workspace,
         ICredentialService credentialService,
         ILlxProcessService llxProcessService,
         IEventStreamService eventStream,
@@ -245,21 +139,19 @@ public partial class App : Application
 
         if (!configFileExisted || string.IsNullOrEmpty(apiKey))
         {
-            navigation.IsFirstRunSetupRequired = true;
-            navigation.CurrentPage = PageType.Settings;
+            workspace.IsSettingsOpen = true;
             return;
         }
 
         var outcome = await llxProcessService.StartAsync(config.Port, apiKey);
         if (!outcome.Success)
         {
-            navigation.IsFirstRunSetupRequired = true;
-            navigation.CurrentPage = PageType.Settings;
+            workspace.IsSettingsOpen = true;
             await modal.ShowFatalErrorAsync(outcome.ErrorMessage ?? "Failed to start llx serve.");
             return;
         }
 
-        // Connect before Home/Editor become reachable, so no event can ever
+        // Connect before Run/Explain become reachable, so no event can ever
         // be dropped for lack of a connected client (api.md §2.3).
         await eventStream.ConnectAsync(config.Port);
     }

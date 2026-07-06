@@ -31,4 +31,21 @@ public sealed class FilePickerService(Func<TopLevel?> topLevelAccessor) : IFileP
 
         return files.Count > 0 ? files[0].Path.LocalPath : null;
     }
+
+    public async Task<string?> PickFolderAsync()
+    {
+        var topLevel = topLevelAccessor();
+        if (topLevel is null)
+        {
+            return null;
+        }
+
+        var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Open Folder",
+            AllowMultiple = false,
+        });
+
+        return folders.Count > 0 ? folders[0].Path.LocalPath : null;
+    }
 }

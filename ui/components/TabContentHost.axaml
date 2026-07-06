@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:components="using:LimelightX.UI.Components"
+             xmlns:dataConv="using:Avalonia.Data.Converters"
+             xmlns:tabs="using:LimelightX.UI.ViewModels.Tabs"
+             xmlns:workspace="using:LimelightX.UI.ViewModels.Workspace"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="LimelightX.UI.Components.TabContentHost"
+             x:DataType="workspace:WorkspaceViewModel">
+
+  <!--
+    Renders the active tab's content (ui-components.md §3.3): CnlTabView for
+    a CnlTabViewModel, PlainTextEditor for a PlainTextTabViewModel, or the
+    welcome/empty state when no tabs are open. Switching tabs never
+    interrupts another tab's in-flight execution - the previously active
+    tab's own PipelineExecutionViewModel keeps streaming in the background
+    regardless of what is displayed here.
+  -->
+  <Grid>
+    <StackPanel IsVisible="{Binding ActiveTab, Converter={x:Static dataConv:ObjectConverters.IsNull}}"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                Spacing="{StaticResource PanelSpacing}">
+      <TextBlock Text="No file open" Classes="cardHeader" HorizontalAlignment="Center" />
+      <Button Classes="primary" Content="Open Folder" Command="{Binding OpenFolderCommand}" HorizontalAlignment="Center" />
+    </StackPanel>
+
+    <ContentControl Content="{Binding ActiveTab}"
+                    IsVisible="{Binding ActiveTab, Converter={x:Static dataConv:ObjectConverters.IsNotNull}}">
+      <ContentControl.DataTemplates>
+        <DataTemplate DataType="tabs:CnlTabViewModel">
+          <components:CnlTabView />
+        </DataTemplate>
+        <DataTemplate DataType="tabs:PlainTextTabViewModel">
+          <components:PlainTextEditor DataContext="{Binding Editor}" />
+        </DataTemplate>
+      </ContentControl.DataTemplates>
+    </ContentControl>
+  </Grid>
+
+</UserControl>
