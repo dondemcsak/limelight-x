@@ -1,14 +1,16 @@
 namespace LimelightX.UI.Services;
 
 /// <summary>
-/// Thin typed client over /src/api (ui-viewmodels.md §7.1). No caching, no
-/// retries, no UI logic - deterministic request/response handling only.
+/// Thin typed client over /src/api's POST /run|/explain|/trace
+/// (ui-viewmodels.md §5). Each call only returns the immediate ack or an
+/// ack-phase failure - actual pipeline results arrive later as events over
+/// IEventStreamService. No caching, no retries.
 /// </summary>
 public interface IPipelineService
 {
-    Task<ExplainResult> ExplainAsync(string source);
+    Task<PipelineStartResult> ExplainAsync(string source);
 
-    Task<RunResult> RunAsync(string source);
+    Task<PipelineStartResult> RunAsync(string source);
 
-    Task<TraceResult> TraceAsync(string source);
+    Task<PipelineStartResult> TraceAsync(string source);
 }

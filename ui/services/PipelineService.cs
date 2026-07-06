@@ -11,7 +11,11 @@ namespace LimelightX.UI.Services;
 /// no DI container is on the approved dependency list (CLAUDE.md §3.5), so
 /// this is constructed once in the composition root (App.axaml.cs) and its
 /// port is repointed in place via SetPort when SettingsViewModel relaunches
-/// llx serve on a new port (Phase 6), rather than replacing the instance.
+/// llx serve on a new port, rather than replacing the instance.
+///
+/// Each call only returns the immediate ack (or an ack-phase failure) - the
+/// actual pipeline result streams later over IEventStreamService, filtered
+/// by the returned CorrelationId.
 /// </summary>
 public sealed class PipelineService : IPipelineService, IDisposable
 {
@@ -29,25 +33,13 @@ public sealed class PipelineService : IPipelineService, IDisposable
         _httpClient.BaseAddress = new Uri($"http://127.0.0.1:{port}");
     }
 
-    public async Task<ExplainResult> ExplainAsync(string source)
-    {
-        var (success, data, errors) = await PostAsync<ExplainData>("/explain", source).ConfigureAwait(false);
-        return new ExplainResult { Success = success, Data = data, Errors = errors };
-    }
+    public Task<PipelineStartResult> ExplainAsync(string source) => PostAsync("/explain", source);
 
-    public async Task<RunResult> RunAsync(string source)
-    {
-        var (success, data, errors) = await PostAsync<RunData>("/run", source).ConfigureAwait(false);
-        return new RunResult { Success = success, Data = data, Errors = errors };
-    }
+    public Task<PipelineStartResult> RunAsync(string source) => PostAsync("/run", source);
 
-    public async Task<TraceResult> TraceAsync(string source)
-    {
-        var (success, data, errors) = await PostAsync<TraceData>("/trace", source).ConfigureAwait(false);
-        return new TraceResult { Success = success, Data = data, Errors = errors };
-    }
+    public Task<PipelineStartResult> TraceAsync(string source) => PostAsync("/trace", source);
 
-    private async Task<(bool Success, TData? Data, IReadOnlyList<UiError> Errors)> PostAsync<TData>(string endpoint, string source)
+    private async Task<PipelineStartResult> PostAsync(string endpoint, string source)
     {
         HttpResponseMessage response;
         try
@@ -60,41 +52,70 @@ public sealed class PipelineService : IPipelineService, IDisposable
         {
             // The server never responded at all (not running, wrong port, etc.) -
             // there is no wire envelope to parse, so this is synthesized entirely
-            // client-side. ERR_TRANSPORT is not in api.md §10's table because the
-            // server never had a chance to classify the failure.
-            return (false, default, [TransportError($"Could not reach the Limelight-X server: {ex.Message}")]);
+            // client-side as a Transport error (ui-error-handling.md §4), not an
+            // ack-phase api.md §10 error, since the server never saw the request.
+            return new PipelineStartResult
+            {
+                Accepted = false,
+                Errors = [TransportError($"Could not reach the Limelight-X server: {ex.Message}")],
+            };
         }
 
         var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
-        Envelope<TData>? envelope;
+        if (response.IsSuccessStatusCode)
+        {
+            AckResponse? ack;
+            try
+            {
+                ack = JsonSerializer.Deserialize<AckResponse>(body, PipelineJsonOptions.Default);
+            }
+            catch (JsonException)
+            {
+                ack = null;
+            }
+
+            if (ack is { Accepted: true })
+            {
+                return new PipelineStartResult { Accepted = true, CorrelationId = ack.CorrelationId };
+            }
+
+            return new PipelineStartResult
+            {
+                Accepted = false,
+                Errors = [TransportError($"Malformed acknowledgment from server (HTTP {(int)response.StatusCode}).")],
+            };
+        }
+
+        // Ack-phase failure (api.md §10): a plain error envelope, no correlation_id.
+        Envelope<object>? envelope;
         try
         {
-            envelope = JsonSerializer.Deserialize<Envelope<TData>>(body, PipelineJsonOptions.Default);
+            envelope = JsonSerializer.Deserialize<Envelope<object>>(body, PipelineJsonOptions.Default);
         }
         catch (JsonException)
         {
             envelope = null;
         }
 
-        // Per api.md §10, the envelope shape is identical regardless of HTTP
-        // status - even malformed-request 400s carry a standard envelope. A
-        // null envelope here means the response body itself wasn't valid JSON
-        // matching that shape at all, which the spec does not anticipate.
         if (envelope is null)
         {
-            return (false, default, [TransportError($"Malformed response from server (HTTP {(int)response.StatusCode}).")]);
+            return new PipelineStartResult
+            {
+                Accepted = false,
+                Errors = [TransportError($"Malformed response from server (HTTP {(int)response.StatusCode}).")],
+            };
         }
 
-        return (envelope.Success, envelope.Data, envelope.Errors);
+        return new PipelineStartResult { Accepted = false, Errors = envelope.Errors };
     }
 
-    private static ApiError TransportError(string message) => new()
+    private static TransportError TransportError(string message) => new()
     {
         Code = "ERR_TRANSPORT",
         Message = message,
         Severity = ErrorSeverity.Fatal,
-        Category = ErrorCategory.Api,
+        Category = ErrorCategory.Transport,
     };
 
     public void Dispose() => _httpClient.Dispose();

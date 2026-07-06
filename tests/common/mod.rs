@@ -7,11 +7,15 @@
 //! per-binary warnings.
 #![allow(dead_code)]
 
+mod ws_client;
+
 use std::sync::Arc;
 
 use limelight_x::api;
 use limelight_x::model::mock::MockModelAdapter;
 use limelight_x::model::ModelAdapter;
+
+pub use ws_client::TestWsClient;
 
 /// Starts `api::serve_on` on an OS-assigned ephemeral port in a background
 /// task, using a mock model adapter that always returns `mock_response`.
@@ -98,6 +102,23 @@ pub async fn post_raw(base_url: &str, path: &str, body: &str) -> (u16, serde_jso
     tokio::task::spawn_blocking(move || post_raw_blocking(&base_url, &path, &body))
         .await
         .expect("blocking task panicked")
+}
+
+/// Connects a WebSocket client to `/events` *before* POSTing, so no event
+/// can be dropped for lack of a connected client, then POSTs `{path}` with
+/// `{ "source": source }` and asserts the ack shape. Returns the ack's
+/// `correlation_id` alongside the connected client — callers read exactly as
+/// many events as their scenario expects via `ws.recv_json()`.
+pub async fn start_and_connect(base_url: &str, path: &str, source: &str) -> (String, TestWsClient) {
+    let ws = TestWsClient::connect(base_url).await;
+    let (status, ack) = post_json(base_url, path, serde_json::json!({ "source": source })).await;
+    assert_eq!(status, 200, "expected an ack response, got: {ack}");
+    assert_eq!(ack["accepted"], true);
+    let correlation_id = ack["correlation_id"]
+        .as_str()
+        .expect("ack must include a correlation_id")
+        .to_string();
+    (correlation_id, ws)
 }
 
 /// Writes `content` to a fresh temp file and returns its absolute path as a

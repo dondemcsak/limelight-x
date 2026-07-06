@@ -2,15 +2,18 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LimelightX.UI.Services;
+using LimelightX.UI.Services.Dto;
+using LimelightX.UI.ViewModels.Editor;
 using LimelightX.UI.ViewModels.Errors;
 
 namespace LimelightX.UI.ViewModels;
 
 /// <summary>
-/// Primary ViewModel for CNL editing (ui-viewmodels.md §4.1). Live validation
-/// calls PipelineService.ExplainAsync on a debounce timer; Run/Explain/Trace
-/// are stubbed here and get their real implementation in Phase 5
-/// (PipelineExecutionViewModel navigates to ExecutionPage on success).
+/// Primary ViewModel for CNL editing (ui-viewmodels.md §5). Live validation
+/// calls PipelineService.ExplainAsync on a debounce timer and subscribes to
+/// its own (independent) slice of the shared event stream, filtered by its
+/// own CorrelationId - it never touches PipelineExecutionViewModel's state
+/// or navigates to the Execution Page, per ui-viewmodels.md §5 Live Validation.
 /// Completion/quick-fix/hover (CompletionItems, QuickFixes, HoverInfo,
 /// SelectCompletionItemCommand, ApplyQuickFixCommand) are stubbed pending
 /// Phase 4b's grammar-driven completion engine - a materially separate,
@@ -27,10 +30,12 @@ public partial class EditorViewModel : ObservableObject
 
     private readonly IPipelineService _pipelineService;
     private CancellationTokenSource? _validationDebounceCts;
+    private string? _validationCorrelationId;
 
-    public EditorViewModel(IPipelineService pipelineService)
+    public EditorViewModel(IPipelineService pipelineService, IEventStreamService eventStream)
     {
         _pipelineService = pipelineService;
+        eventStream.EventReceived += OnValidationEventReceived;
         ValidationErrors.CollectionChanged += (_, _) => NotifyPipelineCommandsCanExecuteChanged();
     }
 
@@ -98,11 +103,11 @@ public partial class EditorViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Set by the composition root once PipelineExecutionViewModel exists
-    /// (Phase 5): calls the corresponding PipelineExecutionViewModel method
-    /// with Text and navigates to ExecutionPage on a non-Blocked outcome.
-    /// Plain Func delegates (not events) since the caller must await the
-    /// full call+navigate sequence, matching NavigationViewModel's existing
+    /// Set by the composition root once PipelineExecutionViewModel exists:
+    /// calls the corresponding PipelineExecutionViewModel method with Text
+    /// and navigates to ExecutionPage on a non-Blocked outcome. Plain Func
+    /// delegates (not events) since the caller must await the full
+    /// call+navigate sequence, matching NavigationViewModel's existing
     /// guard-delegate pattern.
     /// </summary>
     public Func<string, Task>? RunRequested { get; set; }
@@ -110,6 +115,13 @@ public partial class EditorViewModel : ObservableObject
     public Func<string, Task>? ExplainRequested { get; set; }
 
     public Func<string, Task>? TraceRequested { get; set; }
+
+    /// <summary>
+    /// Set by the composition root to PipelineExecutionViewModel.IsRunning:
+    /// the single canonical execution-state flag (ui-viewmodels.md §5) that
+    /// gates all three commands - EditorViewModel keeps no copy of its own.
+    /// </summary>
+    public Func<bool> IsPipelineRunning { get; set; } = () => false;
 
     [RelayCommand(CanExecute = nameof(CanExecutePipelineCommand))]
     private Task RunAsync() => RunRequested?.Invoke(Text) ?? Task.CompletedTask;
@@ -120,10 +132,11 @@ public partial class EditorViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanExecutePipelineCommand))]
     private Task TraceAsync() => TraceRequested?.Invoke(Text) ?? Task.CompletedTask;
 
-    /// <summary>Guard 2 (ui-routing-navigation.md §4): validation errors block Run/Explain/Trace.</summary>
-    private bool CanExecutePipelineCommand() => ValidationErrors.Count == 0;
+    /// <summary>Guard 2 (ui-routing-navigation.md §4): validation errors or an in-flight execution block Run/Explain/Trace.</summary>
+    private bool CanExecutePipelineCommand() => ValidationErrors.Count == 0 && !IsPipelineRunning();
 
-    private void NotifyPipelineCommandsCanExecuteChanged()
+    /// <summary>Called by the composition root when PipelineExecutionViewModel.IsRunning changes.</summary>
+    public void NotifyPipelineCommandsCanExecuteChanged()
     {
         RunCommand.NotifyCanExecuteChanged();
         ExplainCommand.NotifyCanExecuteChanged();
@@ -133,6 +146,7 @@ public partial class EditorViewModel : ObservableObject
     private void QueueValidation()
     {
         _validationDebounceCts?.Cancel();
+        _validationCorrelationId = null;
 
         if (string.IsNullOrWhiteSpace(Text))
         {
@@ -163,40 +177,87 @@ public partial class EditorViewModel : ObservableObject
         }
 
         IsValidating = true;
-        try
-        {
-            var result = await _pipelineService.ExplainAsync(Text);
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-
-            ValidationErrors.Clear();
-            Errors.Clear();
-            foreach (var error in result.Errors)
-            {
-                var validationError = new ValidationError
-                {
-                    Code = error.Code,
-                    Message = error.Message,
-                    Severity = error.Severity,
-                    Category = error.Category,
-                    Location = error.Location,
-                };
-
-                ValidationErrors.Add(validationError);
-
-                // ui-error-handling.md §9: validation errors also show a global
-                // banner when severity is error-or-higher (info/warning stay inline-only).
-                if (error.Severity is ErrorSeverity.Error or ErrorSeverity.Fatal)
-                {
-                    Errors.Add(validationError);
-                }
-            }
-        }
-        finally
+        var result = await _pipelineService.ExplainAsync(Text);
+        if (cancellationToken.IsCancellationRequested)
         {
             IsValidating = false;
+            return;
+        }
+
+        ValidationErrors.Clear();
+        Errors.Clear();
+
+        if (!result.Accepted)
+        {
+            ApplyValidationErrors(result.Errors);
+            IsValidating = false;
+            return;
+        }
+
+        // Stage/failure data arrives via OnValidationEventReceived, filtered
+        // by this correlation_id; IsValidating clears there.
+        _validationCorrelationId = result.CorrelationId;
+    }
+
+    private void OnValidationEventReceived(WsEvent wsEvent)
+    {
+        if (wsEvent.CorrelationId != _validationCorrelationId)
+        {
+            return;
+        }
+
+        switch (wsEvent.EventType)
+        {
+            case "pipeline_started":
+                ValidationErrors.Clear();
+                Errors.Clear();
+                break;
+
+            case "normalized_ast_generated":
+                // /explain's terminal event on success - nothing further to apply.
+                IsValidating = false;
+                _validationCorrelationId = null;
+                break;
+
+            case "pipeline_failed":
+                ApplyValidationErrors(wsEvent.Errors);
+                IsValidating = false;
+                _validationCorrelationId = null;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// ui-error-handling.md §6.2: parser/grammar/hole are all ERR_CNL_PARSE
+    /// at the wire level - classification into a display kind happens purely
+    /// client-side (CnlErrorClassifier), from Text and each error's Location.
+    /// </summary>
+    private void ApplyValidationErrors(IReadOnlyList<UiError> errors)
+    {
+        foreach (var error in errors)
+        {
+            var kind = error.Code == "ERR_CNL_PARSE"
+                ? CnlErrorClassifier.Classify(Text, error.Location, error.Message)
+                : CnlErrorKind.Parser;
+
+            var validationError = new ValidationError
+            {
+                Code = error.Code,
+                Message = error.Message,
+                Severity = error.Severity,
+                Category = error.Category,
+                Location = error.Location,
+                Kind = kind,
+            };
+
+            ValidationErrors.Add(validationError);
+
+            // ui-error-handling.md §9: validation errors also show a global
+            // banner when severity is error-or-higher (info/warning stay inline-only).
+            if (error.Severity is ErrorSeverity.Error or ErrorSeverity.Fatal)
+            {
+                Errors.Add(validationError);
+            }
         }
     }
 }

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using LimelightX.UI.Services;
 using LimelightX.UI.Services.Dto;
@@ -8,28 +9,41 @@ using LimelightX.UI.ViewModels.Inspectors;
 namespace LimelightX.UI.ViewModels;
 
 /// <summary>
+/// Which endpoint the active correlation_id belongs to - needed because
+/// /explain's event sequence ends at normalized_ast_generated (no
+/// final_result_ready, since it never invokes the evaluator), while /run and
+/// /trace both end at final_result_ready (api.md §2.1).
+/// </summary>
+internal enum PipelineJobKind
+{
+    Run,
+    Explain,
+    Trace,
+}
+
+/// <summary>
 /// Coordinates pipeline execution and inspector ViewModels (ui-viewmodels.md
-/// §5.1). Triggered by the composition root in response to EditorViewModel's
+/// §6). Triggered by the composition root in response to EditorViewModel's
 /// Run/Explain/TraceRequested events, not bound to directly from any View -
 /// EditorPage's buttons bind to EditorViewModel's own commands.
 ///
-/// Note on the "partial failure" branches below (DistributeErrorsToInspectors
-/// etc.): confirmed via direct curl against the real server that today's
-/// backend always omits `data` entirely on any pipeline failure (parse,
-/// normalize, and evaluator-fatal all tested) - never success:false with
-/// partial data alongside it. Those branches are therefore currently
-/// unreachable in practice, but are kept as written because they match
-/// bdd-ui-navigation.md's stated intent (a partial pipeline failure should
-/// still navigate and show inline/banner errors with whatever data exists)
-/// and cost nothing to leave in place for if/when the backend changes.
+/// Unlike the old single-response model, Run/Explain/TracePipelineAsync only
+/// await the immediate ack; actual stage/result data arrives via
+/// OnEventReceived, subscribed once to the shared IEventStreamService and
+/// filtered by CorrelationId (ui-data-contracts.md §10).
 /// </summary>
 public partial class PipelineExecutionViewModel : ObservableObject
 {
     private readonly IPipelineService _pipelineService;
 
-    public PipelineExecutionViewModel(IPipelineService pipelineService)
+    private string? _activeCorrelationId;
+    private PipelineJobKind _activeKind;
+
+    public PipelineExecutionViewModel(IPipelineService pipelineService, IEventStreamService eventStream)
     {
         _pipelineService = pipelineService;
+        eventStream.EventReceived += OnEventReceived;
+        eventStream.TransportFaulted += OnTransportFaulted;
     }
 
     public RawAstViewModel RawAstViewModel { get; } = new();
@@ -44,71 +58,79 @@ public partial class PipelineExecutionViewModel : ObservableObject
 
     public FinalResultViewModel FinalResultViewModel { get; } = new();
 
+    /// <summary>
+    /// The single canonical execution-state flag (ui-viewmodels.md §6) - true
+    /// from the ack until final_result_ready/pipeline_failed (or, for
+    /// /explain, until normalized_ast_generated). Every other ViewModel binds
+    /// to this directly rather than keeping its own copy.
+    /// </summary>
     [ObservableProperty]
     private bool _isRunning;
 
     [ObservableProperty]
-    private bool _isTracing;
-
-    [ObservableProperty]
-    private bool _isExplaining;
+    private bool _hasErrors;
 
     public ObservableCollection<UiError> Errors { get; } = [];
 
     /// <summary>
     /// ui-routing-navigation.md §9: sidebar cannot navigate to Execution
-    /// unless a pipeline has produced a result. Set whenever any call
-    /// returns inspector data (even a partial pipeline failure still counts,
-    /// since ExecutionPage has content to show either way).
+    /// unless a pipeline has produced a result. Set as soon as an execution
+    /// is accepted (even one that later fails still has inspector data to show).
     /// </summary>
     public bool HasResult { get; private set; }
 
-    public async Task<PipelineCallOutcome> RunPipelineAsync(string source)
+    /// <summary>
+    /// Clears the global error banner - called by the composition root when
+    /// the user navigates away from the Execution Page (only reachable once
+    /// IsRunning is false), per ui-viewmodels.md §10 / ui-error-handling.md §8.
+    /// </summary>
+    public void ClearErrors()
     {
+        Errors.Clear();
+        HasErrors = false;
+    }
+
+    public Task<PipelineCallOutcome> RunPipelineAsync(string source) =>
+        StartAsync(PipelineJobKind.Run, _pipelineService.RunAsync, source);
+
+    public Task<PipelineCallOutcome> ExplainPipelineAsync(string source) =>
+        StartAsync(PipelineJobKind.Explain, _pipelineService.ExplainAsync, source);
+
+    public Task<PipelineCallOutcome> TracePipelineAsync(string source) =>
+        StartAsync(PipelineJobKind.Trace, _pipelineService.TraceAsync, source);
+
+    private async Task<PipelineCallOutcome> StartAsync(
+        PipelineJobKind kind,
+        Func<string, Task<PipelineStartResult>> start,
+        string source)
+    {
+        // Must resume on the UI thread: Errors/inspector state below are bound
+        // to Avalonia controls (ErrorBanner etc.), which throw on cross-thread
+        // access - ConfigureAwait(false) here previously dropped the captured
+        // UI SynchronizationContext and crashed the app on every Run/Explain/Trace.
+        var result = await start(source);
+
+        Errors.Clear();
+        if (!result.Accepted)
+        {
+            foreach (var error in result.Errors)
+            {
+                Errors.Add(error);
+            }
+
+            return PipelineCallOutcome.Blocked;
+        }
+
+        ResetInspectors();
+        _activeKind = kind;
+        _activeCorrelationId = result.CorrelationId;
         IsRunning = true;
-        Errors.Clear();
-        try
-        {
-            var result = await _pipelineService.RunAsync(source);
-            return ApplyRunResult(result);
-        }
-        finally
-        {
-            IsRunning = false;
-        }
+        HasErrors = false;
+        HasResult = true;
+        return PipelineCallOutcome.NavigateToExecution;
     }
 
-    public async Task<PipelineCallOutcome> ExplainPipelineAsync(string source)
-    {
-        IsExplaining = true;
-        Errors.Clear();
-        try
-        {
-            var result = await _pipelineService.ExplainAsync(source);
-            return ApplyExplainResult(result);
-        }
-        finally
-        {
-            IsExplaining = false;
-        }
-    }
-
-    public async Task<PipelineCallOutcome> TracePipelineAsync(string source)
-    {
-        IsTracing = true;
-        Errors.Clear();
-        try
-        {
-            var result = await _pipelineService.TraceAsync(source);
-            return ApplyTraceResult(result);
-        }
-        finally
-        {
-            IsTracing = false;
-        }
-    }
-
-    private PipelineCallOutcome ApplyRunResult(RunResult result)
+    private void ResetInspectors()
     {
         RawAstViewModel.Reset();
         NormalizedAstViewModel.Reset();
@@ -116,118 +138,92 @@ public partial class PipelineExecutionViewModel : ObservableObject
         PromptViewModel.Reset();
         ModelOutputViewModel.Reset();
         FinalResultViewModel.Reset();
-
-        Errors.Clear();
-        foreach (var error in result.Errors)
-        {
-            Errors.Add(error);
-        }
-
-        if (result.Data is null)
-        {
-            return PipelineCallOutcome.Blocked;
-        }
-
-        FinalResultViewModel.ResultText = result.Data.FinalResult.Text;
-        FinalResultViewModel.RawText = result.Data.FinalResult.Text;
-        FinalResultViewModel.ContentType = MapContentType(result.Data.FinalResult.ContentType);
-
-        if (!result.Success)
-        {
-            AddErrorsTo(FinalResultViewModel.Errors, result.Errors);
-        }
-
-        HasResult = true;
-        return PipelineCallOutcome.NavigateToExecution;
     }
 
-    private PipelineCallOutcome ApplyExplainResult(ExplainResult result)
+    private void OnEventReceived(WsEvent wsEvent)
     {
-        RawAstViewModel.Reset();
-        NormalizedAstViewModel.Reset();
-
-        Errors.Clear();
-        foreach (var error in result.Errors)
+        if (wsEvent.CorrelationId != _activeCorrelationId)
         {
-            Errors.Add(error);
+            // Stale event from a superseded execution, or an event meant for
+            // EditorViewModel's independent live-validation stream - ignore
+            // (ui-data-contracts.md §10).
+            return;
         }
 
-        if (result.Data is null)
+        switch (wsEvent.EventType)
         {
-            return PipelineCallOutcome.Blocked;
+            case "pipeline_started":
+                ResetInspectors();
+                HasErrors = false;
+                Errors.Clear();
+                break;
+
+            case "raw_ast_generated":
+                ApplyRawAst(Deserialize<RawAstEventData>(wsEvent).RawAst);
+                break;
+
+            case "normalized_ast_generated":
+                ApplyNormalizedAst(Deserialize<NormalizedAstEventData>(wsEvent).NormalizedAst);
+                if (_activeKind == PipelineJobKind.Explain)
+                {
+                    // /explain never evaluates - this is its terminal event.
+                    IsRunning = false;
+                }
+
+                break;
+
+            case "ir_generated":
+                ApplyIr(Deserialize<IrEventData>(wsEvent).Ir);
+                break;
+
+            case "prompts_generated":
+                foreach (var prompt in Deserialize<PromptsEventData>(wsEvent).Prompts)
+                {
+                    PromptViewModel.Prompts.Add(prompt);
+                }
+
+                break;
+
+            case "model_outputs_generated":
+                foreach (var output in Deserialize<ModelOutputsEventData>(wsEvent).ModelOutputs)
+                {
+                    ModelOutputViewModel.Outputs.Add(output);
+                }
+
+                break;
+
+            case "final_result_ready":
+                ApplyFinalResult(Deserialize<RunData>(wsEvent).FinalResult);
+                IsRunning = false;
+                break;
+
+            case "pipeline_failed":
+                HasErrors = true;
+                foreach (var error in wsEvent.Errors)
+                {
+                    Errors.Add(error);
+                }
+
+                DistributeErrorsToInspectors(wsEvent.Errors);
+                IsRunning = false;
+                break;
         }
-
-        ApplyRawAst(result.Data.RawAst);
-        ApplyNormalizedAst(result.Data.NormalizedAst);
-
-        if (!result.Success)
-        {
-            DistributeErrorsToInspectors(result.Errors);
-        }
-
-        HasResult = true;
-        return PipelineCallOutcome.NavigateToExecution;
     }
 
-    private PipelineCallOutcome ApplyTraceResult(TraceResult result)
+    private void OnTransportFaulted(UiError error)
     {
-        RawAstViewModel.Reset();
-        NormalizedAstViewModel.Reset();
-        IrViewModel.Reset();
-        PromptViewModel.Reset();
-        ModelOutputViewModel.Reset();
-        FinalResultViewModel.Reset();
-
-        Errors.Clear();
-        foreach (var error in result.Errors)
+        if (!IsRunning)
         {
-            Errors.Add(error);
+            return;
         }
 
-        if (result.Data is null)
-        {
-            return PipelineCallOutcome.Blocked;
-        }
-
-        ApplyRawAst(result.Data.RawAst);
-        ApplyNormalizedAst(result.Data.NormalizedAst);
-
-        IrViewModel.RawText = result.Data.Ir.RawText;
-        IrViewModel.Metadata = result.Data.Ir.Metadata;
-        foreach (var operation in result.Data.Ir.Operations)
-        {
-            IrViewModel.Operations.Add(operation);
-        }
-
-        foreach (var prompt in result.Data.Prompts)
-        {
-            PromptViewModel.Prompts.Add(prompt);
-        }
-
-        foreach (var output in result.Data.ModelOutputs)
-        {
-            ModelOutputViewModel.Outputs.Add(output);
-        }
-
-        // /trace has no final_result field (confirmed against tests/api_trace.rs) -
-        // derive it from the last model output, per the documented spec
-        // discrepancy (spec/api.md §2.1 implies one, the wire contract doesn't).
-        var lastOutput = result.Data.ModelOutputs.Count > 0 ? result.Data.ModelOutputs[^1] : null;
-        if (lastOutput is not null)
-        {
-            FinalResultViewModel.ResultText = lastOutput.RawText;
-            FinalResultViewModel.RawText = lastOutput.RawText;
-            FinalResultViewModel.ContentType = MapContentType(lastOutput.ContentType);
-        }
-
-        if (!result.Success)
-        {
-            DistributeErrorsToInspectors(result.Errors);
-        }
-
-        HasResult = true;
-        return PipelineCallOutcome.NavigateToExecution;
+        Errors.Add(error);
+        HasErrors = true;
+        IsRunning = false;
     }
+
+    private static TEventData Deserialize<TEventData>(WsEvent wsEvent) =>
+        wsEvent.Data!.Value.Deserialize<TEventData>(PipelineJsonOptions.Default)!;
 
     private void ApplyRawAst(RawAstResponse rawAst)
     {
@@ -241,6 +237,23 @@ public partial class PipelineExecutionViewModel : ObservableObject
         NormalizedAstViewModel.Tree = normalizedAst.Root;
         NormalizedAstViewModel.RawText = normalizedAst.RawText;
         NormalizedAstViewModel.Metadata = normalizedAst.Metadata;
+    }
+
+    private void ApplyIr(IrResponse ir)
+    {
+        IrViewModel.RawText = ir.RawText;
+        IrViewModel.Metadata = ir.Metadata;
+        foreach (var operation in ir.Operations)
+        {
+            IrViewModel.Operations.Add(operation);
+        }
+    }
+
+    private void ApplyFinalResult(FinalResult finalResult)
+    {
+        FinalResultViewModel.ResultText = finalResult.Text;
+        FinalResultViewModel.RawText = finalResult.Text;
+        FinalResultViewModel.ContentType = MapContentType(finalResult.ContentType);
     }
 
     /// <summary>
@@ -262,14 +275,6 @@ public partial class PipelineExecutionViewModel : ObservableObject
             };
 
             target?.Add(error);
-        }
-    }
-
-    private static void AddErrorsTo(ObservableCollection<UiError> target, IReadOnlyList<UiError> errors)
-    {
-        foreach (var error in errors)
-        {
-            target.Add(error);
         }
     }
 

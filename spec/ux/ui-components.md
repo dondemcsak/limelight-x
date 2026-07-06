@@ -1,632 +1,357 @@
-# UI Components
+# UI Components (Streaming Edition)
 
 ## Purpose
-This document defines all UI components used in the Limelight‑X Avalonia workflow dashboard.  
-It specifies the structure, responsibilities, inputs, outputs, and deterministic behavior of each component.  
+This document defines all UI components used by the Limelight‑X UI.  
+It specifies their responsibilities, structure, bindings, and deterministic behavior under the **event‑streaming API**.
+
 This specification is authoritative.  
-All implementation must follow this component catalog exactly.
+All implementation must follow this component model exactly.
 
-The UI is designed for analysts and citizen developers.  
-Components must be simple, deterministic, and aligned with the Limelight‑X pipeline and HTTP API.
-
----
-
-# 1. Overview
-
-Limelight‑X UI components fall into four categories:
-
-1. **Structural Components**  
-   Pages, navigation, and layout primitives.
-
-2. **Editor Components**  
-   CNL editor, syntax highlighter, validation overlay, auto‑completion, hover tooltips, quick‑fix suggestions.
-
-3. **Inspector Components**  
-   Collapsible panels with **custom rendering logic**:
-   - Raw AST (modern tree view)
-   - Normalized AST (modern tree view)
-   - IR (operation cards)
-   - Prompts (prompt blocks)
-   - Model Outputs (syntax‑highlighted Markdown)
-   - Final Result (syntax‑highlighted Markdown)
-
-4. **Utility Components**  
-   Buttons, banners, loading indicators, error surfaces.
-
-All components must be:
-
-- deterministic  
-- MVVM‑driven  
-- stateless except for ephemeral UI state (collapse/expand)  
-- free of business logic  
-- fully documented in this specification  
+The UI is MVVM‑pure:  
+- Views contain no logic.  
+- Components are declarative.  
+- All behavior is driven by ViewModels and streaming events.
 
 ---
 
-# 2. Structural Components
+# 1. Architectural Principles
 
-## 2.1 `HomePage`
-### Purpose
-Entry point for the application.
+1. **Deterministic Rendering**  
+   - Components must render deterministically based on ViewModel state.  
+   - No hidden transitions or nondeterministic animations.
+
+2. **MVVM Purity**  
+   - Components contain no logic.  
+   - All state comes from ViewModels.  
+   - All commands come from ViewModels.
+
+3. **Streaming‑Aware Components**  
+   - Components update incrementally as events arrive.  
+   - Inspectors appear only when their corresponding event arrives.
+
+4. **Strict Single Execution**  
+   - Execution components disable during pipeline execution.  
+   - No parallel execution UI states.
+
+---
+
+# 2. Component Overview
+
+The UI defines the following components:
+
+- `NavigationBar`
+- `Sidebar`
+- `Editor`
+- `ExecutionTimeline`
+- `InspectorPanel`
+- `RawAstPanel`
+- `NormalizedAstPanel`
+- `IrPanel`
+- `PromptPanel`
+- `ModelOutputPanel`
+- `FinalResultPanel`
+- `ErrorBanner`
+- `SettingsForm`
+
+Each component is declarative and state‑derived.
+
+---
+
+# 3. Navigation Components
+
+## 3.1 NavigationBar
 
 ### Responsibilities
-- Display recent `.llx` files  
-- Provide “Open File” action  
-- Route to `EditorPage`
+- Provides top‑level navigation.
+- Shows Home, Editor, Execution, Settings.
 
-### Inputs
-- `RecentFilesViewModel`
+### Bindings
+- `CurrentPage` → highlight active page  
+- `NavigateHomeCommand`  
+- `NavigateEditorCommand`  
+- `NavigateExecutionCommand`  
+- `NavigateSettingsCommand`
 
-### Outputs
-- Navigation events
+### Streaming Rules
+- Navigation buttons disabled during execution (`IsRunning == true`).
 
 ---
 
-## 2.2 `EditorPage`
-### Purpose
-Primary editing surface for CNL programs.
+## 3.2 Sidebar
 
 ### Responsibilities
-- Display CNL editor  
-- Show inline validation errors  
-- Provide Run / Explain / Trace actions  
-- Route to `ExecutionPage`
+- Provides persistent navigation.
+- Mirrors NavigationBar behavior.
 
-### Inputs
-- `EditorViewModel`
+### Bindings
+- Same as NavigationBar.
 
-### Outputs
-- Navigation events  
-- Editor text changes  
-- Validation results
+### Streaming Rules
+- Sidebar navigation disabled during execution.
 
 ---
 
-## 2.3 `ExecutionPage`
-### Purpose
-Displays pipeline results in a vertical timeline.
+# 4. Editor Components
+
+## 4.1 Editor
 
 ### Responsibilities
-- Render inspector components  
-- Display execution status  
-- Surface backend errors  
-- Allow panel collapse/expand
+- Displays CNL text.
+- Shows inline validation errors.
+- Provides Run/Explain/Trace buttons.
 
-### Inputs
-- `PipelineExecutionViewModel`
+### Bindings
+- `SourceText`  
+- `SyntaxErrors`  
+- `RunCommand`  
+- `ExplainCommand`  
+- `TraceCommand`  
+- `PipelineExecutionViewModel.IsRunning` → disable buttons
 
-### Outputs
-- Inspector state changes
+### Streaming Rules
+- Editor remains visible only on Editor Page.  
+- Inline errors come from `/explain`'s streamed event sequence (`pipeline_started` → `raw_ast_generated` → `normalized_ast_generated`), the same as any other execution — see `ui-viewmodels.md` §5 Live Validation.
 
 ---
 
-## 2.4 `NavigationBar`
-### Purpose
-Provides deterministic navigation between pages.
+# 5. Execution Components
+
+## 5.1 ExecutionTimeline
 
 ### Responsibilities
-- Display navigation items (Home, Editor, Execution, Settings)  
-- Reflect current page  
-- Emit navigation commands  
-- Trigger Guard 5's confirmation modal instead of navigating directly when leaving SettingsPage with unsaved changes
+- Displays vertical pipeline timeline.
+- Highlights active stage based on event type.
 
-### Inputs
-- `NavigationViewModel`
+### Bindings
+- `PipelineEvents`  
+- `IsRunning`
 
-### Outputs
-- Navigation events
+### Streaming Rules
+- Timeline updates incrementally as events arrive.  
+- Active stage highlights deterministically.
 
 ---
 
-## 2.5 `SettingsPage`
-### Purpose
-Dedicated page for viewing and editing deployment configuration (`ui-deployment.md` §4.3).
+# 6. Inspector Components
+
+Each inspector is a collapsible panel that appears when its event arrives.
+
+## 6.1 InspectorPanel (Base Component)
 
 ### Responsibilities
-- Render editable fields for backend port, log path, API key, and environment profile  
-- Display inline validation errors  
-- Provide Save / Cancel actions  
-- Show an "Applying settings…" loading state while `llx serve` is relaunched  
-- Route back to the previous page on successful save or confirmed cancel
+- Provides shared structure for all inspectors.
+- Handles collapse/expand behavior.
 
-### Inputs
-- `SettingsViewModel`
+### Bindings
+- `IsCollapsed`  
+- `Title`  
+- `HasErrors`  
+- `ErrorMessage`  
 
-### Outputs
-- Navigation events  
-- Field change events
+### Streaming Rules
+- Inspector appears only when its ViewModel receives data.  
+- Inspector clears on `pipeline_started`.
 
 ---
 
-# 3. Editor Components
-
-## 3.1 `CnlEditor`
-### Purpose
-Text editor for `.llx` files.
+## 6.2 RawAstPanel
 
 ### Responsibilities
-- Render CNL text  
-- Provide syntax highlighting  
-- Provide auto‑formatting  
-- Provide auto‑completion  
-- Provide hover tooltips  
-- Provide quick‑fix suggestions  
-- Emit text changes  
-- Display inline validation errors
+- Displays raw AST nodes.
 
-### Inputs
-- `EditorViewModel.Text`  
-- `EditorViewModel.ValidationErrors`  
-- `EditorViewModel.CompletionItems`  
-- `EditorViewModel.QuickFixes`
+### Bindings
+- `RawAstViewModel.AstNodes`  
+- `IsCollapsed`
 
-### Outputs
-- `TextChanged` events  
-- Formatting commands  
-- Completion selection events  
-- Quick‑fix application events
-
-### Deterministic Behavior
-- Formatting must be deterministic  
-- Highlighting must follow grammar rules  
-- Validation must reflect `/explain` output exactly  
-- Auto‑completion must be deterministic and grammar‑driven  
-- Quick‑fix suggestions must be rule‑based and deterministic
+### Streaming Rules
+- Appears on `raw_ast_generated`.
 
 ---
 
-## 3.2 `SyntaxHighlighter`
-### Purpose
-Tokenizes CNL text and applies styles.
+## 6.3 NormalizedAstPanel
 
 ### Responsibilities
-- Highlight:
-  - keywords  
-  - pronouns  
-  - resources  
-  - expression holes  
-  - quoted strings  
-- Emit token spans
+- Displays normalized AST nodes.
 
-### Inputs
-- Raw CNL text
+### Bindings
+- `NormalizedAstViewModel.NormalizedNodes`  
+- `IsCollapsed`
 
-### Outputs
-- Token spans
-
-### Deterministic Behavior
-- No nondeterministic styling  
-- No heuristic tokenization
+### Streaming Rules
+- Appears on `normalized_ast_generated`.
 
 ---
 
-## 3.3 `ValidationOverlay`
-### Purpose
-Displays inline validation errors.
+## 6.4 IrPanel
 
 ### Responsibilities
-- Render error markers  
-- Display error messages on hover  
-- Align markers with text positions
+- Displays IR operations.
 
-### Inputs
-- `EditorViewModel.ValidationErrors`
-
-### Outputs
-- Hover events
-
----
-
-## 3.4 `CompletionPopup`
-### Purpose
-Displays auto‑completion suggestions.
-
-### Responsibilities
-- Render completion list  
-- Highlight selected item  
-- Emit selection events
-
-### Inputs
-- `EditorViewModel.CompletionItems`
-
-### Outputs
-- Completion selection events
-
----
-
-## 3.5 `QuickFixPopup`
-### Purpose
-Displays quick‑fix suggestions.
-
-### Responsibilities
-- Render fix suggestions  
-- Emit fix application events
-
-### Inputs
-- `EditorViewModel.QuickFixes`
-
-### Outputs
-- Quick‑fix application events
-
----
-
-# 4. Inspector Components
-
-Inspector components appear in a **vertical pipeline timeline** on the `ExecutionPage`.  
-Each inspector is collapsible and deterministic.  
-Each inspector uses **custom rendering logic**.
-
----
-
-## 4.1 `RawAstPanel`
-### Purpose
-Displays the raw AST returned by `/explain` or `/trace`.
-
-### Rendering Style
-- Modern tree view (VS Code style)  
-- Chevron expanders  
-- Indentation guides  
-- Key/value pairs  
-- Syntax coloring  
-- Deterministic ordering
-
-### Responsibilities
-- Render raw AST tree  
-- Support collapse/expand  
-- Display errors if AST is missing or malformed
-
-### Inputs
-- `RawAstViewModel.Tree`  
-- `RawAstViewModel.Error`
-
-### Outputs
-- Collapse/expand state
-
----
-
-## 4.2 `NormalizedAstPanel`
-### Purpose
-Displays the normalized AST.
-
-### Rendering Style
-Same as Raw AST Panel, with normalized AST rules applied.
-
-### Responsibilities
-- Render normalized AST tree  
-- Support collapse/expand  
-- Display errors
-
-### Inputs
-- `NormalizedAstViewModel.Tree`  
-- `NormalizedAstViewModel.Error`
-
-### Outputs
-- Collapse/expand state
-
----
-
-## 4.3 `IrPanel`
-### Purpose
-Displays the IR list.
-
-### Rendering Style
-- Operation cards  
-- Each card shows:
-  - Operation type  
-  - Input `$N` reference  
-  - Prompt (if any)  
-  - Target (if any)  
-- Expandable details section  
-- Syntax‑highlighted fields
-
-### Responsibilities
-- Render IR operation cards  
-- Support collapse/expand  
-- Display errors
-
-### Inputs
+### Bindings
 - `IrViewModel.Operations`  
-- `IrViewModel.Error`
+- `IsCollapsed`
 
-### Outputs
-- Collapse/expand state
+### Streaming Rules
+- Appears on `ir_generated`.
 
 ---
 
-## 4.4 `PromptPanel`
-### Purpose
-Displays constructed prompts (trace mode only).
-
-### Rendering Style
-- Prompt blocks  
-- Syntax‑highlighted Markdown  
-- Operation index labels  
-- Deterministic formatting
+## 6.5 PromptPanel
 
 ### Responsibilities
-- Render prompts in order  
-- Support collapse/expand  
-- Display errors
+- Displays prompts sent to the model.
 
-### Inputs
+### Bindings
 - `PromptViewModel.Prompts`  
-- `PromptViewModel.Error`
+- `IsCollapsed`
 
-### Outputs
-- Collapse/expand state
+### Streaming Rules
+- Appears on `prompts_generated`.
 
 ---
 
-## 4.5 `ModelOutputPanel`
-### Purpose
-Displays model outputs (trace mode only).
-
-### Rendering Style
-- Syntax‑highlighted Markdown  
-- JSON syntax highlighting  
-- Table rendering for pipe‑delimited Markdown  
-- Deterministic formatting
+## 6.6 ModelOutputPanel
 
 ### Responsibilities
-- Render model outputs  
-- Support collapse/expand  
-- Display errors
+- Displays model outputs.
 
-### Inputs
+### Bindings
 - `ModelOutputViewModel.Outputs`  
-- `ModelOutputViewModel.Error`
+- `IsCollapsed`
 
-### Outputs
-- Collapse/expand state
+### Streaming Rules
+- Appears on `model_outputs_generated`.
 
 ---
 
-## 4.6 `FinalResultPanel`
-### Purpose
-Displays the final result of `/run`.
-
-### Rendering Style
-Same as Model Output Panel.
+## 6.7 FinalResultPanel
 
 ### Responsibilities
-- Render final result  
-- Support collapse/expand  
-- Display errors
+- Displays final result text.
 
-### Inputs
-- `PipelineExecutionViewModel.FinalResult`  
-- `PipelineExecutionViewModel.Error`
+### Bindings
+- `FinalResultViewModel.ResultText`  
+- `FinalResultViewModel.ContentType`  
+- `IsCollapsed`
 
-### Outputs
-- Collapse/expand state
+### Streaming Rules
+- Appears on `final_result_ready`.
 
 ---
 
-# 5. Utility Components
+# 7. Error Components
 
-## 5.1 `PrimaryButton`
-### Purpose
-Standardized action button.
+## 7.1 ErrorBanner
 
 ### Responsibilities
-- Execute commands  
-- Display loading state  
-- Display disabled state
+- Displays global errors.
+- Expands to show full error list.
 
-### Inputs
-- Command  
-- Loading flag  
-- Enabled flag
+### Bindings
+- `ErrorBannerViewModel.IsVisible`  
+- `ErrorBannerViewModel.Errors`  
+- `DismissCommand`
 
-### Outputs
-- Click events
+### Streaming Rules
+- Appears on:
+  - `pipeline_failed`
+  - WebSocket disconnect
+  - malformed event
 
 ---
 
-## 5.2 `ErrorBanner`
-### Purpose
-Displays global errors.
+## 7.2 InspectorErrorPanel
 
 ### Responsibilities
-- Render error message  
-- Provide dismiss action  
-- Display severity
+- Displays inspector‑specific errors.
 
-### Inputs
-- Error text  
-- Severity
+### Bindings
+- `InspectorErrorViewModel.Message`  
+- `InspectorErrorViewModel.Severity`  
+- `IsCollapsed`
 
-### Outputs
-- Dismiss events
+### Streaming Rules
+- Appears when inspector data cannot be rendered.
 
 ---
 
-## 5.3 `LoadingIndicator`
-### Purpose
-Displays loading state during backend calls.
+# 8. Settings Components
+
+## 8.1 SettingsForm
 
 ### Responsibilities
-- Render spinner + text  
-- Display optional context
+- Displays backend configuration fields.
+- Validates input.
+- Applies settings.
 
-### Inputs
-- Loading flag  
-- Optional text
+### Bindings
+- `BackendPort`  
+- `ApiKey`  
+- `LogPath`  
+- `EnvironmentProfile`  
+- `IsValid`  
+- `SaveSettingsCommand`
 
-### Outputs
-- None
-
----
-
-## 5.4 `CollapsiblePanel`
-### Purpose
-Reusable component for inspector sections.
-
-### Responsibilities
-- Render header  
-- Toggle collapse/expand  
-- Animate deterministically  
-- Render child content
-
-### Inputs
-- Title  
-- Collapsed flag  
-- Child content
-
-### Outputs
-- Collapse/expand events
+### Streaming Rules
+- Settings Page is inaccessible during execution.
 
 ---
 
-## 5.5 `IconButton`
-### Purpose
-Generic icon-only action button, used for the Settings gear icon and reusable for future icon-triggered actions.
+# 9. Component Determinism Rules
 
-### Responsibilities
-- Render a single Fluent UI icon  
-- Execute a command on click  
-- Display disabled state  
-- Expose an accessible name (e.g. "Open Settings") since the button has no visible text label
+### Allowed Behavior
+- collapse/expand  
+- deterministic rendering  
+- incremental updates  
+- stable ordering  
 
-### Inputs
-- Icon identifier (Fluent UI icon set only, no custom SVGs — see `ui-styling-theming.md` §6)  
-- Command  
-- Accessible name  
-- Enabled flag
-
-### Outputs
-- Click events
+### Forbidden Behavior
+- nondeterministic animations  
+- hidden transitions  
+- buffering or reordering events  
+- implicit state machines  
+- pipeline logic inside components  
 
 ---
 
-## 5.6 `TextField`
-### Purpose
-Standard single-line text input, used by `SettingsPage` (e.g. log path) and available for future forms.
+# 10. Component Testing Requirements
 
-### Responsibilities
-- Render a labeled text input  
-- Display inline validation error state  
-- Emit value-changed events
+Each component must be tested for:
 
-### Inputs
-- Label  
-- Value  
-- Validation error (optional)  
-- Enabled flag
-
-### Outputs
-- `ValueChanged` events
+- deterministic rendering  
+- correct bindings  
+- correct collapse/expand behavior  
+- correct incremental updates  
+- correct error rendering  
+- correct execution lock behavior  
 
 ---
 
-## 5.7 `SecureTextField`
-### Purpose
-Masked text input for secrets, used by `SettingsPage` for `ANTHROPIC_API_KEY`.
-
-### Responsibilities
-- Render a labeled, masked text input  
-- Provide a show/hide toggle (accessible name: "Show API key" / "Hide API key")  
-- Display inline validation error state  
-- Emit value-changed events
-
-### Inputs
-- Label  
-- Value  
-- Visibility flag  
-- Validation error (optional)
-
-### Outputs
-- `ValueChanged` events  
-- Visibility toggle events
-
----
-
-## 5.8 `SelectField`
-### Purpose
-Labeled dropdown selector, used by `SettingsPage` for the Dev/Stage/Prod environment profile.
-
-### Responsibilities
-- Render a labeled dropdown  
-- Render the fixed list of options  
-- Emit selection-changed events
-
-### Inputs
-- Label  
-- Options  
-- Selected value
-
-### Outputs
-- `SelectionChanged` events
-
----
-
-# 6. Deterministic Behavior Requirements
-
-All components must follow these rules:
-
-1. **No nondeterministic animations**  
-2. **No hidden state**  
-3. **No implicit transitions**  
-4. **All state must be derived from ViewModels**  
-5. **All inspector content must match backend output exactly**  
-6. **Editor formatting must be deterministic**  
-7. **Syntax highlighting must follow grammar rules exactly**  
-8. **Auto‑completion must be deterministic and grammar‑driven**  
-9. **Quick‑fix suggestions must be deterministic and rule‑based**
-
----
-
-# 7. Error Handling
-
-Components must surface errors clearly and deterministically:
-
-- Missing AST  
-- Malformed AST  
-- Missing IR  
-- Malformed IR  
-- Missing prompts  
-- Missing model outputs  
-- Backend HTTP errors  
-- Validation errors
-
-Errors must be:
-
-- human‑readable  
-- visible  
-- non‑blocking (except fatal errors)
-
----
-
-# 8. Non‑Goals
+# 11. Non‑Goals
 
 Components do **not** support:
 
-- plugins  
-- custom inspector types beyond those defined  
-- multi‑file project views  
-- nondeterministic animations  
-- direct Rust integration  
-- pipeline orchestration  
-- macOS‑specific UI behavior (v0.1)
+- custom inspectors  
+- plugin components  
+- nondeterministic transitions  
+- parallel execution UI  
+- pipeline reconstruction  
+- dynamic component injection  
 
 ---
 
-# 9. Future Extensions
+# 12. Future Extensions
 
-Potential future components:
+Potential enhancements:
 
-- IR graph visualizer  
-- AST tree viewer with semantic annotations  
-- Prompt diff viewer  
-- Multi‑file project explorer  
-- macOS‑specific UI variants  
-- Plugin‑based inspectors
+- animated inspector transitions (deterministic only)  
+- richer IR visualization components  
+- multi‑file project components  
+- plugin inspector components  
 
 ---
 
 # Summary
 
-This document defines all UI components used in the Limelight‑X workflow dashboard.  
-Components are deterministic, MVVM‑driven, and aligned with the Limelight‑X pipeline and HTTP API.  
-Inspector panels use custom rendering logic to make AST, IR, prompts, and model outputs approachable for analysts and citizen developers.  
-All behavior is spec‑driven and must follow this specification exactly.
+Limelight‑X UI components are deterministic, MVVM‑pure, and fully aligned with the streaming API.  
+Inspector panels update incrementally as events arrive, the Execution Page reflects real‑time pipeline progress, and all components derive their behavior exclusively from ViewModels.

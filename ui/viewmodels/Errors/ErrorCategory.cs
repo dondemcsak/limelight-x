@@ -13,4 +13,5 @@ public enum ErrorCategory
     Navigation,
     Editor,
     State,
+    Transport,
 }

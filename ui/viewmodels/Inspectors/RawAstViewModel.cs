@@ -22,6 +22,19 @@ public partial class RawAstViewModel : ObservableObject
 
     public ObservableCollection<UiError> Errors { get; } = [];
 
+    public RawAstViewModel()
+    {
+        Errors.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasErrors));
+    }
+
+    /// <summary>
+    /// Set when this inspector's own data fails to render (ui-error-handling.md
+    /// §6.3, ui-components.md §7.2) - independent of
+    /// PipelineExecutionViewModel.HasErrors, which reflects a server-sent
+    /// pipeline_failed event.
+    /// </summary>
+    public bool HasErrors => Errors.Count > 0;
+
     public void Reset()
     {
         Tree = null;

@@ -1,248 +1,323 @@
-# UI Testing
+# UI Testing (Streaming Edition)
 
 ## Purpose
-This document defines the **unit‑testing strategy** for the Limelight‑X UI.  
-It specifies how the UI is tested using the **.NET Avalonia.Headless test harness with xUnit**, with **pure mock backend responses**, **basic test isolation**, and **workflow‑organized test suites**.  
-The testing scope is intentionally narrow and deterministic: **unit tests only**, with limited inspector, navigation, and workflow coverage.
+This document defines the complete testing strategy for the Limelight‑X UI.  
+It specifies unit tests, integration tests, streaming tests, inspector tests, navigation tests, and error‑handling tests under the **event‑streaming API**.
 
-`/src/api` (Rust) is tested separately per `spec/bdd-api.md`, using `cargo test` and a mock model adapter as described in `spec/bdd.md`'s testing rules — not covered by this document.
+This specification is authoritative.  
+All implementation must follow this testing model exactly.
 
-The document is organized by **workflow**:
-- Load  
-- Edit  
-- Run  
-- Explain  
-- Trace  
-- Settings  
+The UI is deterministic, MVVM‑pure, and driven entirely by ViewModels and streaming events.  
+All tests must validate deterministic behavior, strict single‑execution mode, and correct incremental updates.
 
 ---
 
-# 1. Testing Overview
+# 1. Architectural Testing Principles
 
-Limelight‑X UI testing includes:
-- **Unit tests only**  
-- **.NET Avalonia.Headless test harness with xUnit**  
-- **Pure mock backend responses** (mocked `PipelineService` HTTP client, no real `/src/api` calls)  
-- **Basic isolation (reset UI state per test)**  
-- **No snapshot tests**  
-- **No performance tests**  
-- **No concurrency tests**  
-- **No accessibility tests**
+1. **Deterministic Tests**  
+   - No nondeterministic timing.  
+   - No race conditions.  
+   - No parallel pipeline executions.
 
-Test coverage includes:
-- Validation errors  
-- Sidebar + workflow navigation  
-- Inspector expand/collapse  
-- Deterministic Run/Explain/Trace workflows  
-- Settings edit/save/apply workflows  
+2. **MVVM‑Pure Tests**  
+   - Views are not tested directly.  
+   - ViewModels are tested in isolation.  
+   - Services are mocked.
 
----
+3. **Streaming‑Aware Tests**  
+   - Tests simulate WebSocket event streams.  
+   - Tests validate incremental inspector updates.  
+   - Tests validate correlation‑ID filtering.
 
-# 2. Load Workflow Tests
-
-## 2.1. Valid File Load
-- Load a valid `.llx` file  
-- Assert editor receives correct content  
-- Assert navigation to EditorPage succeeds  
-- Assert no validation errors appear
-
-## 2.2. Invalid File Load
-- Load an invalid `.llx` file  
-- Assert inline error appears  
-- Assert UI remains on HomePage  
-- Assert no backend calls occur
-
-## 2.3. File Load State Reset
-- Load a file  
-- Reset UI state  
-- Assert editor is empty  
-- Assert no residual validation errors remain
+4. **Strict Single Execution**  
+   - Tests ensure execution commands disable correctly.  
+   - Tests ensure navigation locks during execution.  
+   - Tests ensure state resets on `pipeline_started`.
 
 ---
 
-# 3. Edit Workflow Tests
+# 2. Test Categories
 
-## 3.1. Valid CNL Editing
-- Insert valid CNL  
-- Assert no validation errors  
-- Assert Run/Explain/Trace buttons enabled
+The UI requires the following test suites:
 
-## 3.2. Invalid CNL Editing
-- Insert invalid CNL  
-- Assert inline validation errors appear  
-- Assert Run/Explain/Trace buttons disabled
+1. **Unit Tests**
+2. **Integration Tests**
+3. **Streaming Tests**
+4. **Inspector Tests**
+5. **Navigation Tests**
+6. **Error‑Handling Tests**
+7. **Settings Tests**
+8. **Execution Workflow Tests**
+9. **Logging Tests**
 
-## 3.3. Validation Persistence
-- Insert invalid CNL  
-- Navigate away  
-- Navigate back  
-- Assert validation errors persist
-
-## 3.4. Editor State Reset
-- Insert text  
-- Reset UI state  
-- Assert editor is empty  
-- Assert no validation errors remain
+Each suite is described below.
 
 ---
 
-# 4. Run Workflow Tests
+# 3. Unit Tests
 
-## 4.1. Successful Run
-- Insert valid CNL  
-- Mock backend success  
-- Trigger Run  
-- Assert ExecutionPage loads  
-- Assert final result inspector appears
+Unit tests validate individual ViewModels and services.
 
-## 4.2. Validation Blocks Run
-- Insert invalid CNL  
-- Trigger Run  
-- Assert inline validation errors  
-- Assert no backend calls occur  
-- Assert UI remains on EditorPage
+### 3.1 EditorViewModel Tests
+- Run/Explain/Trace commands disable during execution.  
+- Live validation updates syntax errors deterministically.  
+- Invalid CNL triggers inline errors.  
+- `CanExecute` reflects correct state.
 
-## 4.3. Run State Reset
-- Execute pipeline  
-- Reset UI state  
-- Assert ExecutionPage is cleared  
-- Assert no inspectors remain visible
+### 3.2 PipelineExecutionViewModel Tests
+- State clears on `pipeline_started`.  
+- Events update correct inspector ViewModels.  
+- Mismatched correlation IDs are ignored.  
+- `IsRunning` toggles correctly.  
+- `HasErrors` toggles on `pipeline_failed`.
 
----
+### 3.3 Inspector ViewModel Tests
+Each inspector must:
+- clear state on `pipeline_started`  
+- update deterministically on its event  
+- remain stable when collapsed  
+- never reorder or buffer data  
 
-# 5. Explain Workflow Tests
-
-## 5.1. Successful Explain
-- Insert valid CNL  
-- Mock backend AST success  
-- Trigger Explain  
-- Assert Raw AST + Normalized AST inspectors appear
-
-## 5.2. Validation Blocks Explain
-- Insert invalid CNL  
-- Trigger Explain  
-- Assert inline validation errors  
-- Assert UI remains on EditorPage
-
-## 5.3. Explain State Reset
-- Execute Explain  
-- Reset UI state  
-- Assert inspectors cleared  
-- Assert no AST nodes remain
+### 3.4 SettingsViewModel Tests
+- Invalid settings block Save.  
+- Valid settings restart backend.  
+- Errors surface deterministically.
 
 ---
 
-# 6. Trace Workflow Tests
+# 4. Integration Tests
 
-## 6.1. Successful Trace
-- Insert valid CNL  
-- Mock backend IR + prompts + model outputs  
-- Trigger Trace  
-- Assert IR, Prompts, Model Outputs inspectors appear
+Integration tests validate multi‑ViewModel workflows.
 
-## 6.2. Validation Blocks Trace
-- Insert invalid CNL  
-- Trigger Trace  
-- Assert inline validation errors  
-- Assert UI remains on EditorPage
+### 4.1 Editor → Execution Workflow
+- Clicking Run navigates to Execution Page.  
+- Inspectors clear immediately.  
+- Streaming events populate inspectors incrementally.  
+- Execution buttons re‑enable only after final_result_ready.
 
-## 6.3. Trace State Reset
-- Execute Trace  
-- Reset UI state  
-- Assert inspectors cleared  
-- Assert no IR or prompt nodes remain
+### 4.2 Explain Workflow
+- Raw AST and Normalized AST appear in correct order.  
+- No final result, prompts, or model outputs appear (`/explain` never invokes the evaluator; the sequence ends at `normalized_ast_generated`).
 
----
-
-# 7. Settings Workflow Tests
-
-## 7.1. Valid Edit and Save
-- Open SettingsPage  
-- Edit Port, Log Path, API Key, Environment Profile to valid values  
-- Trigger Save with a mocked successful `llx serve` relaunch  
-- Assert `IsDirty` becomes `false`  
-- Assert navigation returns to the previous page
-
-## 7.2. Invalid Input Blocks Save
-- Open SettingsPage  
-- Enter an out-of-range port  
-- Assert inline validation error appears  
-- Assert Save is disabled  
-- Assert no relaunch is attempted
-
-## 7.3. Unsaved Changes Guard
-- Open SettingsPage  
-- Edit a field (sets `IsDirty`)  
-- Attempt to navigate away via sidebar  
-- Assert the confirmation modal appears  
-- Assert choosing "Stay" remains on SettingsPage  
-- Assert choosing "Discard Changes" reverts fields and completes navigation
-
-## 7.4. Relaunch Failure Produces a Fatal Modal
-- Open SettingsPage with valid edits  
-- Trigger Save with a mocked `llx serve` relaunch failure (e.g. port unavailable)  
-- Assert a fatal modal appears  
-- Assert all actions are disabled until acknowledged  
-- Assert `IsDirty` remains `true` after acknowledgment
-
-## 7.5. Settings State Reset
-- Edit fields on SettingsPage  
-- Reset UI state  
-- Assert fields revert to last-saved values  
-- Assert `IsDirty` is `false`
+### 4.3 Trace Workflow
+- All inspector panels appear in correct order.  
+- IR appears after normalized AST.  
+- Prompts appear before model outputs.  
+- Final result appears last.
 
 ---
 
-# 8. Navigation Tests
+# 5. Streaming Tests
 
-## 8.1. Sidebar Navigation to EditorPage
-- Load file  
-- Navigate via sidebar  
-- Assert EditorPage loads  
-- Assert editor content visible
+Streaming tests simulate WebSocket event sequences.
 
-## 8.2. Sidebar Navigation to ExecutionPage
-- Execute pipeline  
-- Navigate via sidebar  
-- Assert ExecutionPage loads  
-- Assert inspectors visible
+### 5.1 Event Ordering Tests
+Given a sequence:
+```
+pipeline_started
+raw_ast_generated
+normalized_ast_generated
+ir_generated
+prompts_generated
+model_outputs_generated
+final_result_ready
+```
+The UI must:
+- update inspectors in exact order  
+- never reorder events  
+- never buffer events  
+- never drop events  
 
-## 8.3. Sidebar Navigation to SettingsPage
-- From any page, navigate to Settings via sidebar  
-- Assert SettingsPage loads  
-- Assert fields reflect last-saved values
+### 5.2 Correlation ID Tests
+Given:
+- active correlation ID = `abc-123`
+- event with correlation ID = `xyz-999`
 
-## 8.4. Workflow Navigation
-- Trigger Run/Explain/Trace  
-- Assert automatic navigation to ExecutionPage  
-- Assert correct inspectors appear
+UI must:
+- ignore the event  
+- not update inspectors  
+- not change execution state  
+
+### 5.3 Partial Stream Tests
+Simulate missing events:
+- UI must remain stable  
+- UI must not crash  
+- UI must not auto‑complete pipeline  
+- UI must surface transport errors
+
+### 5.4 WebSocket Disconnect Tests
+Simulate disconnect mid‑pipeline:
+- UI must show global error banner  
+- UI must stop updating inspectors  
+- UI must re‑enable execution buttons  
 
 ---
 
-# 9. Inspector Tests
+# 6. Inspector Tests
 
-## 9.1. Expand Inspector
-- Execute pipeline  
-- Expand IR inspector  
-- Assert tree becomes visible  
-- Assert indentation correct
+Each inspector must be tested for:
 
-## 9.2. Collapse Inspector
-- Expand inspector  
-- Collapse inspector  
-- Assert tree becomes hidden
+### 6.1 Incremental Updates
+- Raw AST appears only after `raw_ast_generated`.  
+- Normalized AST appears only after `normalized_ast_generated`.  
+- IR appears only after `ir_generated`.  
+- Prompts appear only after `prompts_generated`.  
+- Model outputs appear only after `model_outputs_generated`.  
+- Final result appears only after `final_result_ready`.
 
-## 9.3. Inspector Reset
-- Expand inspector  
-- Reset UI state  
-- Assert inspector collapsed  
-- Assert no nodes visible
+### 6.2 Collapse/Expand Behavior
+- Collapsed state must not affect updates.  
+- Expanded state must show updated content immediately.
+
+### 6.3 Error Rendering
+- Inspector must show inline error panel if its event fails.  
+- Inspector must remain visible.
+
+---
+
+# 7. Navigation Tests
+
+### 7.1 Execution Lock Tests
+While `IsRunning == true`:
+- Navigation to Home is blocked  
+- Navigation to Editor is blocked  
+- Navigation to Settings is blocked  
+- Navigation to Execution is allowed  
+
+### 7.2 Post‑Execution Navigation
+After `final_result_ready` or `pipeline_failed`:
+- All navigation commands re‑enable  
+- User may leave Execution Page  
+
+### 7.3 Error Navigation Tests
+Errors must:
+- not trigger navigation  
+- not hide inspector state  
+- not reset pipeline state  
+
+---
+
+# 8. Error‑Handling Tests
+
+### 8.1 Pipeline Error Tests
+Simulate `pipeline_failed`:
+- Global error banner appears  
+- Inspectors remain visible  
+- Execution buttons re‑enable  
+- Navigation remains on Execution Page  
+
+### 8.2 Fatal Error Tests
+Simulate evaluator/model adapter fatal error:
+- Fatal styling appears  
+- Streaming stops  
+- Execution buttons re‑enable  
+
+### 8.3 Inline Editor Error Tests
+Simulate `/explain` validation errors:
+- Editor highlights error  
+- Margin markers appear  
+- Error list updates deterministically  
+
+### 8.4 Transport Error Tests
+Simulate:
+- malformed event  
+- invalid JSON  
+- WebSocket disconnect  
+
+UI must:
+- surface error immediately  
+- stop execution  
+- re‑enable buttons  
+
+---
+
+# 9. Settings Tests
+
+### 9.1 Validation Tests
+- Invalid port blocks Save  
+- Missing API key blocks Save  
+- Invalid log path blocks Save  
+
+### 9.2 Backend Restart Tests
+- Save triggers backend restart  
+- Errors surface deterministically  
+- UI remains stable during restart  
+
+---
+
+# 10. Execution Workflow Tests
+
+### 10.1 Run Workflow
+- Only final_result_ready appears  
+- No AST/IR/prompts/model outputs appear  
+
+### 10.2 Explain Workflow
+- Raw AST appears  
+- Normalized AST appears  
+- No final result, prompts, or model outputs appear  
+
+### 10.3 Trace Workflow
+- All inspectors appear in correct order  
+- Final result appears last  
+
+---
+
+# 11. Logging Tests
+
+### 11.1 Default Location
+- No custom `LogPath` configured  
+- An error is added to any of the four logged collections  
+- Entry is appended to `%APPDATA%\LimelightX\Limelight-x-log.txt`
+
+### 11.2 Custom LogPath
+- `LogPath` set to a custom absolute directory  
+- An error is added to any of the four logged collections  
+- Entry is appended to `<LogPath>\Limelight-x-log.txt` instead of the default location
+
+### 11.3 Append Across Sessions
+- Log file already contains entries from a prior session  
+- App restarts and a new error occurs  
+- Both prior and new entries are present in the file (never truncated)
+
+### 11.4 Line Format And Severity Mapping
+- An error with a given `Severity`/`Code`/`Message`/`Location` is logged  
+- The written line matches `[<UTC ISO-8601 timestamp>] [<LogLevel>] <Code>: <Message>` (plus location suffix when present)  
+- `Severity` maps to `LogLevel` exactly as: `Info`→`Information`, `Warning`→`Warning`, `Error`→`Error`, `Fatal`→`Critical`
+
+### 11.5 Write Failure Is Non‑Fatal
+- Log directory is unwritable (e.g. permissions)  
+- An error occurs  
+- The app does not crash, no new user-facing error is raised for the write failure itself, and the original error still appears through its normal UI surface (banner/inline/inspector)
+
+---
+
+# 12. Non‑Goals
+
+UI testing does **not** include:
+
+- View testing  
+- nondeterministic animations  
+- parallel pipeline executions  
+- queued executions  
+- cancellation  
+- plugin inspectors  
+- multi‑file project workflows  
+
+---
+
+# 13. Future Extensions
+
+Potential enhancements:
+
+- automated inspector diffing  
+- visual IR graph testing  
+- multi‑file project testing  
+- performance tests for large pipelines  
+- timing‑based observability tests  
 
 ---
 
 # Summary
 
-This UI testing specification defines deterministic unit‑test coverage for Limelight‑X using the .NET Avalonia.Headless test harness with xUnit.  
-It covers validation, navigation, inspector behavior, and deterministic Run/Explain/Trace workflows.  
-Tests use pure mock backend responses, basic isolation, and workflow‑organized suites.  
-This testing model is authoritative and must be followed exactly.
+Limelight‑X UI testing validates deterministic MVVM behavior, strict single‑execution mode, and real‑time streaming updates.  
+All tests simulate WebSocket event streams, verify incremental inspector updates, enforce navigation constraints, and ensure robust error handling across the entire workflow.

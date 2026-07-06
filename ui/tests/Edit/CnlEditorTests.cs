@@ -5,6 +5,7 @@ using Avalonia.VisualTree;
 using AvaloniaEdit;
 using LimelightX.UI.Components;
 using LimelightX.UI.Services;
+using LimelightX.UI.Tests.TestDoubles;
 using LimelightX.UI.ViewModels;
 using LimelightX.UI.Views;
 using Xunit;
@@ -26,18 +27,18 @@ public class CnlEditorTests
 {
     private sealed class FakePipelineService : IPipelineService
     {
-        public Task<ExplainResult> ExplainAsync(string source) =>
-            Task.FromResult(new ExplainResult { Success = true });
+        public Task<PipelineStartResult> ExplainAsync(string source) =>
+            Task.FromResult(new PipelineStartResult { Accepted = true, CorrelationId = "corr-0" });
 
-        public Task<RunResult> RunAsync(string source) => throw new NotImplementedException();
+        public Task<PipelineStartResult> RunAsync(string source) => throw new NotImplementedException();
 
-        public Task<TraceResult> TraceAsync(string source) => throw new NotImplementedException();
+        public Task<PipelineStartResult> TraceAsync(string source) => throw new NotImplementedException();
     }
 
     [AvaloniaFact]
     public void SettingViewModelText_BeforeAttach_PropagatesToAvaloniaEditOnceAttached()
     {
-        var editorViewModel = new EditorViewModel(new FakePipelineService());
+        var editorViewModel = new EditorViewModel(new FakePipelineService(), new FakeEventStreamService());
         var editorPage = new EditorPage { DataContext = editorViewModel };
 
         editorViewModel.Text = "Load the article from \"a.txt\".\nSummarize it.";
@@ -53,7 +54,7 @@ public class CnlEditorTests
     [AvaloniaFact]
     public void SettingViewModelText_AfterAttach_PropagatesToAvaloniaEditImmediately()
     {
-        var editorViewModel = new EditorViewModel(new FakePipelineService());
+        var editorViewModel = new EditorViewModel(new FakePipelineService(), new FakeEventStreamService());
         var editorPage = new EditorPage { DataContext = editorViewModel };
         var window = new Window { Content = editorPage, Width = 800, Height = 600 };
         window.Show();
@@ -69,7 +70,7 @@ public class CnlEditorTests
     [AvaloniaFact]
     public void TextEditor_HasTemplateApplied()
     {
-        var editorPage = new EditorPage { DataContext = new EditorViewModel(new FakePipelineService()) };
+        var editorPage = new EditorPage { DataContext = new EditorViewModel(new FakePipelineService(), new FakeEventStreamService()) };
         var window = new Window { Content = editorPage, Width = 800, Height = 600 };
         window.Show();
         Dispatcher.UIThread.RunJobs();

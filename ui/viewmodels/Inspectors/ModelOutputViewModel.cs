@@ -18,6 +18,14 @@ public partial class ModelOutputViewModel : ObservableObject
 
     public ObservableCollection<UiError> Errors { get; } = [];
 
+    public ModelOutputViewModel()
+    {
+        Errors.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasErrors));
+    }
+
+    /// <summary>Set when this inspector's own data fails to render (ui-error-handling.md §6.3).</summary>
+    public bool HasErrors => Errors.Count > 0;
+
     public void Reset()
     {
         Outputs.Clear();

@@ -1,267 +1,305 @@
-# BDD UI Interactions
+# BDD — UI Interactions (Streaming Edition)
 
 ## Purpose
-This document defines Behavior‑Driven Development (BDD) scenarios for Limelight‑X.  
-It specifies deterministic Given/When/Then interactions for all major workflows, inspector behaviors, navigation outcomes, error handling, and state persistence.  
-Scenarios use **mock backend responses**, **medium granularity**, and **behavioral naming**.  
-The document is organized by **workflow**.
+This document defines all BDD interaction scenarios for the Limelight‑X UI.  
+It specifies deterministic user interactions, execution workflows, streaming behavior, inspector updates, navigation constraints, and error handling under the **event‑streaming API**.
 
-Limelight‑X workflows covered:
-- Load File  
-- Edit  
-- Run  
-- Explain  
-- Trace  
-- Settings  
-
-Each workflow includes:
-- Successful interactions  
-- Blocked interactions  
-- Fatal interactions  
-- Inspector interactions  
-- State persistence behaviors  
-
-All scenarios follow **pure Given/When/Then** format.
+This specification is authoritative.  
+All implementation must follow these scenarios exactly.
 
 ---
 
-# 1. Load File Workflow
+# 1. Conventions
 
-## Scenario: Loading a valid file opens the Editor
-**Given** the user is on HomePage  
-**And** a valid `.llx` file exists  
-**When** the user selects the file  
-**Then** the UI loads the file content  
-**And** navigates to EditorPage
+Each scenario uses the extended BDD format:
 
-## Scenario: Loading an invalid file shows an error
-**Given** the user is on HomePage  
-**And** an invalid `.llx` file exists  
-**When** the user selects the file  
-**Then** the UI shows a global error banner  
-**And** remains on HomePage
+- **GIVEN** (initial state)  
+- **WHEN** (user action or backend event)  
+- **THEN** (UI reaction)  
+- **SO THAT** (user‑visible outcome)  
+- **AS MEASURED BY** (deterministic observable behavior)
 
-## Scenario: Loading a file persists editor state
-**Given** the user previously edited a file  
-**And** the editor contains unsaved text  
-**When** the user loads the same file again  
-**Then** the editor restores the previous text  
-**And** restores validation state
+All scenarios assume:
+
+- strict single‑execution mode  
+- deterministic MVVM state  
+- incremental WebSocket event streaming  
+- correlation‑ID filtering  
+- no parallel executions  
 
 ---
 
-# 2. Edit Workflow
+# 2. Editor Interactions
 
-## Scenario: Editing text updates validation state
-**Given** the user is on EditorPage  
-**And** the editor contains valid CNL  
-**When** the user types invalid syntax  
-**Then** validation errors appear inline  
-**And** Run/Explain/Trace are disabled
+## 2.1 Editing CNL Text
+**GIVEN** the user is on the Editor Page  
+**WHEN** they type valid CNL text  
+**THEN** the editor updates `SourceText`  
+**SO THAT** the UI reflects the new content  
+**AS MEASURED BY** syntax highlighting and updated validation state
 
-## Scenario: Editing text clears previous pipeline results
-**Given** the user previously ran a pipeline  
-**And** ExecutionPage contains inspector results  
-**When** the user edits the CNL  
-**Then** inspector results are cleared  
-**And** pipeline actions require re‑execution
+## 2.2 Live Validation
+**GIVEN** the user modifies CNL text  
+**WHEN** the editor triggers `/explain` validation  
+**THEN** syntax errors appear inline  
+**SO THAT** the user sees grammar issues immediately  
+**AS MEASURED BY** updated `SyntaxErrors` and margin markers
 
-## Scenario: Editor state persists across navigation
-**Given** the user is on EditorPage  
-**And** the editor contains text  
-**When** the user navigates to HomePage  
-**And** returns to EditorPage  
-**Then** the editor text remains unchanged
+## 2.3 Run Button Disabled During Execution
+**GIVEN** the user clicks Run  
+**WHEN** execution begins  
+**THEN** Run/Explain/Trace buttons disable  
+**SO THAT** no parallel executions occur  
+**AS MEASURED BY** `PipelineExecutionViewModel.IsRunning == true`
 
----
-
-# 3. Run Workflow
-
-## Scenario: Running a valid pipeline produces a final result
-**Given** the editor contains valid CNL  
-**And** the backend mock response includes a final result  
-**When** the user presses Ctrl+R  
-**Then** the UI sends a Run request  
-**And** navigates to ExecutionPage  
-**And** displays the final result inspector
-
-## Scenario: Running with validation errors is blocked
-**Given** the editor contains invalid CNL  
-**When** the user presses Ctrl+R  
-**Then** the UI shows inline validation errors  
-**And** does not send a backend request  
-**And** remains on EditorPage
-
-## Scenario: Running with backend failure shows inspector errors
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates failure  
-**When** the user presses Ctrl+R  
-**Then** the UI navigates to ExecutionPage  
-**And** displays inline inspector errors  
-**And** shows a global error banner
-
-## Scenario: Fatal backend error blocks interaction
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates a fatal error  
-**When** the user presses Ctrl+R  
-**Then** a modal dialog appears  
-**And** all actions are disabled until acknowledged
+## 2.4 Disable All Execution Buttons When Any Execution Starts
+**GIVEN** the user is on the Editor Page  
+**AND** Run, Explain, and Trace buttons are enabled  
+**WHEN** the user clicks **Run**, **Explain**, or **Trace**  
+**THEN** all three execution buttons become disabled immediately  
+**SO THAT** no parallel or overlapping executions can occur  
+**AS MEASURED BY** `PipelineExecutionViewModel.IsRunning == true` and `CanExecute == false` for all three commands
 
 ---
 
-# 4. Explain Workflow
+# 3. Execution Interactions (Streaming)
 
-## Scenario: Explain produces raw and normalized AST
-**Given** the editor contains valid CNL  
-**And** the backend mock response includes raw and normalized AST  
-**When** the user presses Ctrl+E  
-**Then** the UI navigates to ExecutionPage  
-**And** displays the Raw AST inspector  
-**And** displays the Normalized AST inspector
+## 3.1 Starting Execution
+**GIVEN** the user clicks Run/Explain/Trace  
+**WHEN** the backend returns `{ accepted: true, correlation_id }`  
+**THEN** the UI navigates to Execution Page  
+**SO THAT** the user sees pipeline progress  
+**AS MEASURED BY** `CurrentPage == Execution`
 
-## Scenario: Explain with invalid CNL is blocked
-**Given** the editor contains invalid CNL  
-**When** the user presses Ctrl+E  
-**Then** inline validation errors appear  
-**And** the UI remains on EditorPage
+## 3.2 Pipeline Started Event
+**GIVEN** the Execution Page is active  
+**WHEN** `pipeline_started` arrives  
+**THEN** all inspector ViewModels clear  
+**SO THAT** the UI begins a fresh execution  
+**AS MEASURED BY** empty inspector panels
 
-## Scenario: Explain with backend failure shows inspector errors
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates AST failure  
-**When** the user presses Ctrl+E  
-**Then** the UI navigates to ExecutionPage  
-**And** displays inline AST errors  
-**And** shows a global error banner
-
----
-
-# 5. Trace Workflow
-
-## Scenario: Trace produces IR, prompts, and model outputs
-**Given** the editor contains valid CNL  
-**And** the backend mock response includes IR, prompts, and model outputs  
-**When** the user presses Ctrl+T  
-**Then** the UI navigates to ExecutionPage  
-**And** displays the IR inspector  
-**And** displays the Prompts inspector  
-**And** displays the Model Outputs inspector
-
-## Scenario: Trace with invalid CNL is blocked
-**Given** the editor contains invalid CNL  
-**When** the user presses Ctrl+T  
-**Then** inline validation errors appear  
-**And** the UI remains on EditorPage
-
-## Scenario: Trace with backend failure shows inspector errors
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates IR failure  
-**When** the user presses Ctrl+T  
-**Then** the UI navigates to ExecutionPage  
-**And** displays inline IR errors  
-**And** shows a global error banner
+## 3.3 Keep Buttons Disabled During Streaming
+**GIVEN** execution has begun  
+**AND** the UI has navigated to the Execution Page  
+**WHEN** streaming events arrive (`pipeline_started`, `raw_ast_generated`, `normalized_ast_generated`, `ir_generated`, `prompts_generated`, `model_outputs_generated`)  
+**THEN** all execution buttons remain disabled  
+**SO THAT** the user cannot trigger a new execution mid‑pipeline  
+**AS MEASURED BY** `PipelineExecutionViewModel.IsRunning == true` throughout the entire event sequence
 
 ---
 
-# 6. Settings Workflow
+# 4. Inspector Interactions (Incremental Updates)
 
-## Scenario: Editing a Settings field marks it dirty
-**Given** the user is on SettingsPage  
-**When** the user edits the Log Path field  
-**Then** `SettingsViewModel.IsDirty` becomes `true`
+## 4.1 Raw AST Appears
+**GIVEN** execution is running  
+**WHEN** `raw_ast_generated` arrives  
+**THEN** RawAstPanel becomes visible  
+**SO THAT** the user sees the first pipeline stage  
+**AS MEASURED BY** `RawAstViewModel.AstNodes.Count > 0`
 
-## Scenario: Saving valid settings applies them and navigates back
-**Given** the user is on SettingsPage  
-**And** all fields contain valid values  
-**And** the mocked `llx serve` relaunch succeeds  
-**When** the user selects Save  
-**Then** the UI shows an "Applying settings…" loading state  
-**And** navigates back to the previous page  
-**And** `IsDirty` becomes `false`
+## 4.2 Normalized AST Appears
+**GIVEN** raw AST is visible  
+**WHEN** `normalized_ast_generated` arrives  
+**THEN** NormalizedAstPanel becomes visible  
+**SO THAT** the user sees normalized structure  
+**AS MEASURED BY** `NormalizedAstViewModel.NormalizedNodes.Count > 0`
 
-## Scenario: Toggling API key visibility unmasks the field
-**Given** the user is on SettingsPage  
-**And** the API key field is masked  
-**When** the user selects the show/hide toggle  
-**Then** the API key field displays its unmasked value
+## 4.3 IR Appears
+**GIVEN** normalized AST is visible  
+**WHEN** `ir_generated` arrives  
+**THEN** IrPanel becomes visible  
+**SO THAT** the user sees compiled IR  
+**AS MEASURED BY** `IrViewModel.Operations.Count > 0`
 
-## Scenario: Canceling without changes returns immediately
-**Given** the user is on SettingsPage  
-**And** no fields have been edited  
-**When** the user selects Cancel  
-**Then** the UI navigates back to the previous page without a confirmation prompt
+## 4.4 Prompts Appear
+**GIVEN** IR is visible  
+**WHEN** `prompts_generated` arrives  
+**THEN** PromptPanel becomes visible  
+**SO THAT** the user sees model prompts  
+**AS MEASURED BY** `PromptViewModel.Prompts.Count > 0`
 
----
+## 4.5 Model Outputs Appear
+**GIVEN** prompts are visible  
+**WHEN** `model_outputs_generated` arrives  
+**THEN** ModelOutputPanel becomes visible  
+**SO THAT** the user sees model responses  
+**AS MEASURED BY** `ModelOutputViewModel.Outputs.Count > 0`
 
-# 7. Inspector Interactions
+## 4.6 Final Result Appears
+**GIVEN** execution is running  
+**WHEN** `final_result_ready` arrives  
+**THEN** FinalResultPanel becomes visible  
+**SO THAT** the user sees the final pipeline output  
+**AS MEASURED BY** `FinalResultViewModel.ResultText != null`
 
-## Scenario: Expanding an inspector reveals content
-**Given** the user is on ExecutionPage  
-**And** the IR inspector is collapsed  
-**When** the user expands the IR inspector  
-**Then** the IR tree becomes visible
-
-## Scenario: Collapsing an inspector hides content
-**Given** the IR inspector is expanded  
-**When** the user collapses the IR inspector  
-**Then** the IR tree becomes hidden
-
-## Scenario: Inspector selection highlights a node
-**Given** the Raw AST inspector is expanded  
-**When** the user selects an AST node  
-**Then** the node becomes highlighted  
-**And** metadata for the node is displayed
-
-## Scenario: Keyboard navigation moves inspector selection
-**Given** an inspector is expanded  
-**And** a node is selected  
-**When** the user presses the down arrow  
-**Then** the next node becomes selected
+## 4.7 Re‑Enable Buttons Only After Completion or Error
+**GIVEN** execution is running  
+**WHEN** either  
+- `final_result_ready` arrives, **or**  
+- `pipeline_failed` arrives  
+**THEN** all three execution buttons re‑enable  
+**SO THAT** the user can start a new execution after the current one finishes  
+**AS MEASURED BY** `PipelineExecutionViewModel.IsRunning == false` and `CanExecute == true` for Run, Explain, and Trace
 
 ---
 
-# 8. Navigation Scenarios
+# 5. Collapse/Expand Interactions
 
-## Scenario: Sidebar navigation to EditorPage succeeds
-**Given** the user is on HomePage  
-**And** a file is loaded  
-**When** the user selects Editor in the sidebar  
-**Then** the UI navigates to EditorPage
+## 5.1 Collapse Inspector
+**GIVEN** an inspector panel is visible  
+**WHEN** the user clicks collapse  
+**THEN** the panel collapses  
+**SO THAT** the UI reduces vertical space  
+**AS MEASURED BY** `IsCollapsed == true`
 
-## Scenario: Sidebar navigation to ExecutionPage is blocked
-**Given** the user is on EditorPage  
-**And** no pipeline has been executed  
-**When** the user selects Execution in the sidebar  
-**Then** the UI shows a modal dialog  
-**And** remains on EditorPage
+## 5.2 Expand Inspector
+**GIVEN** an inspector is collapsed  
+**WHEN** the user clicks expand  
+**THEN** the panel expands  
+**SO THAT** the user sees inspector contents  
+**AS MEASURED BY** `IsCollapsed == false`
 
-## Scenario: Fatal navigation error disables interaction
-**Given** the user is on EditorPage  
-**And** a fatal navigation error occurs  
-**When** the user attempts to navigate  
-**Then** a modal dialog appears  
-**And** all actions are disabled until acknowledged
+## 5.3 Collapse Does Not Block Updates
+**GIVEN** an inspector is collapsed  
+**WHEN** new streaming events arrive  
+**THEN** the inspector ViewModel updates  
+**SO THAT** collapse does not affect data flow  
+**AS MEASURED BY** updated ViewModel state despite collapsed UI
 
 ---
 
-# 9. State Persistence
+# 6. Navigation Interactions
 
-## Scenario: Editor text persists across navigation
-**Given** the user enters text in the editor  
-**When** the user navigates to HomePage  
-**And** returns to EditorPage  
-**Then** the editor text remains unchanged
+## 6.1 Navigation Locked During Execution
+**GIVEN** execution is running  
+**WHEN** the user attempts to navigate away  
+**THEN** navigation is blocked  
+**SO THAT** the UI remains consistent  
+**AS MEASURED BY** `CurrentPage == Execution`
 
-## Scenario: Inspector collapse state persists
-**Given** the user expands the IR inspector  
-**When** the user navigates away from ExecutionPage  
-**And** returns  
-**Then** the IR inspector remains expanded
+## 6.2 Navigation Re‑enabled After Completion
+**GIVEN** execution has completed  
+**WHEN** the user clicks Home/Editor/Settings  
+**THEN** navigation succeeds  
+**SO THAT** the user can continue workflow  
+**AS MEASURED BY** `CurrentPage != Execution`
+
+---
+
+# 7. Error Interactions
+
+## 7.1 Pipeline Failure
+**GIVEN** execution is running  
+**WHEN** `pipeline_failed` arrives  
+**THEN** global error banner appears  
+**SO THAT** the user sees the failure immediately  
+**AS MEASURED BY** `ErrorBannerViewModel.IsVisible == true`
+
+## 7.2 Inspector Error
+**GIVEN** an inspector fails to render  
+**WHEN** an inspector error occurs  
+**THEN** InspectorErrorPanel appears  
+**SO THAT** the user sees the failure context  
+**AS MEASURED BY** `InspectorErrorViewModel.Message != null`
+
+## 7.3 WebSocket Disconnect
+**GIVEN** execution is running  
+**WHEN** WebSocket disconnects  
+**THEN** global error banner appears  
+**SO THAT** the user sees transport failure  
+**AS MEASURED BY** `HasErrors == true`
+
+---
+
+# 8. Settings Interactions
+
+## 8.1 Invalid Settings Block Save
+**GIVEN** the user enters invalid settings  
+**WHEN** they click Save  
+**THEN** Save is blocked  
+**SO THAT** backend remains stable  
+**AS MEASURED BY** `IsValid == false`
+
+## 8.2 Valid Settings Restart Backend
+**GIVEN** settings are valid  
+**WHEN** the user clicks Save  
+**THEN** backend restarts  
+**SO THAT** new configuration applies  
+**AS MEASURED BY** successful relaunch of `llx serve`
+
+---
+
+# 9. Logging Persistence
+
+## 9.1 Default Location Write
+**GIVEN** no custom `LogPath` is configured  
+**WHEN** a `UiError` is added to any logged collection (`FileLoaderViewModel.Errors`, `EditorViewModel.ValidationErrors`, `PipelineExecutionViewModel.Errors`, `SettingsViewModel.Errors`)  
+**THEN** an entry is appended to `%APPDATA%\LimelightX\Limelight-x-log.txt`  
+**SO THAT** diagnostics are recoverable without a custom setup  
+**AS MEASURED BY** the file's contents after the error occurs
+
+## 9.2 Custom LogPath Write
+**GIVEN** the user has configured a custom `LogPath`  
+**WHEN** a `UiError` is logged  
+**THEN** the entry is appended to `<LogPath>\Limelight-x-log.txt` instead of the default location  
+**SO THAT** the user's chosen log directory is honored  
+**AS MEASURED BY** the file's contents at `<LogPath>`, and the absence of any new entry at the default location
+
+## 9.3 Append Across Sessions
+**GIVEN** the log file already contains entries from a previous session  
+**WHEN** the app restarts and a new error is logged  
+**THEN** both the prior and the new entries are present in the file  
+**SO THAT** diagnostic history survives restarts  
+**AS MEASURED BY** the file never being truncated on startup
+
+## 9.4 Write Failure Does Not Block The Original Error
+**GIVEN** the log directory is unwritable  
+**WHEN** a `UiError` occurs  
+**THEN** the app does not crash and no additional user-facing error is raised for the failed write  
+**SO THAT** a logging problem never masks or blocks the real error  
+**AS MEASURED BY** the original error still appearing through its normal UI surface (banner/inline/inspector)
+
+## 9.5 LogPath Change Redirects Immediately
+**GIVEN** logging is currently active at the default location  
+**WHEN** the user saves a new `LogPath` in Settings  
+**THEN** subsequent entries are appended to the new location  
+**SO THAT** the user doesn't need to restart the app for a log-path change to take effect  
+**AS MEASURED BY** no further entries appearing at the old location after the save, and new entries appearing at `<new LogPath>\Limelight-x-log.txt`
+
+---
+
+# 10. Correlation‑ID Interactions
+
+## 10.1 Ignore Mismatched Events
+**GIVEN** active correlation ID = `abc-123`  
+**WHEN** an event arrives with `xyz-999`  
+**THEN** UI ignores the event  
+**SO THAT** no cross‑execution contamination occurs  
+**AS MEASURED BY** unchanged inspector state
+
+## 10.2 Reset on New Execution
+**GIVEN** previous execution completed  
+**WHEN** new `pipeline_started` arrives  
+**THEN** all inspector ViewModels clear  
+**SO THAT** the UI begins a fresh execution  
+**AS MEASURED BY** empty inspector panels
+
+---
+
+# 11. Non‑Goals
+
+These interactions do **not** cover:
+
+- parallel executions  
+- queued executions  
+- cancellation  
+- plugin inspectors  
+- multi‑file workflows  
+- nondeterministic animations  
 
 ---
 
 # Summary
 
-This BDD specification defines deterministic Given/When/Then interactions for all major Limelight‑X workflows.  
-It covers core workflows, inspector interactions, error handling, navigation outcomes, and state persistence.  
-Backend responses are mocked, scenarios use medium granularity, and naming is behavioral.  
-This interaction model is authoritative and must be followed exactly.
+These BDD scenarios define all deterministic user interactions in the Limelight‑X UI under the streaming API.  
+They ensure predictable execution workflows, incremental inspector updates, strict navigation constraints, and robust error handling — all aligned with the Limelight‑X architecture.

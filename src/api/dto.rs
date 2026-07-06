@@ -49,6 +49,75 @@ impl Envelope {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Streaming event envelope (spec/api.md §2.1, spec/ux/ui-data-contracts.md §1)
+// ---------------------------------------------------------------------------
+
+pub const EVENT_PIPELINE_STARTED: &str = "pipeline_started";
+pub const EVENT_RAW_AST_GENERATED: &str = "raw_ast_generated";
+pub const EVENT_NORMALIZED_AST_GENERATED: &str = "normalized_ast_generated";
+pub const EVENT_IR_GENERATED: &str = "ir_generated";
+pub const EVENT_PROMPTS_GENERATED: &str = "prompts_generated";
+pub const EVENT_MODEL_OUTPUTS_GENERATED: &str = "model_outputs_generated";
+pub const EVENT_FINAL_RESULT_READY: &str = "final_result_ready";
+pub const EVENT_PIPELINE_FAILED: &str = "pipeline_failed";
+
+/// A single streamed WebSocket event: the same envelope shape as [`Envelope`]
+/// plus `event_type`/`correlation_id` (spec/api.md §2.1).
+#[derive(Serialize)]
+pub struct Event {
+    pub version: &'static str,
+    pub success: bool,
+    pub errors: Vec<ErrorObject>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Value>,
+    pub event_type: &'static str,
+    pub correlation_id: String,
+}
+
+impl Event {
+    pub fn started(correlation_id: String) -> Self {
+        Self {
+            version: "v1",
+            success: true,
+            errors: vec![],
+            data: None,
+            event_type: EVENT_PIPELINE_STARTED,
+            correlation_id,
+        }
+    }
+
+    pub fn ok<T: Serialize>(event_type: &'static str, correlation_id: String, data: T) -> Self {
+        Self {
+            version: "v1",
+            success: true,
+            errors: vec![],
+            data: Some(serde_json::to_value(data).expect("DTO must be serializable")),
+            event_type,
+            correlation_id,
+        }
+    }
+
+    pub fn failed(correlation_id: String, err: ErrorObject) -> Self {
+        Self {
+            version: "v1",
+            success: false,
+            errors: vec![err],
+            data: None,
+            event_type: EVENT_PIPELINE_FAILED,
+            correlation_id,
+        }
+    }
+}
+
+/// The immediate synchronous response to `POST /run|/explain|/trace`
+/// (spec/api.md §2.1) — actual results arrive later as [`Event`]s.
+#[derive(Serialize)]
+pub struct AckResponse {
+    pub accepted: bool,
+    pub correlation_id: String,
+}
+
 #[derive(Serialize)]
 pub struct ErrorObject {
     pub code: &'static str,
@@ -632,24 +701,39 @@ pub fn final_result(text: &str) -> FinalResult {
 }
 
 // ---------------------------------------------------------------------------
-// Per-endpoint data payloads
+// Per-event data payloads. Each streamed event carries only its own stage's
+// data (unlike the old single-response `ExplainData`/`TraceData` which
+// bundled every stage into one object) — one field each, keeping the same
+// key names the old bundled DTOs used, so existing field-name expectations
+// (and API consumers) carry over unchanged.
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
-pub struct ExplainData {
+pub struct RawAstEventData {
     pub raw_ast: RawAstResponse,
+}
+
+#[derive(Serialize)]
+pub struct NormalizedAstEventData {
     pub normalized_ast: NormalizedAstResponse,
 }
 
 #[derive(Serialize)]
-pub struct TraceData {
-    pub raw_ast: RawAstResponse,
-    pub normalized_ast: NormalizedAstResponse,
+pub struct IrEventData {
     pub ir: IrResponse,
+}
+
+#[derive(Serialize)]
+pub struct PromptsEventData {
     pub prompts: Vec<PromptBlock>,
+}
+
+#[derive(Serialize)]
+pub struct ModelOutputsEventData {
     pub model_outputs: Vec<ModelOutputBlock>,
 }
 
+/// Also used as `final_result_ready`'s event data for `/trace`.
 #[derive(Serialize)]
 pub struct RunData {
     pub final_result: FinalResult,

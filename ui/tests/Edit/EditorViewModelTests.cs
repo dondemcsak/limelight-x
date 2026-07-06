@@ -1,5 +1,5 @@
 using LimelightX.UI.Services;
-using LimelightX.UI.Services.Dto;
+using LimelightX.UI.Tests.TestDoubles;
 using LimelightX.UI.ViewModels;
 using LimelightX.UI.ViewModels.Errors;
 using Xunit;
@@ -10,30 +10,31 @@ public class EditorViewModelTests
 {
     private sealed class FakePipelineService : IPipelineService
     {
-        public ExplainResult ExplainResultToReturn { get; set; } = new() { Success = true };
+        public PipelineStartResult ExplainResultToReturn { get; set; } = new() { Accepted = true, CorrelationId = "corr-0" };
         public int ExplainCallCount { get; private set; }
 
-        public Task<ExplainResult> ExplainAsync(string source)
+        public Task<PipelineStartResult> ExplainAsync(string source)
         {
             ExplainCallCount++;
             return Task.FromResult(ExplainResultToReturn);
         }
 
-        public Task<RunResult> RunAsync(string source) => throw new NotImplementedException();
+        public Task<PipelineStartResult> RunAsync(string source) => throw new NotImplementedException();
 
-        public Task<TraceResult> TraceAsync(string source) => throw new NotImplementedException();
+        public Task<PipelineStartResult> TraceAsync(string source) => throw new NotImplementedException();
     }
 
     private static async Task WaitForDebounceAsync() => await Task.Delay(700);
 
     [Fact]
-    public async Task TextChanged_InvalidCnl_PopulatesValidationErrorsAndBlocksCommands()
+    public async Task TextChanged_InvalidCnl_AckPhaseFailure_PopulatesValidationErrorsAndBlocksCommands()
     {
+        var eventStream = new FakeEventStreamService();
         var pipeline = new FakePipelineService
         {
-            ExplainResultToReturn = new ExplainResult
+            ExplainResultToReturn = new PipelineStartResult
             {
-                Success = false,
+                Accepted = false,
                 Errors =
                 [
                     new UiError
@@ -46,7 +47,7 @@ public class EditorViewModelTests
                 ],
             },
         };
-        var viewModel = new EditorViewModel(pipeline);
+        var viewModel = new EditorViewModel(pipeline, eventStream);
 
         viewModel.Text = "Load the article from \"a.txt\"";
         await WaitForDebounceAsync();
@@ -63,44 +64,48 @@ public class EditorViewModelTests
     }
 
     [Fact]
-    public async Task TextChanged_WarningSeverity_StaysInlineOnlyNotInBanner()
+    public async Task TextChanged_PipelineFailedEvent_PopulatesValidationErrors()
     {
+        var eventStream = new FakeEventStreamService();
         var pipeline = new FakePipelineService
         {
-            ExplainResultToReturn = new ExplainResult
-            {
-                Success = true,
-                Errors =
-                [
-                    new UiError
-                    {
-                        Code = "ERR_STYLE_HINT",
-                        Message = "Consider rephrasing.",
-                        Severity = ErrorSeverity.Warning,
-                        Category = ErrorCategory.Validation,
-                    },
-                ],
-            },
+            ExplainResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-1" },
         };
-        var viewModel = new EditorViewModel(pipeline);
+        var viewModel = new EditorViewModel(pipeline, eventStream);
 
-        viewModel.Text = "Load the article from \"a.txt\".\nSummarize it.";
+        viewModel.Text = "Summarize them.";
         await WaitForDebounceAsync();
 
+        eventStream.Raise(FakeEventStreamService.MakeEvent("pipeline_started", "corr-1"));
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "pipeline_failed",
+            "corr-1",
+            success: false,
+            errors: [new UiError { Code = "ERR_CNL_NORMALIZE", Message = "bad pronoun", Severity = ErrorSeverity.Error, Category = ErrorCategory.Pipeline }]));
+
         Assert.Single(viewModel.ValidationErrors);
-        Assert.Empty(viewModel.Errors);
+        Assert.Equal("ERR_CNL_NORMALIZE", viewModel.ValidationErrors[0].Code);
+        Assert.False(viewModel.IsValidating);
     }
 
     [Fact]
-    public async Task TextChanged_ValidCnl_ClearsValidationErrorsAndEnablesCommands()
+    public async Task TextChanged_NormalizedAstGeneratedEvent_ClearsValidatingWithNoErrors()
     {
-        var pipeline = new FakePipelineService { ExplainResultToReturn = new ExplainResult { Success = true } };
-        var viewModel = new EditorViewModel(pipeline);
+        var eventStream = new FakeEventStreamService();
+        var pipeline = new FakePipelineService
+        {
+            ExplainResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-2" },
+        };
+        var viewModel = new EditorViewModel(pipeline, eventStream);
 
         viewModel.Text = "Load the article from \"a.txt\".\nSummarize it.";
         await WaitForDebounceAsync();
 
+        eventStream.Raise(FakeEventStreamService.MakeEvent("pipeline_started", "corr-2"));
+        eventStream.Raise(FakeEventStreamService.MakeEvent("normalized_ast_generated", "corr-2"));
+
         Assert.Empty(viewModel.ValidationErrors);
+        Assert.False(viewModel.IsValidating);
         Assert.True(viewModel.RunCommand.CanExecute(null));
         Assert.True(viewModel.ExplainCommand.CanExecute(null));
         Assert.True(viewModel.TraceCommand.CanExecute(null));
@@ -110,7 +115,7 @@ public class EditorViewModelTests
     public async Task TextChanged_EmptyText_DoesNotCallBackend()
     {
         var pipeline = new FakePipelineService();
-        var viewModel = new EditorViewModel(pipeline);
+        var viewModel = new EditorViewModel(pipeline, new FakeEventStreamService());
 
         viewModel.Text = "   ";
         await WaitForDebounceAsync();
@@ -122,8 +127,8 @@ public class EditorViewModelTests
     [Fact]
     public async Task TextChanged_RapidTyping_OnlyValidatesOnceAfterDebounceSettles()
     {
-        var pipeline = new FakePipelineService { ExplainResultToReturn = new ExplainResult { Success = true } };
-        var viewModel = new EditorViewModel(pipeline);
+        var pipeline = new FakePipelineService { ExplainResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-3" } };
+        var viewModel = new EditorViewModel(pipeline, new FakeEventStreamService());
 
         viewModel.Text = "L";
         viewModel.Text = "Lo";
@@ -134,9 +139,23 @@ public class EditorViewModelTests
     }
 
     [Fact]
+    public void RunExplainTraceCommands_BlockedWhilePipelineRunning()
+    {
+        var pipeline = new FakePipelineService();
+        var viewModel = new EditorViewModel(pipeline, new FakeEventStreamService())
+        {
+            IsPipelineRunning = () => true,
+        };
+
+        Assert.False(viewModel.RunCommand.CanExecute(null));
+        Assert.False(viewModel.ExplainCommand.CanExecute(null));
+        Assert.False(viewModel.TraceCommand.CanExecute(null));
+    }
+
+    [Fact]
     public void UndoCommand_RaisesUndoRequested()
     {
-        var viewModel = new EditorViewModel(new FakePipelineService());
+        var viewModel = new EditorViewModel(new FakePipelineService(), new FakeEventStreamService());
         var raised = false;
         viewModel.UndoRequested += () => raised = true;
 
@@ -148,7 +167,7 @@ public class EditorViewModelTests
     [Fact]
     public void RedoCommand_RaisesRedoRequested()
     {
-        var viewModel = new EditorViewModel(new FakePipelineService());
+        var viewModel = new EditorViewModel(new FakePipelineService(), new FakeEventStreamService());
         var raised = false;
         viewModel.RedoRequested += () => raised = true;
 

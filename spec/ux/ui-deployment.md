@@ -66,8 +66,15 @@ The spec is organized by **deployment stages**:
   This is the only place `Port`/`LogPath`/`EnvironmentProfile` are persisted. `ANTHROPIC_API_KEY` is never written here — it lives only in Windows Credential Manager, under a single shared credential (not one per profile; see `ui-viewmodels.md` §3.3).  
 - **Configuration items:**  
   - Backend port — the bind host is fixed at `127.0.0.1` and is never configurable (see `SECURITY.md`); only the port `llx serve` binds to is editable (`4747` by default, see `api.md` §8)  
-  - Log path  
+  - Log path — see "Persistent log file" below  
   - `ANTHROPIC_API_KEY` — **required**. There is no separate installer-hosted prompt; see §4.4 Step 4 for how first-launch-without-a-key is actually handled. The UI sets the key in the environment of the `llx serve` process it launches. The UI must not start `llx serve` without it, since `api.md` §8/§10 specifies the server refuses to start and exits immediately without this variable.  
+
+- **Persistent log file:** `LogPath` names a **directory**, not a file — the log file within it is always named `Limelight-x-log.txt`. An empty/unset `LogPath` (the default) resolves to `config.json`'s own directory, i.e. `%APPDATA%\LimelightX\Limelight-x-log.txt`; a custom `LogPath` writes to `<LogPath>\Limelight-x-log.txt` instead. This resolution happens at the moment logging is configured — an empty `LogPath` is never rewritten to a concrete value in `config.json`.  
+  - **Mechanism:** the UI logs through `Microsoft.Extensions.Logging`'s `ILogger`/`ILoggerFactory`/`LogLevel` abstractions; Serilog (`Serilog.Extensions.Logging` + `Serilog.Sinks.File`) is the configured provider/file sink (see `CLAUDE.md` §3.5's approved-dependency list).  
+  - **Retention:** the file is opened in append mode and never truncated — entries accumulate across app restarts indefinitely (no rotation in v0.1).  
+  - **Format:** plain text, one line per entry: `[<UTC ISO-8601 timestamp>] [<LogLevel>] <Code>: <Message>`, with `(line L, column C)` appended when the error has a location, and the error's category included in the message. Example: `[2026-07-04T18:22:31Z] [Error] ERR_CNL_PARSE: Missing period. (Category=Pipeline)`.  
+  - **Severity mapping:** `UiError.Severity` → `LogLevel`: `Info`→`Information`, `Warning`→`Warning`, `Error`→`Error`, `Fatal`→`Critical`.  
+  - **Failure safety:** a failure to create the log directory or write to the log file must never surface as a user-facing error, crash the app, or block any other functionality — it fails silently. See `ui-error-handling.md` for what gets logged.
 - **Selection:** Environment profile chosen via `config.json` at any time, or edited live via the **in-app Settings page** (`ui-viewmodels.md` §3.3, `ui-routing-navigation.md` §9) — the Settings page edits the same `config.json` file plus Credential Manager, and applies changes by restarting `llx serve` in the background.
 
 ## 4.4. Validate
@@ -95,7 +102,7 @@ The spec is organized by **deployment stages**:
 - **Mode:** Full cleanup  
 - **Uninstall removes:**  
   - Application binaries  
-  - Logs  
+  - Logs — the file at whatever `LogPath` resolves to per §4.3 (`%APPDATA%\LimelightX\Limelight-x-log.txt` by default)  
   - Configuration files  
   - Caches  
 - **Expectation:** System returns to pre‑install state

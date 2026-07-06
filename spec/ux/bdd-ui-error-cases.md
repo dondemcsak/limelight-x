@@ -1,261 +1,264 @@
-# BDD UI Error Cases
+# BDD — UI Error Cases (Streaming Edition)
 
 ## Purpose
-This document defines Behavior‑Driven Development (BDD) scenarios for **all UI error behaviors** in Limelight‑X.  
-It covers validation errors, pipeline errors, API errors, rendering errors, navigation errors, and fatal errors.  
-Scenarios use **mock backend responses**, **medium granularity**, and **pure Given/When/Then** format.  
-The document is organized by **workflow** (Load, Edit, Run, Explain, Trace, Settings).
+This document defines all deterministic error‑handling scenarios for the Limelight‑X UI under the **event‑streaming API**.  
+It specifies how the UI must behave when encountering pipeline errors, API errors, transport errors, validation errors, and inspector rendering errors.
 
-Error surfaces covered:
-- Inline errors  
-- Global error banner  
-- Modal dialogs (fatal only)
-
-Severity levels covered:
-- Warning  
-- Error  
-- Fatal  
-
-Inspector error coverage:
-- AST  
-- Normalized AST  
-- IR  
-- Prompts  
-- Model Outputs  
-- Rendering errors  
-
-Error persistence:
-- Editor and Settings validation errors persist until corrected  
-- Other errors do not persist unless part of inspector state  
-
-Error recovery:
-- Retry clears inline + banner errors  
-- Modal dialogs require acknowledgment  
-
-Keyboard shortcuts do **not** trigger error scenarios.
+This specification is authoritative.  
+All implementation must follow these scenarios exactly.
 
 ---
 
-# 1. Load Workflow Error Cases
+# 1. Conventions
 
-## Scenario: Loading an invalid file shows an inline error
-**Given** the user is on HomePage  
-**And** an invalid `.llx` file exists  
-**When** the user selects the file  
-**Then** an inline error appears above the file selector  
-**And** the UI remains on HomePage
+Each scenario uses the extended BDD format:
 
-## Scenario: Loading a file with unreadable content shows a global banner
-**Given** the user is on HomePage  
-**And** the file contains unreadable content  
-**When** the user selects the file  
-**Then** a global error banner appears  
-**And** the UI remains on HomePage
+- **GIVEN** (initial state)  
+- **WHEN** (user action or backend event)  
+- **THEN** (UI reaction)  
+- **SO THAT** (user‑visible outcome)  
+- **AS MEASURED BY** (deterministic observable behavior)
 
-## Scenario: Fatal file load error shows a modal dialog
-**Given** the user is on HomePage  
-**And** a fatal file load error occurs  
-**When** the user selects the file  
-**Then** a modal dialog appears  
-**And** all actions are disabled until acknowledged
+All scenarios assume:
+
+- strict single‑execution mode  
+- deterministic MVVM state  
+- incremental WebSocket event streaming  
+- correlation‑ID filtering  
+- no parallel executions  
 
 ---
 
-# 2. Edit Workflow Error Cases
+# 2. Pipeline Error Scenarios
 
-## Scenario: Invalid syntax produces inline validation errors
-**Given** the user is on EditorPage  
-**And** the editor contains valid CNL  
-**When** the user types invalid syntax  
-**Then** inline validation errors appear  
-**And** Run/Explain/Trace are disabled
+## 2.1 Parser Error (Streaming)
+**GIVEN** the user clicks Run  
+**WHEN** the backend emits `pipeline_failed` with `ERR_CNL_PARSE`  
+**THEN** the global error banner appears  
+**SO THAT** the user sees the parser failure immediately  
+**AS MEASURED BY** `ErrorBannerViewModel.IsVisible == true`
 
-## Scenario: Validation errors persist until corrected
-**Given** the editor contains invalid CNL  
-**When** the user navigates to HomePage  
-**And** returns to EditorPage  
-**Then** the validation errors remain visible
+## 2.2 Normalizer Error
+**GIVEN** execution is running  
+**WHEN** `pipeline_failed` arrives with `ERR_CNL_NORMALIZE`  
+**THEN** inspector panels remain visible but incomplete  
+**SO THAT** the user sees where normalization failed  
+**AS MEASURED BY** `HasErrors == true`
 
-## Scenario: Rendering error in editor shows a global banner
-**Given** the user is on EditorPage  
-**And** a rendering error occurs  
-**When** the editor attempts to display content  
-**Then** a global error banner appears  
-**And** the editor remains visible
+## 2.3 IR Compiler Error
+**GIVEN** normalized AST is visible  
+**WHEN** `pipeline_failed` arrives with `ERR_IR_COMPILE`  
+**THEN** IR panel shows an inline error  
+**SO THAT** the user sees IR compilation failure  
+**AS MEASURED BY** `IrViewModel.HasErrors == true`
 
-## Scenario: Fatal editor rendering error shows a modal dialog
-**Given** the user is on EditorPage  
-**And** a fatal rendering error occurs  
-**When** the editor attempts to display content  
-**Then** a modal dialog appears  
-**And** all actions are disabled until acknowledged
+## 2.4 Evaluator Fatal Error
+**GIVEN** execution is running  
+**WHEN** `pipeline_failed` arrives with `ERR_EVALUATOR_FATAL`  
+**THEN** fatal styling appears  
+**SO THAT** the user understands the pipeline cannot continue  
+**AS MEASURED BY** `ErrorBannerViewModel.Severity == "fatal"`
 
----
-
-# 3. Run Workflow Error Cases
-
-## Scenario: Validation errors block pipeline execution
-**Given** the editor contains invalid CNL  
-**When** the user presses Ctrl+R  
-**Then** inline validation errors appear  
-**And** no backend request is sent  
-**And** the UI remains on EditorPage
-
-## Scenario: Pipeline error shows inspector inline errors and a global banner
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates pipeline failure  
-**When** the user presses Ctrl+R  
-**Then** the UI navigates to ExecutionPage  
-**And** inspector inline errors appear  
-**And** a global error banner appears
-
-## Scenario: API error during Run shows a global banner
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates an API error  
-**When** the user presses Ctrl+R  
-**Then** the UI navigates to ExecutionPage  
-**And** a global error banner appears  
-**And** inspectors show no content
-
-## Scenario: Fatal pipeline error shows a modal dialog
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates a fatal error  
-**When** the user presses Ctrl+R  
-**Then** a modal dialog appears  
-**And** all actions are disabled until acknowledged
+## 2.5 Model Adapter Fatal Error
+**GIVEN** prompts have been generated  
+**WHEN** `pipeline_failed` arrives with `ERR_MODEL_ADAPTER`  
+**THEN** ModelOutputPanel shows fatal error  
+**SO THAT** the user sees model failure context  
+**AS MEASURED BY** `ModelOutputViewModel.HasErrors == true`
 
 ---
 
-# 4. Explain Workflow Error Cases
+# 3. API Error Scenarios
 
-## Scenario: AST parsing error shows inline inspector errors
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates AST parsing failure  
-**When** the user presses Ctrl+E  
-**Then** the UI navigates to ExecutionPage  
-**And** inline AST errors appear  
-**And** a global error banner appears
+## 3.1 Malformed Request Body
+**GIVEN** the user clicks Run  
+**WHEN** the backend rejects the request with `ERR_MALFORMED_REQUEST`  
+**THEN** no navigation occurs  
+**SO THAT** the user stays on Editor Page  
+**AS MEASURED BY** `CurrentPage == Editor`
 
-## Scenario: Normalized AST rendering error shows inline inspector errors
-**Given** the backend mock response includes malformed normalized AST  
-**When** the user presses Ctrl+E  
-**Then** the UI navigates to ExecutionPage  
-**And** inline normalized AST errors appear  
-**And** a global error banner appears
+## 3.2 Missing `source` Field
+**GIVEN** the user triggers execution with empty text  
+**WHEN** backend returns `ERR_MISSING_FIELD`  
+**THEN** inline editor error appears  
+**SO THAT** the user sees missing input  
+**AS MEASURED BY** `SyntaxErrors.Count > 0`
 
-## Scenario: Fatal AST error shows a modal dialog
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates a fatal AST error  
-**When** the user presses Ctrl+E  
-**Then** a modal dialog appears  
-**And** all actions are disabled until acknowledged
-
----
-
-# 5. Trace Workflow Error Cases
-
-## Scenario: IR generation error shows inline inspector errors
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates IR generation failure  
-**When** the user presses Ctrl+T  
-**Then** the UI navigates to ExecutionPage  
-**And** inline IR errors appear  
-**And** a global error banner appears
-
-## Scenario: Prompt generation error shows inline inspector errors
-**Given** the backend mock response includes malformed prompts  
-**When** the user presses Ctrl+T  
-**Then** the UI navigates to ExecutionPage  
-**And** inline prompt errors appear  
-**And** a global error banner appears
-
-## Scenario: Model output rendering error shows inline inspector errors
-**Given** the backend mock response includes malformed model outputs  
-**When** the user presses Ctrl+T  
-**Then** the UI navigates to ExecutionPage  
-**And** inline model output errors appear  
-**And** a global error banner appears
-
-## Scenario: Fatal IR error shows a modal dialog
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates a fatal IR error  
-**When** the user presses Ctrl+T  
-**Then** a modal dialog appears  
-**And** all actions are disabled until acknowledged
+## 3.3 Backend Startup Failure
+**GIVEN** the user opens Settings Page  
+**WHEN** they save invalid backend configuration  
+**THEN** backend fails to start  
+**SO THAT** error banner appears  
+**AS MEASURED BY** `ErrorBannerViewModel.IsVisible == true`
 
 ---
 
-# 6. Settings Workflow Error Cases
+# 4. Transport Error Scenarios
 
-## Scenario: Invalid port shows an inline validation error
-**Given** the user is on SettingsPage  
-**When** the user enters a port value outside 1–65535  
-**Then** an inline validation error appears above the Port field  
-**And** Save is disabled
+## 4.1 WebSocket Disconnect During Execution
+**GIVEN** execution is running  
+**WHEN** WebSocket disconnects  
+**THEN** global error banner appears  
+**SO THAT** the user sees transport failure  
+**AS MEASURED BY** `PipelineExecutionViewModel.HasErrors == true`
 
-## Scenario: Empty API key shows an inline validation error
-**Given** the user is on SettingsPage  
-**When** the user clears the API Key field  
-**Then** an inline validation error appears above the API Key field  
-**And** Save is disabled
+## 4.2 Malformed Event Payload
+**GIVEN** execution is running  
+**WHEN** backend sends invalid JSON  
+**THEN** streaming stops  
+**SO THAT** the UI remains stable  
+**AS MEASURED BY** `IsRunning == false`
 
-## Scenario: Editing an invalid field back to valid clears the error
-**Given** the Port field shows an inline validation error  
-**When** the user corrects the value to a valid port  
-**Then** the inline validation error clears  
-**And** Save becomes enabled (if no other fields are invalid)
-
-## Scenario: Server relaunch failure shows a fatal modal
-**Given** the user is on SettingsPage with valid edits  
-**And** the mocked `llx serve` relaunch fails (e.g. the new port is unavailable)  
-**When** the user selects Save  
-**Then** a modal dialog appears  
-**And** all actions are disabled until acknowledged  
-**And** the edited field values remain on SettingsPage after acknowledgment
+## 4.3 Event With Wrong Correlation ID
+**GIVEN** active correlation ID = `abc-123`  
+**WHEN** event arrives with `xyz-999`  
+**THEN** UI ignores the event  
+**SO THAT** no cross‑execution contamination occurs  
+**AS MEASURED BY** unchanged inspector state
 
 ---
 
-# 7. Navigation Error Cases
+# 5. Inspector Error Scenarios
 
-## Scenario: Navigation guard error shows a modal dialog
-**Given** the user is on EditorPage  
-**And** no pipeline has been executed  
-**When** the user selects ExecutionPage in the sidebar  
-**Then** a navigation guard modal appears  
-**And** the UI remains on EditorPage
+## 5.1 Raw AST Rendering Error
+**GIVEN** `raw_ast_generated` arrives  
+**WHEN** RawAstPanel fails to render  
+**THEN** InspectorErrorPanel appears  
+**SO THAT** the user sees rendering failure  
+**AS MEASURED BY** `RawAstViewModel.HasErrors == true`
 
-## Scenario: Fatal navigation error shows a modal dialog
-**Given** the user is on EditorPage  
-**And** a fatal navigation error occurs  
-**When** the user attempts to navigate  
-**Then** a modal dialog appears  
-**And** all actions are disabled until acknowledged
+## 5.2 Normalized AST Rendering Error
+**GIVEN** normalized AST arrives  
+**WHEN** rendering fails  
+**THEN** NormalizedAstPanel shows error  
+**SO THAT** user sees failure context  
+**AS MEASURED BY** `NormalizedAstViewModel.HasErrors == true`
+
+## 5.3 IR Rendering Error
+**GIVEN** IR arrives  
+**WHEN** rendering fails  
+**THEN** IR panel shows error  
+**SO THAT** user sees IR failure  
+**AS MEASURED BY** `IrViewModel.HasErrors == true`
+
+## 5.4 Prompt Rendering Error
+**GIVEN** prompts arrive  
+**WHEN** rendering fails  
+**THEN** PromptPanel shows error  
+**SO THAT** user sees prompt failure  
+**AS MEASURED BY** `PromptViewModel.HasErrors == true`
+
+## 5.5 Model Output Rendering Error
+**GIVEN** model outputs arrive  
+**WHEN** rendering fails  
+**THEN** ModelOutputPanel shows error  
+**SO THAT** user sees output failure  
+**AS MEASURED BY** `ModelOutputViewModel.HasErrors == true`
 
 ---
 
-# 8. Error Recovery
+# 6. Editor Error Scenarios
 
-## Scenario: Retry clears inline and banner errors
-**Given** the user is on ExecutionPage  
-**And** inline inspector errors are visible  
-**And** a global error banner is visible  
-**When** the user retries the pipeline  
-**Then** all inline errors clear  
-**And** the global banner clears
+## 6.1 Inline Parser Error
+**GIVEN** user edits CNL  
+**WHEN** `/explain` returns parser error  
+**THEN** inline error appears  
+**SO THAT** user sees grammar issue  
+**AS MEASURED BY** red underline + margin marker
 
-## Scenario: Modal dialog requires acknowledgment
-**Given** a modal dialog is visible  
-**When** the user retries the pipeline  
-**Then** the modal remains visible  
-**And** actions remain disabled  
-**When** the user acknowledges the modal  
-**Then** actions become enabled
+## 6.2 Inline Grammar Error
+**GIVEN** user edits CNL  
+**WHEN** `/explain` returns grammar error  
+**THEN** inline error appears  
+**SO THAT** user sees grammar issue  
+**AS MEASURED BY** updated `SyntaxErrors`
+
+## 6.3 Inline Expression Hole Error
+**GIVEN** user edits CNL  
+**WHEN** `/explain` returns hole error  
+**THEN** inline error appears  
+**SO THAT** user sees missing expression  
+**AS MEASURED BY** error marker at hole location
+
+---
+
+# 7. Navigation Error Scenarios
+
+General navigation-guard mechanics (when navigation/buttons lock and unlock) are authoritative in `bdd-ui-navigation.md` §7. The scenarios below are the error-triggered special case of those same rules and should stay consistent with it — if the two ever appear to disagree, `bdd-ui-navigation.md` §7 wins.
+
+## 7.1 Navigation Blocked During Execution
+**GIVEN** execution is running  
+**WHEN** user clicks Home  
+**THEN** navigation is blocked  
+**SO THAT** UI remains consistent  
+**AS MEASURED BY** `CurrentPage == Execution`
+
+## 7.2 Navigation Allowed After Error
+**GIVEN** pipeline failed  
+**WHEN** user clicks Editor  
+**THEN** navigation succeeds  
+**SO THAT** user can continue editing  
+**AS MEASURED BY** `CurrentPage == Editor`
+
+---
+
+# 8. Fatal Error Scenarios
+
+## 8.1 Fatal Evaluator Error
+**GIVEN** evaluator encounters fatal error  
+**WHEN** `pipeline_failed` arrives with severity `fatal`  
+**THEN** fatal styling appears  
+**SO THAT** user understands pipeline cannot continue  
+**AS MEASURED BY** red banner with fatal indicator
+
+## 8.2 Fatal Model Adapter Error
+**GIVEN** model adapter fails  
+**WHEN** fatal error arrives  
+**THEN** ModelOutputPanel shows fatal error  
+**SO THAT** user sees model failure  
+**AS MEASURED BY** `ModelOutputViewModel.Severity == "fatal"`
+
+---
+
+# 9. Error Clearing Scenarios
+
+## 9.1 Clear on New Execution
+**GIVEN** previous execution failed  
+**WHEN** new `pipeline_started` arrives  
+**THEN** all errors clear  
+**SO THAT** UI begins fresh execution  
+**AS MEASURED BY** empty error banner + cleared inspectors
+
+## 9.2 Clear on Dismiss
+**GIVEN** error banner is visible  
+**WHEN** user clicks Dismiss  
+**THEN** banner hides  
+**SO THAT** user can continue workflow  
+**AS MEASURED BY** `ErrorBannerViewModel.IsVisible == false`
+
+## 9.3 Clear on Navigation
+**GIVEN** error banner is visible  
+**WHEN** user navigates away from Execution Page  
+**THEN** banner clears  
+**SO THAT** UI remains clean  
+**AS MEASURED BY** banner hidden on new page
+
+---
+
+# 10. Non‑Goals
+
+These scenarios do **not** cover:
+
+- parallel executions  
+- queued executions  
+- cancellation  
+- plugin inspectors  
+- multi‑file workflows  
+- nondeterministic animations  
 
 ---
 
 # Summary
 
-This BDD error‑cases specification defines deterministic Given/When/Then interactions for all UI error behaviors in Limelight‑X.  
-It covers validation, pipeline, API, rendering, navigation, and fatal errors across all workflows.  
-Backend responses are mocked, scenarios use medium granularity, and naming is behavioral.  
-This error‑case model is authoritative and must be followed exactly.
+These BDD error‑case scenarios define all deterministic error behaviors in the Limelight‑X UI under the streaming API.  
+They ensure predictable error rendering, stable inspector behavior, strict navigation constraints, and robust handling of pipeline, API, transport, and UI errors.

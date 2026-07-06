@@ -1,364 +1,365 @@
-# UI Data Contracts
+# UI Data Contracts (Streaming Edition)
 
 ## Purpose
-This document defines all backend → UI data contracts used by the Limelight‑X Avalonia workflow dashboard.  
-It specifies the JSON schemas, versioning rules, metadata structures, and error formats for all API responses.  
-This specification is authoritative for how the UI consumes these contracts.
+This document defines all data contracts exchanged between the Limelight‑X UI and the `/src/api` backend.  
+It specifies the JSON envelope shape, event types, inspector payloads, error structures, and correlation‑ID rules used in the streaming API.
 
-The server that produces these responses (`/src/api`, its endpoints, port, lifecycle, and startup error conditions) is owned by **`spec/api.md`**; this document owns the JSON shapes and UI-side consumption rules, and must stay in sync with `spec/api.md` §9–10. If the two ever disagree, `spec/api.md` wins for wire format and error semantics.
+This specification is authoritative.  
+All implementation must follow this contract exactly.
 
-All implementation must follow these contracts exactly.
-
-Limelight‑X uses:
-
-- **Flat JSON responses**  
-- **Shared response envelope**  
-- **Versioned namespaces (`v1.*`)**  
-- **Rich metadata**  
-- **Full semantic AST nodes**  
-- **Full IR operation structures**  
-- **Prompt blocks with metadata**  
-- **Model outputs with parsed models + metadata**  
-- **Final result with content type**  
-- **Structured error objects**  
-- **Forward‑compatible schemas (UI ignores unknown fields)**  
+The UI receives **incremental JSON events** over WebSocket instead of single-response HTTP payloads.  
+Each event updates the corresponding inspector ViewModel deterministically.
 
 ---
 
-# 1. Shared Response Envelope
+# 1. Shared Event Envelope
 
-All backend responses follow the same envelope:
+Every event sent by the backend uses the same envelope shape:
 
 ```json
 {
   "version": "v1",
   "success": true,
   "errors": [],
+  "event_type": "raw_ast_generated",
+  "correlation_id": "abc-123",
   "data": { ... }
+}
+```
+
+### Required Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `version` | string | API version (`"v1"`) |
+| `success` | boolean | `true` unless `pipeline_failed` |
+| `errors` | array | List of error objects (empty unless error) |
+| `event_type` | string | One of the event types defined in §2 |
+| `correlation_id` | string | Unique ID for the pipeline execution |
+| `data` | object | Event-specific payload |
+
+### Determinism Rules
+- Envelope shape is identical for all events.  
+- Event order is deterministic and matches pipeline order.  
+- UI must ignore events whose `correlation_id` does not match the active execution.  
+- UI must not reorder or buffer events.
+
+---
+
+# 2. Event Types
+
+The backend emits the following event types:
+
+| Event Type | Description |
+|------------|-------------|
+| `pipeline_started` | Pipeline execution has begun; UI must clear all inspectors |
+| `raw_ast_generated` | Raw AST is ready |
+| `normalized_ast_generated` | Normalized AST is ready |
+| `ir_generated` | IR is ready |
+| `prompts_generated` | Prompts are ready |
+| `model_outputs_generated` | Model outputs are ready |
+| `final_result_ready` | Final result is ready |
+| `pipeline_failed` | Pipeline encountered an error |
+
+### Per-Operation Event Sequences
+
+#### `/run`
+```
+pipeline_started
+final_result_ready
+```
+
+#### `/explain`
+```
+pipeline_started
+raw_ast_generated
+normalized_ast_generated
+```
+
+(`/explain` never invokes the evaluator, so it produces no final result; `normalized_ast_generated` is the completion signal for this endpoint.)
+
+#### `/trace`
+```
+pipeline_started
+raw_ast_generated
+normalized_ast_generated
+ir_generated
+prompts_generated
+model_outputs_generated
+final_result_ready
+```
+
+---
+
+# 3. Error Object Contract
+
+Errors follow the same structure defined in `api.md`:
+
+```json
+{
+  "code": "ERR_CNL_PARSE",
+  "category": "pipeline",
+  "severity": "error",
+  "message": "Unexpected token at line 3",
+  "location": {
+    "line": 3,
+    "column": 14
+  }
 }
 ```
 
 ### Fields
 
-| Field     | Type     | Description |
-|-----------|----------|-------------|
-| `version` | string   | API version namespace (`v1`) |
-| `success` | boolean  | Indicates whether the request succeeded |
-| `errors`  | array    | List of structured error objects |
-| `data`    | object   | Endpoint‑specific payload |
+| Field | Type | Description |
+|-------|------|-------------|
+| `code` | string | Stable error code |
+| `category` | string | `api` or `pipeline` |
+| `severity` | string | `error` or `fatal` |
+| `message` | string | Human-readable message |
+| `location` | object or null | Optional parser/normalizer location |
 
-### Error Object Schema
-
-```json
-{
-  "code": "string",
-  "category": "validation | pipeline | api | rendering | navigation | editor | state",
-  "message": "string",
-  "severity": "info | warning | error | fatal",
-  "location": {
-    "line": "number",
-    "column": "number",
-    "span": { "start": "number", "end": "number" }
-  }
-}
-```
-
-`code` and `category` map directly onto the UI's `UiError.Code`/`UiError.Category` (`ui-error-handling.md` §1, `ui-viewmodels.md` §2) with no client-side derivation. The full `code`/`category` value list per error condition is defined in `api.md` §10 — that table is authoritative; this schema only describes the field shapes.
+`category` is `api` or `pipeline` only at the wire level — these are the only values a server-sent error object ever carries. `transport` and `ui` (see `ui-error-handling.md` §4) are categories the client synthesizes itself (e.g. for a WebSocket disconnect or a rendering failure) and never appear in an error object received from the server.
 
 ### Rules
-- UI must ignore unknown fields.  
-- `success = false` → `data` may be omitted.  
-- `errors` may contain multiple structured errors.  
-- `location` is optional.  
-- `severity` and `category` strings are deserialized **case-insensitively** into their respective .NET enums (e.g. wire `"fatal"` → `ErrorSeverity.Fatal`).
-
-### HTTP Status Codes
-The JSON envelope shape is identical regardless of HTTP status — even a syntactically malformed request body must still receive a standard envelope response, per `api.md` §10 — but the status itself is meaningful. In short: malformed requests (bad JSON, missing required fields) return HTTP 400; pipeline-level failures (parse errors, evaluator fatal errors) return HTTP 200 with `success: false`. `PipelineService` should branch on `success` for pipeline-level results, and treat any non-2xx status as a transport-level `ApiError` using the envelope's `errors[]` for the message.
+- All errors must be human-readable.  
+- `pipeline_failed` events must include at least one error.  
+- UI must surface errors immediately.
 
 ---
 
-# 2. `/explain` Response Schema
+# 4. AST Node Contract (Raw AST)
 
-### Purpose
-Returns raw AST and normalized AST.
-
-### JSON Schema
+Used in `raw_ast_generated` events.
 
 ```json
 {
-  "version": "v1",
-  "success": true,
-  "errors": [],
   "data": {
-    "raw_ast": {
-      "root": { "$ref": "#/definitions/ast_node" },
-      "raw_text": "string",
-      "metadata": { "$ref": "#/definitions/ast_metadata" }
-    },
-    "normalized_ast": {
-      "root": { "$ref": "#/definitions/ast_node" },
-      "raw_text": "string",
-      "metadata": { "$ref": "#/definitions/normalized_ast_metadata" }
-    }
-  }
-}
-```
-
----
-
-# 3. `/trace` Response Schema
-
-### Purpose
-Returns IR, prompts, model outputs, and optionally ASTs.
-
-### JSON Schema
-
-```json
-{
-  "version": "v1",
-  "success": true,
-  "errors": [],
-  "data": {
-    "raw_ast": { "$ref": "#/definitions/raw_ast" },
-    "normalized_ast": { "$ref": "#/definitions/normalized_ast" },
-    "ir": {
-      "operations": [
-        { "$ref": "#/definitions/ir_operation" }
-      ],
-      "raw_text": "string",
-      "metadata": { "$ref": "#/definitions/ir_metadata" }
-    },
-    "prompts": [
-      { "$ref": "#/definitions/prompt_block" }
-    ],
-    "model_outputs": [
-      { "$ref": "#/definitions/model_output_block" }
+    "raw_ast": [
+      {
+        "node_type": "Command",
+        "text": "Load the article from \"article.txt\".",
+        "children": [ ... ],
+        "span": { "start": 0, "end": 42 }
+      }
     ]
   }
 }
 ```
 
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `node_type` | string | AST node type |
+| `text` | string | Original text |
+| `children` | array | Child AST nodes |
+| `span.start` | number | Start offset |
+| `span.end` | number | End offset |
+
 ---
 
-# 4. `/run` Response Schema
+# 5. Normalized AST Contract
 
-### Purpose
-Returns only the final result.
-
-### JSON Schema
+Used in `normalized_ast_generated` events.
 
 ```json
 {
-  "version": "v1",
-  "success": true,
-  "errors": [],
+  "data": {
+    "normalized_ast": [
+      {
+        "node_type": "LoadResource",
+        "resource": "article.txt",
+        "children": []
+      }
+    ]
+  }
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `node_type` | string | Normalized AST node type |
+| `resource` | string or null | Resource name (if applicable) |
+| `children` | array | Child normalized nodes |
+
+---
+
+# 6. IR Operation Contract
+
+Used in `ir_generated` events.
+
+```json
+{
+  "data": {
+    "ir": [
+      {
+        "operation_type": "LoadResource",
+        "resource": "article.txt",
+        "index": 0,
+        "metadata": { "source_span": { "start": 0, "end": 42 } }
+      }
+    ]
+  }
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `operation_type` | string | IR operation type |
+| `resource` | string or null | Resource name |
+| `index` | number | Operation index |
+| `metadata` | object | Additional deterministic metadata |
+
+---
+
+# 7. Prompt Block Contract
+
+Used in `prompts_generated` events.
+
+```json
+{
+  "data": {
+    "prompts": [
+      {
+        "operation_index": 1,
+        "prompt_text": "Summarize the article.",
+        "metadata": {
+          "model": "claude-3-sonnet",
+          "temperature": 0.0
+        }
+      }
+    ]
+  }
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `operation_index` | number | IR operation index |
+| `prompt_text` | string | Prompt sent to the model |
+| `metadata` | object | Model adapter metadata |
+
+---
+
+# 8. Model Output Contract
+
+Used in `model_outputs_generated` events.
+
+```json
+{
+  "data": {
+    "model_outputs": [
+      {
+        "operation_index": 1,
+        "raw_text": "Here is the summary...",
+        "content_type": "plain",
+        "metadata": {
+          "model": "claude-3-sonnet",
+          "tokens": 128
+        }
+      }
+    ]
+  }
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `operation_index` | number | IR operation index |
+| `raw_text` | string | Model output text |
+| `content_type` | string | `"plain"` or `"json"` |
+| `metadata` | object | Model adapter metadata |
+
+---
+
+# 9. Final Result Contract
+
+Used in `final_result_ready` events.
+
+```json
+{
   "data": {
     "final_result": {
-      "text": "string",
-      "content_type": "plain | markdown | json"
+      "text": "The article discusses...",
+      "content_type": "plain"
     }
   }
 }
 ```
 
----
+### Fields
 
-# 5. Definitions
-
-All shared structures are defined under `#/definitions`.
-
----
-
-## 5.1 AST Node
-
-Full semantic AST node.
-
-```json
-{
-  "type": "string",
-  "value": "string",
-  "children": [
-    { "$ref": "#/definitions/ast_node" }
-  ],
-  "span": {
-    "start": "number",
-    "end": "number"
-  },
-  "depth": "number",
-  "metadata": {
-    "resource": "string",
-    "pronoun": "string",
-    "expression_hole": "boolean",
-    "normalized": "boolean"
-  }
-}
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `text` | string | Final result text |
+| `content_type` | string | `"plain"` or `"json"` |
 
 ---
 
-## 5.2 AST Metadata
+# 10. Correlation ID Contract
 
-```json
-{
-  "node_count": "number",
-  "max_depth": "number",
-  "source_length": "number"
-}
-```
-
----
-
-## 5.3 Normalized AST Metadata
-
-Includes structural + metadata differences.
-
-```json
-{
-  "node_count": "number",
-  "max_depth": "number",
-  "normalization_steps": "number",
-  "removed_named_variables": "number",
-  "added_input_refs": "number"
-}
-```
-
----
-
-## 5.4 IR Operation
-
-Full IR operation structure.
-
-```json
-{
-  "operation_index": "number",
-  "type": "string",
-  "input": "number",
-  "prompt": "string",
-  "target": "string",
-  "source_span": {
-    "start": "number",
-    "end": "number"
-  },
-  "normalized_source": "string",
-  "debug_info": {
-    "token_count": "number",
-    "estimated_cost": "number"
-  }
-}
-```
-
----
-
-## 5.5 IR Metadata
-
-```json
-{
-  "operation_count": "number",
-  "max_depth": "number",
-  "reference_map": {
-    "string": "number"
-  }
-}
-```
-
----
-
-## 5.6 Prompt Block
-
-Prompt text + index + metadata.
-
-```json
-{
-  "operation_index": "number",
-  "prompt_text": "string",
-  "metadata": {
-    "length": "number",
-    "token_count": "number"
-  }
-}
-```
-
----
-
-## 5.7 Model Output Block
-
-Full model output structure.
-
-```json
-{
-  "operation_index": "number",
-  "raw_text": "string",
-  "content_type": "plain | markdown | json",
-  "parsed": {
-    "markdown": "object",
-    "json": "object"
-  },
-  "metadata": {
-    "token_usage": "number",
-    "latency_ms": "number"
-  }
-}
-```
-
----
-
-## 5.8 Final Result
-
-Raw text + content type.
-
-```json
-{
-  "text": "string",
-  "content_type": "plain | markdown | json"
-}
-```
-
----
-
-# 6. Versioning
-
-Limelight‑X uses **versioned namespaces**:
-
-- `v1.run_result`
-- `v1.explain_result`
-- `v1.trace_result`
+Every pipeline execution is associated with a unique `correlation_id`.
 
 ### Rules
-- All responses include `"version": "v1"`.  
-- Future versions may introduce `v2`, `v3`, etc.  
-- UI must ignore unknown fields.  
-- UI must not assume backward compatibility beyond v1.
+- UI must track the active `correlation_id`.  
+- UI must ignore events with mismatched IDs.  
+- UI must clear all inspector state when a new `pipeline_started` event arrives.  
+- UI must not buffer or reorder events.
 
 ---
 
-# 7. Extensibility Rules
+# 11. WebSocket Event Stream Contract
 
-### Allowed
-- Backend may add new fields.  
-- Backend may add new metadata sections.  
-- Backend may add new optional structures.
+### Endpoint
+```
+ws://127.0.0.1:<port>/events
+```
 
-### Forbidden
-- Backend may not remove required fields.  
-- Backend may not change field types.  
-- Backend may not change semantic meaning of fields.
+### Transport Rules
+- Events must be UTF‑8 JSON objects.  
+- Events must not be chunked or batched.  
+- Each event must be a complete JSON object.  
+- No partial frames.  
+- No binary frames.  
+- No compression.
 
 ---
 
-# 8. Non‑Goals
+# 12. Non‑Goals
 
-Data contracts do **not** include:
+Data contracts do **not** support:
 
-- Component input/output contracts  
-- UI internal ViewModel structures  
-- Binary data (embeddings, images)  
-- Plugin contracts  
-- Multi‑file project schemas  
+- single-response HTTP mode  
+- parallel pipeline executions  
+- queued executions  
+- cancellation  
+- custom inspectors  
+- nondeterministic fields  
+- UI-side pipeline reconstruction  
+
+---
+
+# 13. Future Extensions
+
+Potential enhancements:
+
+- additional observability events (timing, resource usage)  
+- richer metadata for IR and AST nodes  
+- structured model output diffing  
+- SSE fallback transport  
 
 ---
 
 # Summary
 
-This document defines all backend → UI data contracts for Limelight‑X.  
-All responses use a shared envelope, versioned namespaces, rich metadata, full semantic AST nodes, full IR operations, prompt blocks with metadata, model outputs with parsed models, and final results with content types.  
-The UI must ignore unknown fields and treat these schemas as authoritative for v0.1.
+The Limelight‑X UI data contracts define a deterministic, streaming JSON event model used to update inspector ViewModels in real time.  
+All pipeline results arrive incrementally over WebSocket, each wrapped in a stable envelope with a correlation ID and event type.  
+This contract ensures predictable, spec‑driven behavior across the entire UI.

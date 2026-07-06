@@ -1,29 +1,38 @@
-//! `/src/api`: a local, loopback-only HTTP server wrapping the existing
-//! `run`/`explain`/`trace` pipeline (spec/api.md). Started via `llx serve`.
+//! `/src/api`: a local, loopback-only HTTP + WebSocket server wrapping the
+//! existing `run`/`explain`/`trace` pipeline (spec/api.md). Started via
+//! `llx serve`. Pipeline results are streamed incrementally as JSON events
+//! over `/events` rather than returned synchronously from the POST handlers.
 
 pub mod dto;
 mod handlers;
+mod worker;
+mod ws;
 
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::Router;
+use tokio::sync::mpsc;
 
 use crate::error::Error;
 use crate::model::ModelAdapter;
 
-/// Shared state for all handlers: the model adapter and the execution lock
-/// that serializes pipeline runs (spec/api.md §2 — no parallel execution,
-/// per CLAUDE.md §3.3 / architecture.md §6).
+/// Shared state for all handlers: the model adapter, the job queue that
+/// serializes pipeline execution (see `worker.rs`), the current WebSocket
+/// client's outbound sender, and the `correlation_id` counter.
 pub struct AppState {
     pub adapter: Arc<dyn ModelAdapter + Send + Sync>,
-    pub execution_lock: tokio::sync::Mutex<()>,
+    pub job_tx: mpsc::UnboundedSender<worker::PipelineJob>,
+    pub client_tx: ws::ClientSender,
+    pub next_correlation_id: AtomicU64,
 }
 
 pub type SharedState = Arc<AppState>;
 
 /// Starts the server, binding `127.0.0.1:<port>` and serving `/run`,
-/// `/explain`, `/trace` until interrupted (Ctrl+C / SIGINT), per spec/api.md §8.
+/// `/explain`, `/trace`, `/events` until interrupted (Ctrl+C / SIGINT), per
+/// spec/api.md §8.
 pub async fn serve(port: u16, adapter: Arc<dyn ModelAdapter + Send + Sync>) -> Result<(), Error> {
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -38,15 +47,21 @@ pub async fn serve_on(
     listener: tokio::net::TcpListener,
     adapter: Arc<dyn ModelAdapter + Send + Sync>,
 ) -> Result<(), Error> {
+    let (job_tx, job_rx) = mpsc::unbounded_channel();
     let state: SharedState = Arc::new(AppState {
         adapter,
-        execution_lock: tokio::sync::Mutex::new(()),
+        job_tx,
+        client_tx: ws::ClientSender::default(),
+        next_correlation_id: AtomicU64::new(0),
     });
+
+    tokio::spawn(worker::run_worker(job_rx, Arc::clone(&state)));
 
     let app = Router::new()
         .route("/run", post(handlers::run))
         .route("/explain", post(handlers::explain))
         .route("/trace", post(handlers::trace))
+        .route("/events", get(ws::ws_handler))
         .with_state(state);
 
     axum::serve(listener, app)

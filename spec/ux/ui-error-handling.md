@@ -1,324 +1,320 @@
-# UI Error Handling
+# UI Error Handling (Streaming Edition)
 
 ## Purpose
-This document defines the complete error‑handling system for the Limelight‑X Avalonia workflow dashboard.  
-It specifies error categories, propagation rules, UI surfaces, severity mapping, recovery behavior, persistence, and rendering logic.  
+This document defines the complete error‑handling model for the Limelight‑X UI.  
+It specifies how errors are surfaced, categorized, rendered, and cleared under the **event‑streaming API**.  
 This specification is authoritative.  
-All implementation must follow this error‑handling model exactly.
+All implementation must follow this behavior exactly.
 
-Limelight‑X uses a unified error taxonomy, rich severity mapping, automatic recovery, local + global propagation, and modal dialogs for fatal errors.  
-Errors persist across navigation until cleared or retried.
+The UI receives incremental JSON events over WebSocket.  
+Errors may occur during HTTP request submission, WebSocket streaming, or pipeline execution.  
+All errors must be surfaced deterministically and immediately.
 
 ---
 
-# 1. Unified Error Taxonomy
+# 1. Architectural Principles
 
-All errors in Limelight‑X use a unified category system with structured subtypes:
+1. **Deterministic Error Behavior**  
+   - Errors must appear immediately.  
+   - Errors must never be hidden or delayed.  
+   - Error rendering must be deterministic.
 
-```
-UiError {
-    Code: string
-    Message: string
-    Severity: ErrorSeverity
-    Category: ErrorCategory
-    Location?: ErrorLocation
-}
-```
+2. **MVVM Purity**  
+   - Views contain no logic.  
+   - ViewModels contain error state.  
+   - Services surface backend errors.
 
-### ErrorSeverity
-```
-info
-warning
-error
-fatal
-```
+3. **Streaming‑Aware Error Handling**  
+   - Errors may arrive as `pipeline_failed` events.  
+   - Errors may occur before streaming begins (HTTP errors).  
+   - Errors may occur during streaming (WebSocket disconnect).
 
-### ErrorCategory
-```
-Validation
-Pipeline
-Api
-Rendering
-Navigation
-Editor
-State
-```
+4. **Strict Single Execution**  
+   - Errors must stop the active pipeline.  
+   - Execution buttons re‑enable only after error resolution.
 
-### ErrorLocation (optional)
-```
+---
+
+# 2. Error Sources
+
+Errors may originate from:
+
+### 2.1 Backend Pipeline Errors
+- parser errors  
+- normalizer errors  
+- IR compiler errors  
+- evaluator errors  
+- model adapter errors  
+
+These arrive via `pipeline_failed` events.
+
+### 2.2 API Errors
+- malformed request  
+- missing `source` field  
+- invalid JSON  
+- backend startup failure  
+- port binding failure  
+
+### 2.3 Transport Errors
+- HTTP request failure  
+- WebSocket disconnect  
+- malformed event frame  
+- invalid JSON event payload  
+
+### 2.4 UI Errors
+- invalid settings  
+- invalid file path  
+- editor validation errors  
+
+### 2.5 Persistent Logging
+Every `UiError` surfaced through §2.1-2.4 — i.e. everything added to `FileLoaderViewModel.Errors`, `EditorViewModel.ValidationErrors`, `PipelineExecutionViewModel.Errors`, and `SettingsViewModel.Errors` — is also logged via `Microsoft.Extensions.Logging`'s `ILogger`, at the `LogLevel` mapped from the error's `Severity` (`Info`→`Information`, `Warning`→`Warning`, `Error`→`Error`, `Fatal`→`Critical`), to the file described in `ui-deployment.md` §4.3.
+
+This is purely additive to the existing UI surfacing rules above — it never changes what the user sees or where. A failure to write the log entry itself (unwritable directory, disk full, etc.) must not surface as a `UiError`, must not crash the app, and must not block the original error from reaching its normal UI surface (banner/inline/inspector) — logging failures fail silently.
+
+---
+
+# 3. Error Envelope (Streaming)
+
+All backend errors arrive in the standard envelope:
+
+```json
 {
-    line: number
-    column: number
-    span: { start: number, end: number }
+  "version": "v1",
+  "success": false,
+  "errors": [
+    {
+      "code": "ERR_CNL_PARSE",
+      "category": "pipeline",
+      "severity": "error",
+      "message": "Unexpected token at line 3",
+      "location": { "line": 3, "column": 14 }
+    }
+  ],
+  "event_type": "pipeline_failed",
+  "correlation_id": "abc-123",
+  "data": {}
 }
 ```
 
 ### Rules
-- All errors must include a **Code** (e.g., `ERR_AST_PARSE`, `ERR_IR_BUILD`).  
-- All errors must include a **Message** (human‑readable).  
-- All errors must include a **Severity**.  
-- UI must ignore unknown fields (forward‑compatible).  
+- Envelope shape is identical for all events.  
+- UI must ignore events with mismatched correlation IDs.  
+- UI must surface errors immediately.
 
 ---
 
-# 2. Error Surfaces
+# 4. Error Categories
 
-Limelight‑X uses three error surfaces:
+| Category | Description | Origin |
+|----------|-------------|--------|
+| `api` | malformed request, missing fields, invalid JSON | Wire — sent by the server in an error object's `category` field |
+| `pipeline` | parser, normalizer, IR, evaluator, model adapter | Wire — sent by the server in an error object's `category` field |
+| `transport` | HTTP request failure, WebSocket disconnect, malformed event frame, invalid JSON event payload | Client-synthesized — never sent by the server |
+| `ui` | invalid settings, invalid file path, editor validation errors | Client-synthesized — never sent by the server |
 
-1. **Inline errors**  
-2. **Global error banner**  
-3. **Modal dialogs**
-
-Each surface is used deterministically based on severity and category.
-
----
-
-# 3. Inline Errors
-
-Inline errors appear **above component content**.
-
-### Used For
-- Validation errors (Editor, Settings)  
-- Inspector errors (AST, IR, Prompts, Model Outputs)  
-- Rendering errors inside inspectors  
-
-### Behavior
-- Component content remains visible below.  
-- Inline errors use yellow (warning) or red (error) styling.  
-- Inline errors clear automatically when the user retries the action.  
-- Inline errors persist across navigation until cleared.
-
-### Styling
-```
-Background: #1F1F1F
-Border: #EF4444 (error) or #F59E0B (warning)
-Text: TextPrimary
-Icon: Fluent UI warning/error icon
-```
+`api` and `pipeline` are the only values that appear in a server-sent error object's `category` field (see `ui-data-contracts.md` §3). `transport` and `ui` errors have no wire representation — the client constructs a `UiError` locally (e.g. on a `ClientWebSocket` disconnect, a malformed event payload, or a local rendering/validation failure) and assigns one of these two categories itself.
 
 ---
 
-# 4. Global Error Banner
+# 5. Error Severity
 
-The global banner appears **for any error**, except navigation failures.
-
-### Used For
-- Pipeline errors  
-- API errors  
-- Rendering errors  
-- Inspector errors (in addition to inline errors)  
-- State errors  
-
-### Behavior
-- Appears at top of page.  
-- Does not block interaction.  
-- Clears automatically on retry.  
-- Persists across navigation until cleared.
-
-### Styling
-```
-Background: #EF4444 (error) or #F59E0B (warning)
-Text: #FFFFFF
-Icon: Fluent UI error icon
-Shadow: ShadowSmall
-```
-
----
-
-# 5. Modal Dialogs
-
-Modal dialogs are used **only for navigation failures and fatal errors**.
-
-### Used For
-- Navigation guard failures  
-- Fatal backend errors  
-- Fatal rendering errors  
-- Fatal state errors  
-
-### Behavior
-- Blocks interaction until acknowledged.  
-- Disables all actions until user clicks “OK”.  
-- Does not navigate automatically.  
-- Does not clear automatically — user must acknowledge.
-
-### Fatal Error Behavior
-When a fatal error occurs:
-
-1. A modal dialog is shown.  
-2. All actions are disabled.  
-3. The UI waits for user acknowledgment.  
-4. After acknowledgment, the user may retry or navigate manually.  
-5. ExecutionPage may be entered afterward if a retry succeeds.
-
-### Styling
-```
-Background: Surface
-Border: #EF4444
-Text: TextPrimary
-Accent: none (lime is never used for errors)
-Buttons: PrimaryButton (accent muted)
-```
-
----
-
-# 6. Severity Mapping
-
-Limelight‑X uses **rich severity mapping**:
-
-| Severity | UI Surface | Behavior |
-|----------|------------|----------|
-| info     | inline     | non‑blocking |
-| warning  | inline + yellow highlight | non‑blocking |
-| error    | global banner + red highlight | blocks pipeline actions |
-| fatal    | modal dialog + red highlight | blocks all actions |
-
----
-
-# 7. Error Recovery
-
-Errors clear automatically when the user retries the action.
+| Severity | Meaning |
+|----------|---------|
+| `error` | recoverable; pipeline stops but UI remains stable |
+| `fatal` | unrecoverable; evaluator or model adapter fatal error |
 
 ### Rules
-- Inline errors clear on retry.  
-- Global banner clears on retry.  
-- Modal dialogs clear only when user acknowledges.  
-- Errors do not clear automatically on navigation unless retry occurs.
+- Fatal errors must disable inspector updates.  
+- Fatal errors must re‑enable execution buttons.  
+- Fatal errors must remain visible until dismissed.
 
 ---
 
-# 8. ExecutionPage Error Handling
+# 6. Error Rendering Locations
 
-When an inspector fails (e.g., malformed IR):
+Errors must appear in the following locations:
 
-1. The inspector shows an inline error above its content.  
-2. ExecutionPage shows a global error banner.  
-3. Other inspectors remain visible.  
-4. ExecutionPage remains navigable.  
-5. Errors clear automatically on retry.
+### 6.1 Global Error Banner
+- Appears at top of Execution Page.  
+- Shows first error message.  
+- Expands to show full error list.  
+- Dismissible.
 
----
+### 6.2 Inline Editor Errors
+- Parser/grammar errors from `/explain`.  
+- Highlighted in the editor.  
+- Displayed in the margin and error list.
 
-# 9. Editor Validation Error Behavior
+All inline editor errors arrive over the wire as a single code/category: `ERR_CNL_PARSE`/`pipeline` (see `api.md` §10). The UI nonetheless distinguishes three presentation kinds, derived client-side from the error's `message` and `location` — there is no separate wire code for each:
 
-Validation errors:
+| Kind | How the UI recognizes it |
+|------|---------------------------|
+| Parser error | Default: any `ERR_CNL_PARSE` error whose `location` does not fall inside a `{{ prompt: "..." }}` span. |
+| Grammar error | An `ERR_CNL_PARSE` error whose `message` identifies a specific grammar-rule violation (e.g. an unexpected token type named in `cnl-grammar.md`). |
+| Hole error | An `ERR_CNL_PARSE` error whose `location` falls inside a `{{ prompt: "..." }}` expression-hole span, per the `PromptHole` grammar in `cnl-grammar.md` §4. |
 
-- Block Run/Explain/Trace.  
-- Show inline errors above editor content.  
-- Show a global banner if severity is `error` or higher.  
-- Clear automatically when the user edits or retries.
+This classification only affects which marker/message the editor shows; it does not change the error's `code`, `category`, or `severity`.
 
----
+### 6.3 Inspector Errors
+- If an inspector’s data cannot be rendered, show an inline error panel.  
+- Inspector remains visible but marked as failed.
 
-# 10. Settings Validation & Apply Error Behavior
-
-Settings field validation (`Category: Validation`, per §1) follows the same pattern as Editor validation:
-
-- Blocks `SaveSettingsCommand`.  
-- Shows inline errors above the relevant field (e.g. "Port must be between 1 and 65535", "API key is required", "Log path must be a valid absolute path").  
-- Clears automatically when the user edits the field.
-
-Field-level validation is syntactic only:
-- `Port`: integer, 1–65535.  
-- `ApiKey`: non-empty.  
-- `LogPath`: syntactically valid absolute path — existence and writability are **not** checked at this stage.
-
-`LogPath` existence/writability is checked when `llx serve` actually starts. If it can't open the log file, that surfaces as a relaunch failure (below), not a field validation error.
-
-Applying settings (stopping and relaunching `llx serve` with the new port/key) is a distinct failure mode from field validation:
-
-- A relaunch failure (e.g. the new port is unavailable, or the process crashes on startup) is `Category: Api, Severity: fatal` — it shows a **modal dialog**, per §5, disabling all actions until acknowledged.  
-- On relaunch failure, the user's edited field values are **not discarded** (`SettingsViewModel.IsDirty` remains `true`), so the user can correct the value and retry without re-entering everything.  
-- Unlike Editor validation errors, Settings validation errors do not block other pages — they only block leaving SettingsPage via Save (leaving via Cancel/Discard, per Guard 5, is unaffected by validation state).
+### 6.4 Execution Page Errors
+- Pipeline errors appear immediately.  
+- Execution buttons re‑enable.
 
 ---
 
-# 11. Error Logging
+# 7. Error Handling Workflow
 
-Limelight‑X logs errors **only in memory**.
+### 7.1 HTTP Request Errors
+If the initial `POST /run` / `/explain` / `/trace` fails:
+
+1. Execution does not begin.  
+2. No navigation occurs.  
+3. Error banner appears on Editor Page.  
+4. Execution buttons remain enabled.
+
+### 7.2 Streaming Errors (WebSocket)
+If WebSocket disconnects during execution:
+
+1. PipelineExecutionViewModel sets `HasErrors = true`.  
+2. Global error banner appears.  
+3. Execution buttons re‑enable.  
+4. Inspectors stop updating.
+
+### 7.3 Pipeline Errors (`pipeline_failed`)
+When a `pipeline_failed` event arrives:
+
+1. Execution stops.  
+2. Inspectors remain visible.  
+3. Error banner appears.  
+4. Execution buttons re‑enable.  
+5. Navigation remains on Execution Page.
+
+### 7.4 Fatal Errors
+Fatal errors (evaluator/model adapter) must:
+
+- disable inspector updates  
+- show fatal styling  
+- prevent further streaming  
+- re‑enable execution buttons  
+- remain visible until dismissed
+
+### 7.5 Settings Backend Restart Errors
+Saving Settings relaunches `llx serve` (see `ui-viewmodels.md` SettingsViewModel). If the relaunch fails (port unavailable, `ANTHROPIC_API_KEY` unset, or the process exits before printing its listening line):
+
+1. The failure is synthesized client-side as a `UiError` with `category = "api"` (it reflects the backend's own fail-fast startup checks, per `api.md` §2.2, not a transport or UI-local failure).  
+2. `ErrorBannerViewModel.IsVisible` becomes `true`, showing the failure message.  
+3. The user remains on the Settings Page — this is the one case where an error does not imply the Execution/Editor error-handling flow above, since no pipeline execution was in progress.  
+4. The previous backend connection (if any) is left running until a restart succeeds, so an in-flight execution is not abandoned by a bad Settings save.
+
+---
+
+# 8. Error Clearing Rules
+
+Errors clear when:
+
+- a new execution begins (`pipeline_started`)  
+- the user dismisses the global banner  
+- the user navigates away from Execution Page  
+- the editor performs a new validation pass
 
 ### Rules
-- No file logging.  
-- No developer console panel.  
-- No persistence across sessions.  
-
-Errors exist only in ViewModel state.
+- Clearing must be deterministic.  
+- Clearing must not hide active errors.  
+- Clearing must not occur automatically during streaming.
 
 ---
 
-# 12. Error Propagation
+# 9. Error ViewModel Contracts
 
-Errors propagate both locally and globally.
+### 9.1 ErrorBannerViewModel
+State:
+- `IsVisible : bool`
+- `Errors : ObservableCollection<Error>`
+- `Severity : string`
 
-### Rules
-1. Components show inline errors.  
-2. Parent ViewModels receive the error.  
-3. The global error banner appears.  
-4. A modal dialog appears only if severity is `fatal`.
+Commands:
+- `DismissCommand`
 
----
+### 9.2 EditorErrorViewModel
+State:
+- `Line : int`
+- `Column : int`
+- `Message : string`
+- `Severity : string`
 
-# 13. Error Styling
-
-Error styling follows:
-
-- Red for errors  
-- Yellow for warnings  
-- Lime accent is **never** used for errors  
-- Lime remains reserved exclusively for active states
-
----
-
-# 14. Error Persistence Across Navigation
-
-Errors persist across navigation until cleared or retried.
-
-### Rules
-- Editor errors persist.  
-- Execution errors persist.  
-- Errors clear only on retry or modal acknowledgment.
+### 9.3 InspectorErrorViewModel
+State:
+- `Message : string`
+- `Severity : string`
+- `IsCollapsed : bool`
 
 ---
 
-# 15. Backend Error Handling
+# 10. Error Styling
 
-If backend returns `success = false`:
+### 10.1 Colors
+- Error: **red**  
+- Fatal: **dark red**  
+- Active inspector: **lime** (unchanged)  
+- Collapsed inspector: neutral gray  
 
-1. The UI navigates to ExecutionPage.  
-2. ExecutionPage shows a global error banner.  
-3. Inspectors show inline errors.  
-4. Fatal errors show a modal dialog and disable actions until acknowledged.
+### 10.2 Banner Styling
+- Red background  
+- White text  
+- Expandable details section  
+- Dismiss button
+
+### 10.3 Inline Editor Styling
+- Red underline  
+- Red margin marker  
+- Tooltip with error message
 
 ---
 
-# 16. User-Facing Error Messages
+# 11. Navigation & Error Interaction
 
-Error messages use a hybrid format:
+### Forbidden Transitions During Errors
+- Errors must not navigate away from Execution Page.  
+- Errors must not navigate automatically to Editor Page.  
+- Errors must not hide inspector state.
 
-- A simple citizen‑developer‑friendly message  
-- Technical details behind a collapsible “Details” section  
-- Error code  
-- Severity  
-- Optional location
+### Allowed Transitions After Errors
+- User may navigate manually after dismissing or acknowledging errors.  
+- Execution buttons re‑enable.
 
-Example:
+---
 
-```
-Error: Unable to parse AST.
-Details:
-  Code: ERR_AST_PARSE
-  Line: 12
-  Column: 5
-  Span: 34–47
-```
+# 12. Non‑Goals
+
+Error handling does **not** support:
+
+- automatic retries  
+- parallel executions  
+- queued executions  
+- cancellation  
+- nondeterministic animations  
+- custom error categories  
+- UI-side pipeline reconstruction  
+
+---
+
+# 13. Future Extensions
+
+Potential enhancements:
+
+- richer error diagnostics  
+- structured error diffing  
+- error history panel  
+- per‑inspector error timelines  
+- additional observability events (timing, resource usage)
 
 ---
 
 # Summary
 
-Limelight‑X uses a unified error taxonomy, rich severity mapping, inline errors above content, global banners for all errors, and modal dialogs for navigation failures and fatal errors.  
-Errors propagate locally and globally, persist across navigation, and clear automatically on retry.  
-Fatal errors disable all actions until acknowledged.  
-Backend failures navigate to ExecutionPage, where inspectors show inline errors and the page shows a global banner.  
-All error messages use hybrid formatting with optional technical details.
-
-This error‑handling model is deterministic and must be followed exactly.
+Limelight‑X error handling is deterministic, MVVM‑pure, and fully aligned with the streaming API.  
+Errors appear immediately, stop the active pipeline, and update the UI in real time.  
+The global banner, inspector errors, and inline editor errors provide a consistent, predictable error experience across the entire workflow.

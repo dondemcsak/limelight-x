@@ -1,489 +1,369 @@
-# UI ViewModels
+# UI ViewModels (Streaming Edition)
 
 ## Purpose
-This document defines all ViewModels used in the Limelight‑X Avalonia workflow dashboard.  
-It specifies the state model, commands, responsibilities, and deterministic behavior of each ViewModel.  
+This document defines all ViewModels used by the Limelight‑X UI.  
+It specifies their responsibilities, state models, commands, and deterministic behavior.  
 This specification is authoritative.  
-All implementation must follow this ViewModel catalog exactly.
+All implementation must follow this architecture exactly.
 
-ViewModels must be:
+This version incorporates the **event‑streaming API** defined in `api.md`, replacing single‑response HTTP calls with incremental JSON events delivered over WebSocket.
 
-- deterministic  
-- MVVM‑pure  
-- free of UI logic  
-- free of business logic  
-- consumers of HTTP API services  
-- aligned with the Limelight‑X pipeline and inspector components  
+The UI operates in **strict single‑execution mode**:
+- Only one pipeline execution may be active at a time.
+- Run/Explain/Trace buttons are disabled while a pipeline is running.
+- A new execution cannot begin until the previous one completes or fails.
 
 ---
 
-# 1. Overview
+# 1. Architectural Principles
 
-Limelight‑X ViewModels fall into four categories:
+1. **MVVM Purity**  
+   - Views contain no logic.  
+   - ViewModels contain state and commands.  
+   - Services handle HTTP + WebSocket communication.
 
-1. **Structural ViewModels**  
-   Navigation, file loading, page state.
+2. **Deterministic State**  
+   - All UI state is derived from ViewModels.  
+   - No hidden transitions.  
+   - No nondeterministic behavior.
 
-2. **Editor ViewModels**  
-   CNL editing, validation, auto‑completion, hover tooltips, quick‑fix suggestions, formatting.
+3. **Streaming Pipeline Model**  
+   - Each pipeline execution produces a sequence of JSON events.  
+   - ViewModels update incrementally as events arrive.  
+   - Inspectors appear when their corresponding event arrives.
 
-3. **Pipeline Execution ViewModels**  
-   Execution state, inspector ViewModels, pipeline results.
-
-4. **Inspector ViewModels**  
-   Raw AST, Normalized AST, IR, Prompts, Model Outputs, Final Result — each with custom rendering data.
-
-All ViewModels use:
-
-- **PascalCase naming**  
-- **Avalonia Community Toolkit commands**  
-- **multiple loading flags** (`IsRunning`, `IsValidating`, `IsTracing`)  
-- **structured error lists** using a shared base type with domain‑specific subtypes  
-- **parsed objects + raw strings + metadata** for AST and IR  
+4. **Strict Single Execution**  
+   - Only one `correlation_id` exists at a time.  
+   - UI disables execution commands until the pipeline finishes.  
+   - No queuing, no cancellation, no parallel requests.
 
 ---
 
-# 2. Error Model
+# 2. ViewModel Overview
 
-All ViewModels use the shared base error type defined in `ui-error-handling.md` §1 (canonical — this section must match it exactly, not redefine it):
+The UI defines the following ViewModels:
 
-```
-UiError {
-    Code: string
-    Message: string
-    Severity: ErrorSeverity
-    Category: ErrorCategory
-    Location: ErrorLocation?
-}
-```
+- `NavigationViewModel`
+- `FileLoaderViewModel`
+- `EditorViewModel`
+- `PipelineExecutionViewModel`
+- `SettingsViewModel`
+- Inspector ViewModels:
+  - `RawAstViewModel`
+  - `NormalizedAstViewModel`
+  - `IrViewModel`
+  - `PromptViewModel`
+  - `ModelOutputViewModel`
+  - `FinalResultViewModel`
 
-### Severity
-```
-ErrorSeverity {
-    Info,
-    Warning,
-    Error,
-    Fatal
-}
-```
-
-### Category
-```
-ErrorCategory {
-    Validation,
-    Pipeline,
-    Api,
-    Rendering,
-    Navigation,
-    Editor,
-    State
-}
-```
-
-`Code` and `Category` are populated directly from the wire response's `code`/`category` fields (see `ui-data-contracts.md` §1, `api.md` §10) — the UI does not derive them itself. `Severity`/`Category` strings are deserialized case-insensitively from the lowercase wire values into these enums.
-
-### Domain‑specific subtypes
-Each domain may extend `UiError`:
-
-- `ValidationError : UiError`
-- `PipelineError : UiError`
-- `ApiError : UiError`
-- `RenderingError : UiError`
-
-All ViewModels expose:
-
-```
-Errors: ObservableCollection<UiError>
-```
-
-Errors must be deterministic and human‑readable.
+Each ViewModel is deterministic and state‑derived.
 
 ---
 
-# 3. Structural ViewModels
+# 3. NavigationViewModel
 
-## 3.1 NavigationViewModel
-### Purpose
-Controls deterministic navigation between pages.
+### Responsibilities
+- Controls routing between pages.
+- Holds the current page.
+- Exposes navigation commands.
 
 ### State
-```
-CurrentPage: PageType
-```
+- `CurrentPage` (enum: Home, Editor, Execution, Settings)
 
 ### Commands
-- `NavigateToHomeCommand`
-- `NavigateToEditorCommand`
-- `NavigateToExecutionCommand`
-- `NavigateToSettingsCommand`
+- `NavigateHomeCommand`
+- `NavigateEditorCommand`
+- `NavigateExecutionCommand`
+- `NavigateSettingsCommand`
 
-### Behavior
-- No history stack  
-- No deep‑linking  
-- Deterministic page transitions  
-- Enforces Guard 5 (unsaved Settings changes) before leaving SettingsPage, per `ui-routing-navigation.md` §4  
+### Rules
+- Navigation must be deterministic.
+- Navigation must not depend on pipeline state except:
+  - When a pipeline starts → navigate to ExecutionPage.
+  - When a pipeline fails → remain on ExecutionPage and show errors.
 
 ---
 
-## 3.2 FileLoaderViewModel
-### Purpose
-Loads `.llx` files and provides file content to the editor.
+# 4. FileLoaderViewModel
+
+### Responsibilities
+- Opens `.llx` files.
+- Tracks recent files.
+- Emits file content to `EditorViewModel`.
 
 ### State
-```
-SelectedFilePath: string
-RecentFiles: ObservableCollection<string>
-FileContent: string
-Errors: ObservableCollection<UiError>
-IsLoading: bool
-```
+- `RecentFiles : ObservableCollection<string>`
+- `SelectedFilePath : string`
+- `FileContent : string`
 
 ### Commands
 - `OpenFileCommand`
-- `LoadFileCommand`
 
-### Behavior
-- Reads file content  
-- Validates file existence  
-- Emits content to `EditorViewModel`  
-- Adds file to recent list  
+### Rules
+- Must validate file existence.
+- Must surface file errors immediately.
+- Must not modify editor state directly; only emit content.
 
 ---
 
-## 3.3 SettingsViewModel
-### Purpose
-Holds and validates the editable deployment configuration (`ui-deployment.md` §4.3), and applies changes by relaunching `llx serve`.
+# 5. EditorViewModel
+
+### Responsibilities
+- Holds CNL text.
+- Performs live validation via `/explain`.
+- Provides execution commands.
 
 ### State
-```
-Port: int
-LogPath: string
-ApiKey: string
-EnvironmentProfile: EnvironmentProfile
-IsDirty: bool
-IsApplying: bool
-Errors: ObservableCollection<UiError>
-```
+- `SourceText : string`
+- `SyntaxErrors : ObservableCollection<EditorError>`
+- `CanExecute : bool` (derived: `!PipelineExecutionViewModel.IsRunning && SourceText not empty`)
 
-### EnvironmentProfile
-```
-EnvironmentProfile {
-    Dev,
-    Stage,
-    Prod
-}
-```
-
-### Commands
-- `SaveSettingsCommand`
-- `CancelSettingsCommand`
-- `ToggleApiKeyVisibilityCommand`
-
-### Persistence Model
-- `Port`, `LogPath`, `EnvironmentProfile` are read from and written to a single JSON file at `%APPDATA%\LimelightX\config.json` (see `ui-deployment.md` §4.3 for the schema).  
-- `ApiKey` is read from and written to Windows Credential Manager only — it is never written to `config.json`. There is a single shared `ApiKey`, independent of `EnvironmentProfile`; profiles only affect `Port`/`LogPath` defaults, not credential storage.
-
-### Process Ownership
-`LimelightX.exe` holds the `System.Diagnostics.Process` handle for the `llx.exe serve` process it launches at startup (`ui-deployment.md` §7). `SettingsViewModel` uses that same handle — it does not track the process by PID file or IPC.
-
-### Behavior
-- `Port` is a bind **port number only** — the bind host is fixed at `127.0.0.1` (see `SECURITY.md`, `api.md`) and is never user-editable.
-- Editing any field sets `IsDirty = true`.
-- `SaveSettingsCommand`:
-  1. Validates all fields (see `ui-error-handling.md` §10); if invalid, populates `Errors` and does not proceed.
-  2. Writes `Port`, `LogPath`, `EnvironmentProfile` to `config.json`.
-  3. Writes `ApiKey` to Windows Credential Manager (never to `config.json`).
-  4. Sets `IsApplying = true`. Requests graceful shutdown of the held `llx.exe serve` process handle (the same clean-shutdown path used on normal app exit, per `api.md` §8) and awaits its exit; then calls `Process.Start()` again with the new `--port` and `ApiKey` in the environment. If no process is currently running (e.g. the previous launch failed at startup, see `ui-deployment.md` §4.4), this step skips straight to `Process.Start()`.
-  5. On success: `IsApplying = false`, `IsDirty = false`, navigates back to the previous page (or to HomePage if this was the first-launch flow, see `ui-routing-navigation.md` §2).
-  6. On failure (e.g. new port unavailable, relaunch crash): `IsApplying = false`, raises a `Category: Api, Severity: fatal` error (see `ui-error-handling.md` §10) — `IsDirty` remains `true` so the user's edits are not lost.
-- `CancelSettingsCommand`: disabled while `IsApplying == true`. Otherwise, if `IsDirty`, triggers Guard 5's confirmation modal (`ui-routing-navigation.md` §4); if not dirty, navigates back immediately.
-- `ToggleApiKeyVisibilityCommand`: toggles masked/unmasked display of `ApiKey`; does not affect `IsDirty`.
-
-### Deterministic Behavior
-- No autosave — changes only take effect via explicit `SaveSettingsCommand`.  
-- No retries on relaunch failure.  
-- No partial apply — port/log path/profile and API key are written together or not at all.
-
----
-
-# 4. Editor ViewModels
-
-## 4.1 EditorViewModel
-### Purpose
-Primary ViewModel for CNL editing.
-
-### State
-```
-Text: string
-ValidationErrors: ObservableCollection<ValidationError>
-CompletionItems: ObservableCollection<CompletionItem>
-QuickFixes: ObservableCollection<QuickFixItem>
-HoverInfo: HoverInfo?
-CursorPosition: int
-SelectionRange: (int Start, int End)
-UndoStack: Stack<EditorAction>
-RedoStack: Stack<EditorAction>
-IsValidating: bool
-IsFormatting: bool
-IsCompleting: bool
-Errors: ObservableCollection<UiError>
-```
+`EditorViewModel` has no `IsExecuting` property of its own — `PipelineExecutionViewModel.IsRunning` (§6) is the single canonical execution-state flag. Every button/nav gate that needs to know whether a pipeline is active binds to it directly.
 
 ### Commands
 - `RunCommand`
 - `ExplainCommand`
 - `TraceCommand`
-- `FormatCommand`
-- `ApplyQuickFixCommand`
-- `SelectCompletionItemCommand`
-- `UndoCommand`
-- `RedoCommand`
 
-### Responsibilities
-- Manage editor text  
-- Trigger validation via `/explain`  
-- Provide auto‑completion  
-- Provide hover tooltips  
-- Provide quick‑fix suggestions  
-- Manage cursor and selection  
-- Manage undo/redo  
-- Apply deterministic formatting  
+### Execution Behavior (Strict Single Execution)
+1. Send HTTP request (`POST /run`, `/explain`, or `/trace`).
+2. Receive `correlation_id`.
+3. Notify `PipelineExecutionViewModel` to begin streaming — this sets `IsRunning = true` (§6, on `pipeline_started`), which disables all execution buttons via `CanExecute`.
+4. Navigate to ExecutionPage.
+5. Execution buttons re‑enable automatically once `CanExecute` recomputes, which happens when:
+   - `final_result_ready` arrives, or  
+   - `pipeline_failed` arrives.
 
-### Deterministic Behavior
-- Formatting must be deterministic  
-- Validation must reflect backend output exactly  
-- Completion items must be grammar‑driven  
-- Quick‑fix suggestions must be rule‑based  
-- Undo/redo must be deterministic  
+### Live Validation
+- Triggered on text change.
+- Invokes `/explain` and subscribes to its event sequence (`pipeline_started` → `raw_ast_generated` → `normalized_ast_generated`) exactly like any other execution — there is no separate non-streaming mode.
+- Does **not** navigate to ExecutionPage: this is the one case where a `/explain` execution's events update `SyntaxErrors` in place on the Editor Page instead of driving `PipelineExecutionViewModel`'s inspectors.
+- Updates `SyntaxErrors` as the sequence completes (at `normalized_ast_generated`, or on `pipeline_failed`).
 
 ---
 
-# 5. Pipeline Execution ViewModels
+# 6. PipelineExecutionViewModel
 
-## 5.1 PipelineExecutionViewModel
-### Purpose
-Coordinates pipeline execution and inspector ViewModels.
+### Responsibilities
+- Holds all pipeline execution state.
+- Receives streaming events from WebSocket.
+- Updates inspector ViewModels incrementally.
+- Tracks execution status and errors.
+- Clears state when a new pipeline begins.
 
 ### State
-```
-RawAstViewModel: RawAstViewModel
-NormalizedAstViewModel: NormalizedAstViewModel
-IrViewModel: IrViewModel
-PromptViewModel: PromptViewModel
-ModelOutputViewModel: ModelOutputViewModel
-FinalResultViewModel: FinalResultViewModel
-
-IsRunning: bool
-IsTracing: bool
-IsExplaining: bool
-
-Errors: ObservableCollection<UiError>
-```
+- `CorrelationId : string`
+- `IsRunning : bool` — the single canonical execution-state flag; every other ViewModel (e.g. `EditorViewModel.CanExecute`, navigation guards) binds to this rather than keeping its own copy.
+- `HasErrors : bool`
+- `PipelineEvents : ObservableCollection<PipelineEvent>` — a display-only history backing the `ExecutionTimeline` component (`ui-components.md`); it is populated for UI rendering purposes only and is not part of the delivery pipeline. It does not violate the "no buffering or reordering" rule in §9/§11: that rule governs how incoming events are applied to state (in order, as received, without holding any back), not whether a read-only log of already-applied events is kept for display.
+- Inspector ViewModels:
+  - `RawAst : RawAstViewModel`
+  - `NormalizedAst : NormalizedAstViewModel`
+  - `Ir : IrViewModel`
+  - `Prompts : PromptViewModel`
+  - `ModelOutputs : ModelOutputViewModel`
+  - `FinalResult : FinalResultViewModel`
 
 ### Commands
-- `RunPipelineCommand`
-- `ExplainPipelineCommand`
-- `TracePipelineCommand`
+None.  
+All updates come from streaming events.
 
-### Responsibilities
-- Call `PipelineService`  
-- Map structured backend output into inspector ViewModels  
-- Track execution state  
-- Surface pipeline errors  
+### Event Handling
 
-### Deterministic Behavior
-- Inspector ViewModels must be populated deterministically  
-- Execution state must be explicit  
-- No hidden transitions  
+#### `pipeline_started`
+- Clear all inspector ViewModels.
+- Set `IsRunning = true`.
+- Set `HasErrors = false`.
+
+#### `raw_ast_generated`
+- Update `RawAstViewModel`.
+- Expand Raw AST panel automatically.
+
+#### `normalized_ast_generated`
+- Update `NormalizedAstViewModel`.
+
+#### `ir_generated`
+- Update `IrViewModel`.
+
+#### `prompts_generated`
+- Update `PromptViewModel`.
+
+#### `model_outputs_generated`
+- Update `ModelOutputViewModel`.
+
+#### `final_result_ready`
+- Update `FinalResultViewModel`.
+- Set `IsRunning = false`.
+
+#### `pipeline_failed`
+- Set `HasErrors = true`.
+- Populate error banner.
+- Set `IsRunning = false`.
+
+### Rules
+- Must ignore events whose `correlation_id` does not match the active execution.
+- Must not reorder events.
+- Must not buffer events.
+- Must not retry events.
+- Must not reconstruct pipeline stages manually.
 
 ---
 
-# 6. Inspector ViewModels
+# 7. SettingsViewModel
 
-Each inspector ViewModel uses:
+### Responsibilities
+- Holds backend configuration.
+- Validates input.
+- Applies changes by relaunching `llx serve`.
 
-- parsed objects  
-- raw string  
-- metadata  
+### State
+- `BackendPort : int`
+- `ApiKey : string`
+- `LogPath : string` — the directory the persistent log file is written to, not just a validated string (see "Rules" below and `ui-deployment.md` §4.3)
+- `EnvironmentProfile : string`
+- `IsValid : bool`
+
+### Commands
+- `SaveSettingsCommand`
+
+### Rules
+- Must block Save while invalid.
+- Must restart backend deterministically.
+- Must surface backend startup errors: if the `llx serve` relaunch fails, synthesize an `api`-category `UiError`, show it via `ErrorBannerViewModel.IsVisible = true`, and keep the user on the Settings Page (see `ui-error-handling.md` §7.5). The previous backend connection, if any, is left running until a restart succeeds.
+- `LogPath` empty/unset resolves to `config.json`'s own directory (`%APPDATA%\LimelightX\`); a non-empty `LogPath` must be an absolute path (existing validation, unchanged) and is used as the log directory instead. Either way the log file itself is always named `Limelight-x-log.txt` (`ui-deployment.md` §4.3). This resolution is not persisted back into `config.json` — an empty `LogPath` stays empty until the user explicitly sets a custom one.
+- A successful Save redirects logging to the new `LogPath` immediately — the same restart-on-success moment that already re-points the backend connection (see above). No further entries are written to the previous log location once the redirect completes.
+
+---
+
+# 8. Inspector ViewModels
+
+Each inspector ViewModel is responsible for:
+
+- deterministic state  
 - collapse/expand state  
-- error list  
+- formatted display text  
+- incremental updates from streaming events  
+
+### 8.1 RawAstViewModel
+State:
+- `AstNodes : ObservableCollection<AstNode>`
+- `IsCollapsed : bool`
+- `HasErrors : bool` — set when this inspector's data fails to render; backs `InspectorErrorPanel` (`ui-components.md` §7.2) via an `InspectorErrorViewModel`
+
+### 8.2 NormalizedAstViewModel
+State:
+- `NormalizedNodes : ObservableCollection<NormalizedAstNode>`
+- `IsCollapsed : bool`
+- `HasErrors : bool`
+
+### 8.3 IrViewModel
+State:
+- `Operations : ObservableCollection<IrOperation>`
+- `IsCollapsed : bool`
+- `HasErrors : bool`
+
+### 8.4 PromptViewModel
+State:
+- `Prompts : ObservableCollection<Prompt>`
+- `IsCollapsed : bool`
+- `HasErrors : bool`
+
+### 8.5 ModelOutputViewModel
+State:
+- `Outputs : ObservableCollection<ModelOutput>`
+- `IsCollapsed : bool`
+- `HasErrors : bool`
+
+### 8.6 FinalResultViewModel
+State:
+- `ResultText : string`
+- `ContentType : string`
+- `IsCollapsed : bool`
+
+### Rules
+- Inspector ViewModels must never perform pipeline logic.
+- They must only reflect streamed event data.
+- They must clear state, including `HasErrors`, when `pipeline_started` arrives.
+- `HasErrors` is set locally by the inspector when it fails to render its own data (e.g. a malformed node it cannot display) — it is independent of `PipelineExecutionViewModel.HasErrors`, which reflects a `pipeline_failed` event. An inspector can have `HasErrors = true` from a local rendering failure even on an otherwise-successful pipeline run.
 
 ---
 
-## 6.1 RawAstViewModel
-### State
-```
-Tree: AstNode
-RawText: string
-Metadata: AstMetadata
-IsCollapsed: bool
-Errors: ObservableCollection<UiError>
-```
+# 9. Deterministic State Rules
 
-### Responsibilities
-- Provide AST tree structure for modern tree view  
-- Provide syntax‑highlighted raw text  
-- Provide metadata (node depth, node count)  
+### Allowed State
+- collapse/expand  
+- selected tab  
+- editor cursor position  
+- current correlation_id  
+- inspector contents  
 
----
-
-## 6.2 NormalizedAstViewModel
-### State
-```
-Tree: AstNode
-RawText: string
-Metadata: AstMetadata
-IsCollapsed: bool
-Errors: ObservableCollection<UiError>
-```
-
-### Responsibilities
-Same as RawAstViewModel, but with normalized AST rules applied.
+### Forbidden State
+- implicit transitions  
+- nondeterministic animations  
+- hidden state machines  
+- state not represented in ViewModels  
+- buffering or reordering events  
 
 ---
 
-## 6.3 IrViewModel
-### State
-```
-Operations: ObservableCollection<IrOperation>
-RawText: string
-Metadata: IrMetadata
-IsCollapsed: bool
-Errors: ObservableCollection<UiError>
-```
+# 10. Error Handling
 
-### Responsibilities
-- Provide IR operations for operation cards  
-- Provide syntax‑highlighted raw IR  
-- Provide metadata (operation count, reference map)  
+Errors may originate from:
 
----
+- parser  
+- normalizer  
+- IR compiler  
+- evaluator  
+- model adapter  
+- malformed request  
+- malformed event  
+- WebSocket disconnect  
+- `pipeline_failed` events  
 
-## 6.4 PromptViewModel
-### State
-```
-Prompts: ObservableCollection<PromptBlock>
-RawText: string
-Metadata: PromptMetadata
-IsCollapsed: bool
-Errors: ObservableCollection<UiError>
-```
-
-### Responsibilities
-- Provide prompt blocks  
-- Provide syntax‑highlighted Markdown  
-- Provide metadata (operation index, prompt length)  
+### Rules
+- Errors must appear immediately.
+- Errors must be human‑readable.
+- Errors must be surfaced in:
+  - global error banner  
+  - ExecutionPage  
+  - inspector panels (if applicable)  
+  - inline editor (validation errors)
+- The global error banner (`ErrorBannerViewModel`) clears when a new `pipeline_started` event arrives (per §6), and also when the user navigates away from ExecutionPage (only possible once `IsRunning` is `false`, per `ui-routing-navigation.md` §7) — see `ui-error-handling.md` §8.
 
 ---
 
-## 6.5 ModelOutputViewModel
-### State
-```
-Outputs: ObservableCollection<ModelOutputBlock>
-RawText: string
-Metadata: ModelOutputMetadata
-IsCollapsed: bool
-Errors: ObservableCollection<UiError>
-```
-
-### Responsibilities
-- Provide syntax‑highlighted Markdown  
-- Provide JSON/table rendering metadata  
-- Provide raw text for debugging  
-
----
-
-## 6.6 FinalResultViewModel
-### State
-```
-ResultText: string
-ContentType: ResultContentType
-RawText: string
-IsCollapsed: bool
-Errors: ObservableCollection<UiError>
-```
-
-### ContentType
-```
-ResultContentType {
-    PlainText,
-    Markdown,
-    Json
-}
-```
-
-### Responsibilities
-- Provide syntax‑highlighted final result  
-- Detect content type deterministically  
-- Provide raw text for debugging  
-
----
-
-# 7. Services
-
-## 7.1 PipelineService
-### Purpose
-Wraps HTTP API calls to `/src/api` (started via `llx serve`, default `127.0.0.1:4747`). The wire format, endpoint paths, and error semantics are owned by `spec/api.md`; this service is a thin typed client over that contract.
-
-### Methods
-```
-Task<ExplainResult> ExplainAsync(string source)
-Task<RunResult> RunAsync(string source)
-Task<TraceResult> TraceAsync(string source)
-```
-
-### Behavior
-- Deterministic request/response handling  
-- No UI logic  
-- No caching  
-- No retries  
-
----
-
-# 8. Deterministic Behavior Requirements
-
-All ViewModels must follow these rules:
-
-1. **No nondeterministic state transitions**  
-2. **No hidden state machines**  
-3. **All state must be explicit**  
-4. **All errors must be surfaced deterministically**  
-5. **All inspector ViewModels must reflect backend output exactly**  
-6. **EditorViewModel must be grammar‑driven**  
-7. **Undo/redo must be deterministic**  
-8. **Loading flags must be explicit (`IsRunning`, `IsValidating`, `IsTracing`)**  
-
----
-
-# 9. Non‑Goals
+# 11. Non‑Goals
 
 ViewModels do **not** support:
 
-- plugins  
+- parallel pipeline executions  
+- queued executions  
+- cancellation  
+- plugin inspectors  
 - multi‑file projects  
 - direct Rust integration  
-- nondeterministic animations  
-- pipeline orchestration  
-- macOS‑specific behavior (v0.1)  
+- nondeterministic behavior  
+- reconstructing pipeline stages  
+- buffering or reassembling event streams  
 
 ---
 
-# 10. Future Extensions
+# 12. Future Extensions
 
-Potential future ViewModels:
+Potential enhancements:
 
-- AST semantic inspector  
-- IR graph ViewModel  
-- Prompt diff ViewModel  
-- Multi‑file project ViewModel  
-- macOS‑specific ViewModels  
-- Plugin‑based inspector ViewModels  
+- queued execution mode  
+- cancelable pipelines  
+- richer inspector interactions  
+- visual IR graph  
+- multi‑file project support  
+- additional observability events (timing, resource usage)
 
 ---
 
 # Summary
 
-This document defines all ViewModels used in the Limelight‑X workflow dashboard.  
-ViewModels are deterministic, MVVM‑pure, and aligned with the Limelight‑X pipeline and HTTP API.  
-Inspector ViewModels expose parsed objects, raw text, and metadata for custom rendering components.  
-All behavior is spec‑driven and must follow this specification exactly.
+The Limelight‑X ViewModel layer is deterministic, MVVM‑pure, and fully aligned with the streaming API.  
+Pipeline results arrive incrementally over WebSocket and update inspector ViewModels in real time.  
+Strict single‑execution mode ensures predictable behavior and simplifies state management.  
+All ViewModels are state‑derived, spec‑driven, and free of nondeterministic logic.

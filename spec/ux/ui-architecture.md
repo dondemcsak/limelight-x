@@ -1,4 +1,4 @@
-# UI Architecture
+# UI Architecture (Streaming Edition)
 
 ## Purpose
 This document defines the complete architecture of the Limelight‑X UI.  
@@ -7,7 +7,7 @@ This specification is authoritative.
 All implementation must follow this architecture exactly.
 
 The UI is designed for analysts and citizen developers.  
-It exposes the Limelight‑X pipeline through a clean, deterministic interface backed by an HTTP API that wraps the CLI commands (`run`, `explain`, `trace`).
+It exposes the Limelight‑X pipeline through a clean, deterministic interface backed by an HTTP + WebSocket API that wraps the CLI commands (`run`, `explain`, `trace`) and streams pipeline results as JSON events.
 
 ---
 
@@ -25,7 +25,7 @@ It provides:
   - Prompt viewer  
   - Model output viewer  
 - a vertical pipeline timeline mirroring CLI output order  
-- integration with a Limelight‑X HTTP API server that wraps CLI commands
+- **real‑time integration with a streaming HTTP + WebSocket API** that emits pipeline events incrementally
 
 The UI is **deterministic**, **spec‑driven**, and **state‑derived**.  
 All nondeterminism is isolated to model output returned by the backend.
@@ -42,14 +42,16 @@ All nondeterminism is isolated to model output returned by the backend.
 2. **MVVM Purity**  
    - Views contain no logic.  
    - ViewModels contain state and commands.  
-   - Services handle HTTP communication.
+   - Services handle HTTP + WebSocket communication.  
+   - Services handle persistent diagnostic logging via `Microsoft.Extensions.Logging`'s `ILogger`/`ILoggerFactory` abstractions, configured at the composition root with Serilog's file sink as the provider (see `ui-deployment.md` §4.3).
 
 3. **CLI‑Equivalent Backend**  
-   - UI calls HTTP endpoints that wrap CLI commands:
-     - `/run`
-     - `/explain`
-     - `/trace`
-   - UI parses structured output into inspector ViewModels.
+   - UI calls the streaming API endpoints:
+     - `POST /run`
+     - `POST /explain`
+     - `POST /trace`
+   - UI receives pipeline results as **incremental JSON events** over WebSocket.  
+   - UI maps each event into inspector ViewModels.
 
 4. **Single Responsibility Modules**  
    - Each module has exactly one conceptual responsibility.  
@@ -58,7 +60,8 @@ All nondeterminism is isolated to model output returned by the backend.
 5. **Analyst‑Friendly Workflow**  
    - Vertical pipeline visualization.  
    - Clear separation between editing and inspection.  
-   - Errors surfaced inline and in inspectors.
+   - Errors surfaced inline and in inspectors.  
+   - Real‑time inspector updates as events arrive.
 
 6. **Platform Targets**  
    - Windows (v0.1)  
@@ -76,7 +79,6 @@ All nondeterminism is isolated to model output returned by the backend.
 ### Project & Executable Naming
 - **Project name (assembly name):** `LimelightX.UI`  
 - **Executable:** `LimelightX.exe`  
-- These names mirror the Rust side's naming convention (crate `limelight-x`, binary `llx`) and are used as-is in `ui-build-pipeline.md` and `ui-deployment.md`.
 
 The UI repository must follow this structure:
 
@@ -108,7 +110,7 @@ The UI uses a **multi‑page workflow** with deterministic routing:
    - Open `.llx` file  
    - Recent files  
    - Quick actions  
-   - Settings icon (gear), routing to Settings Page
+   - Settings icon (gear)
 
 2. **Editor Page**  
    - CNL editor  
@@ -120,20 +122,20 @@ The UI uses a **multi‑page workflow** with deterministic routing:
 3. **Execution Page**  
    - Vertical pipeline timeline  
    - Collapsible inspector panels  
-   - Final result viewer
+   - Final result viewer  
+   - **Real‑time updates from streaming events**
 
 4. **Settings Page**  
-   - Editable backend port, log path, `ANTHROPIC_API_KEY`, and environment profile (Dev/Stage/Prod)  
-   - Reachable from the HomePage gear icon or the sidebar, from any page  
-   - See `ui-routing-navigation.md` §9 and `ui-viewmodels.md` §3.3 for full behavior
+   - Backend port  
+   - Log path  
+   - `ANTHROPIC_API_KEY`  
+   - Environment profile (Dev/Stage/Prod)
 
 Navigation is controlled by a `NavigationViewModel` and must be deterministic.
 
 ---
 
 # 5. ViewModels
-
-The UI defines the following ViewModels:
 
 ### 5.1 FileLoaderViewModel
 - Opens `.llx` files  
@@ -151,17 +153,18 @@ The UI defines the following ViewModels:
   - `TraceCommand`
 
 ### 5.3 PipelineExecutionViewModel
-- Holds structured output from `/run`, `/explain`, `/trace`  
-- Maps backend output into inspector ViewModels  
-- Tracks execution status and errors
+- Holds structured output from streaming events  
+- Maps backend events into inspector ViewModels  
+- Tracks execution status and errors  
+- Clears state when a new pipeline begins  
+- Updates inspectors incrementally as events arrive
 
 ### 5.4 SettingsViewModel
-- Holds editable backend port, log path, API key, and environment profile  
-- Validates input and blocks Save while invalid  
-- On Save, applies changes by relaunching `llx serve` in the background  
-- See `ui-viewmodels.md` §3.3 for the full state/command definition
+- Holds backend port, log path, API key, environment profile  
+- Validates input  
+- Relaunches `llx serve` when settings change
 
-### 5.4 Inspector ViewModels
+### 5.5 Inspector ViewModels
 Each inspector has its own ViewModel:
 
 - `RawAstViewModel`  
@@ -175,13 +178,14 @@ Each ViewModel exposes:
 - deterministic state  
 - collapse/expand UI state  
 - error state  
-- formatted display text
+- formatted display text  
+- incremental update methods for streaming events
 
 ---
 
-# 6. HTTP API Integration
+# 6. HTTP + WebSocket API Integration
 
-The UI communicates with the `/src/api` server defined in `spec/api.md` (started via `llx serve`), which wraps CLI commands.
+The UI communicates with the `/src/api` server defined in `spec/api.md`.
 
 ### Endpoints
 
@@ -189,6 +193,7 @@ The UI communicates with the `/src/api` server defined in `spec/api.md` (started
 POST /run
 POST /explain
 POST /trace
+ws://127.0.0.1:<port>/events
 ```
 
 ### Request Body
@@ -199,23 +204,25 @@ POST /trace
 }
 ```
 
-### Response Structure
+### Response Model
 
-Each endpoint returns structured JSON containing:
-
-- raw_ast  
-- normalized_ast  
-- ir  
-- prompts (trace only)  
-- model_outputs (trace only)  
-- final_result (run only)
+- HTTP response returns immediately with `{ accepted: true, correlation_id: "<id>" }`.
+- All pipeline results are streamed as JSON events over WebSocket.
+- Each event includes:
+  - `event_type`
+  - `correlation_id`
+  - `version`
+  - `success`
+  - `errors`
+  - `data`
 
 ### Rules
 
 - UI must not call Rust directly.  
 - UI must not reconstruct pipeline stages manually.  
-- UI must parse structured output deterministically.  
-- UI must surface backend errors immediately.
+- UI must update inspector ViewModels incrementally as events arrive.  
+- UI must surface backend errors immediately.  
+- UI must maintain deterministic ordering of events.
 
 ---
 
@@ -237,12 +244,20 @@ Model Outputs
 Final Result
 ```
 
+### Streaming Behavior
+
+- Panels update **incrementally** as events arrive.  
+- Raw AST panel appears when `raw_ast_generated` arrives.  
+- Normalized AST panel appears when `normalized_ast_generated` arrives.  
+- IR panel appears when `ir_generated` arrives.  
+- Prompt and Model Output panels appear when their events arrive.  
+- Final Result panel appears when `final_result_ready` arrives.
+
 ### Rules
 
 - Panels must be collapsible.  
 - Panels must reflect ViewModel state.  
-- Panels must not contain logic.  
-- Panels must display structured output exactly as returned by the backend.
+- Panels must display structured output exactly as streamed by the backend.
 
 ---
 
@@ -304,7 +319,8 @@ The UI must surface:
 - evaluator errors  
 - model adapter errors  
 - HTTP errors  
-- malformed backend responses
+- malformed backend responses  
+- **streaming pipeline errors (`pipeline_failed`)**
 
 Errors must appear:
 
@@ -314,6 +330,8 @@ Errors must appear:
 - in a global error banner
 
 All errors must be human‑readable.
+
+Every error surfaced this way is also persisted to the log file described in `ui-deployment.md` §4.3 (see `ui-error-handling.md` for the full logging contract and the failure‑safety rule).
 
 ---
 
@@ -328,7 +346,8 @@ The UI does **not** support:
 - macOS (v0.1)  
 - nondeterministic UI behavior  
 - pipeline visualization beyond vertical timeline  
-- reimplementing pipeline stages (parsing, normalization, IR compilation, evaluation) — the UI only sequences requests to `/run`, `/explain`, `/trace` and renders their responses; it does not perform any pipeline stage itself
+- reimplementing pipeline stages  
+- **single‑response API mode** (removed)
 
 ---
 
@@ -342,12 +361,13 @@ Potential future enhancements:
 - workflow templates  
 - richer inspectors  
 - multi‑file project support  
-- integrated model output diffing
+- integrated model output diffing  
+- additional streaming observability events (timing, resource usage)
 
 ---
 
 # Summary
 
 The Limelight‑X UI is a deterministic workflow dashboard built using Avalonia and MVVM.  
-It integrates with a CLI‑equivalent HTTP API, provides a CNL editor with live validation, and exposes the full pipeline through collapsible vertical inspector panels.  
+It integrates with a streaming HTTP + WebSocket API, provides a CNL editor with live validation, and exposes the full pipeline through collapsible vertical inspector panels that update in real time as events arrive.  
 All behavior is spec‑driven, deterministic, and aligned with the Limelight‑X architecture.

@@ -21,7 +21,8 @@ async fn server_starts_and_responds() {
     )
     .await;
     assert_eq!(status, 200);
-    assert_eq!(body["version"], "v1");
+    assert_eq!(body["accepted"], true);
+    assert!(body["correlation_id"].is_string());
 }
 
 #[tokio::test]
@@ -82,6 +83,7 @@ async fn two_concurrent_requests_are_handled_sequentially() {
         log: Arc::clone(&log),
     });
     let base_url = common::spawn_test_server_with_adapter(adapter).await;
+    let mut ws = common::TestWsClient::connect(&base_url).await;
 
     let path = common::make_temp_file("some text");
     let source = format!("Load the article from \"{path}\".\nSummarize it.");
@@ -99,10 +101,35 @@ async fn two_concurrent_requests_are_handled_sequentially() {
         common::post_json_blocking(&url2, "/run", json!({ "source": source2 }))
     });
 
-    let (status1, _) = t1.join().unwrap();
-    let (status2, _) = t2.join().unwrap();
+    let (status1, ack1) = t1.join().unwrap();
+    let (status2, ack2) = t2.join().unwrap();
     assert_eq!(status1, 200);
     assert_eq!(status2, 200);
+    let id1 = ack1["correlation_id"].as_str().unwrap().to_string();
+    let id2 = ack2["correlation_id"].as_str().unwrap().to_string();
+    assert_ne!(id1, id2, "each request must get a distinct correlation_id");
+
+    // The single-consumer worker (worker.rs) processes one job fully before
+    // starting the next, so the four events must arrive grouped by
+    // correlation_id: one job's `pipeline_started`+`final_result_ready`
+    // pair, then the other's — never interleaved.
+    let e1 = ws.recv_json().await;
+    let e2 = ws.recv_json().await;
+    let e3 = ws.recv_json().await;
+    let e4 = ws.recv_json().await;
+
+    assert_eq!(e1["event_type"], "pipeline_started");
+    assert_eq!(e2["event_type"], "final_result_ready");
+    assert_eq!(e1["correlation_id"], e2["correlation_id"]);
+
+    assert_eq!(e3["event_type"], "pipeline_started");
+    assert_eq!(e4["event_type"], "final_result_ready");
+    assert_eq!(e3["correlation_id"], e4["correlation_id"]);
+
+    assert_ne!(
+        e1["correlation_id"], e3["correlation_id"],
+        "the two jobs' events must not interleave"
+    );
 
     let recorded = log.lock().unwrap();
     assert_eq!(recorded.len(), 2, "expected exactly two model calls");

@@ -181,7 +181,7 @@ Unless explicitly approved.
 
 **Explicitly approved for `/src/api`:** an HTTP server crate (e.g. `axum` or `actix-web`) sufficient to implement `spec/api.md`. No other new Rust crates are approved.
 
-**Explicitly approved for `/ui`:** Avalonia, Avalonia Community Toolkit, a Fluent UI icon set, Inter and JetBrains Mono fonts, and MSIX packaging tooling, per `spec/ux/*.md`. These apply only to `/ui` and do not license any further additions without explicit approval.
+**Explicitly approved for `/ui`:** Avalonia, Avalonia Community Toolkit, a Fluent UI icon set, Inter and JetBrains Mono fonts, MSIX packaging tooling, and — for persistent diagnostic logging — `Microsoft.Extensions.Logging` plus Serilog (`Serilog.Extensions.Logging`, `Serilog.Sinks.File`), per `spec/ux/*.md`. These apply only to `/ui` and do not license any further additions without explicit approval.
 
 ---
 
@@ -277,13 +277,15 @@ Claude must not:
 - introduce providers  
 - introduce multiple languages **within `/src`**  
 - introduce multiple model hosts  
-- introduce streaming  
+- introduce streaming **at the model-adapter or evaluator level** (token-level streaming from the model API, incremental/partial evaluation, or otherwise executing IR operations out of the deterministic order defined in `evaluator-semantics.md`)  
 - introduce batching  
 - introduce parallelism  
 - introduce caching  
 - introduce optimization passes  
 
 These are explicitly out of scope for v0.1. The `/ui` component is the one deliberate, pre-approved exception to the single-language rule — see §1.1.
+
+**Scope note on streaming:** the prohibition above applies to the model adapter and evaluator only. `/src/api`'s WebSocket event stream (per `spec/api.md`) is a transport-layer concern — it delivers the same pipeline stage outputs, computed in the same order, by the same deterministic one-request-at-a-time execution, just incrementally instead of bundled into one response. It does not add randomness, retries, batching, parallelism, or reordering, so it does not violate this rule.
 
 ---
 

@@ -9,6 +9,7 @@ using LimelightX.UI.Services;
 using LimelightX.UI.ViewModels;
 using LimelightX.UI.ViewModels.Errors;
 using LimelightX.UI.Views;
+using Microsoft.Extensions.Logging;
 
 namespace LimelightX.UI;
 
@@ -37,19 +38,25 @@ public partial class App : Application
             var loadedConfig = configService.Load();
             var initialConfig = loadedConfig ?? new AppConfig();
             var pipelineService = new PipelineService(initialConfig.Port);
+            var eventStream = new EventStreamService();
 
             var fileLoader = new FileLoaderViewModel(filePicker);
-            var editor = new EditorViewModel(pipelineService);
-            var pipelineExecution = new PipelineExecutionViewModel(pipelineService);
+            var editor = new EditorViewModel(pipelineService, eventStream);
+            var pipelineExecution = new PipelineExecutionViewModel(pipelineService, eventStream);
             var settings = new SettingsViewModel(configService, credentialService, llxProcessService);
 
-            // In-memory-only error log (ui-error-handling.md §11) - no UI surface
-            // anywhere in the spec's catalog, purely an internal diagnostic aid.
-            var logService = new LogService();
-            SubscribeLogging(fileLoader.Errors, logService);
-            SubscribeLogging(editor.ValidationErrors, logService);
-            SubscribeLogging(pipelineExecution.Errors, logService);
-            SubscribeLogging(settings.Errors, logService);
+            // Persistent diagnostic log (ui-deployment.md §4.3, ui-error-handling.md
+            // §2.5) - Microsoft.Extensions.Logging backed by Serilog's file sink.
+            // `logger` is a reassignable local (like `pipelineExecution`/`navigation`
+            // elsewhere in this file): SubscribeLogging closes over `() => logger`
+            // so a later rebuild (Settings LogPath change, below) is picked up by
+            // the same four subscriptions without re-subscribing.
+            var loggerFactory = AppLogging.CreateLoggerFactory(initialConfig.LogPath, configService.ConfigFilePath);
+            var logger = loggerFactory.CreateLogger("LimelightX");
+            SubscribeLogging(fileLoader.Errors, () => logger);
+            SubscribeLogging(editor.ValidationErrors, () => logger);
+            SubscribeLogging(pipelineExecution.Errors, () => logger);
+            SubscribeLogging(settings.Errors, () => logger);
 
             fileLoader.FileLoaded += content => editor.Text = content;
 
@@ -118,8 +125,19 @@ public partial class App : Application
                 : NavigationGuardResult.Blocked("Run, Explain, or Trace a program before viewing execution results.");
 
             // Guard 4: no navigation while a pipeline call is in flight.
-            navigation.IsExecutionBusy = () =>
-                pipelineExecution.IsRunning || pipelineExecution.IsExplaining || pipelineExecution.IsTracing;
+            navigation.IsExecutionBusy = () => pipelineExecution.IsRunning;
+
+            // EditorViewModel keeps no execution-state copy of its own -
+            // PipelineExecutionViewModel.IsRunning is the single canonical
+            // flag (ui-viewmodels.md §5); re-evaluate CanExecute whenever it changes.
+            editor.IsPipelineRunning = () => pipelineExecution.IsRunning;
+            pipelineExecution.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(PipelineExecutionViewModel.IsRunning))
+                {
+                    editor.NotifyPipelineCommandsCanExecuteChanged();
+                }
+            };
 
             // Guard 5 (ui-routing-navigation.md §4): leaving Settings with unsaved
             // changes shows the Stay/Discard confirmation; Discard reverts fields.
@@ -141,6 +159,25 @@ public partial class App : Application
 
             navigation.NavigationBlocked += reason => _ = modal.ShowBlockedNavigationAsync(reason);
 
+            // ui-viewmodels.md §10: leaving Execution Page clears the global
+            // error banner (only reachable once IsRunning is false, so this
+            // never clears an error mid-execution).
+            var wasOnExecutionPage = navigation.CurrentPage == PageType.Execution;
+            navigation.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName != nameof(NavigationViewModel.CurrentPage))
+                {
+                    return;
+                }
+
+                if (wasOnExecutionPage && navigation.CurrentPage != PageType.Execution)
+                {
+                    pipelineExecution.ClearErrors();
+                }
+
+                wasOnExecutionPage = navigation.CurrentPage == PageType.Execution;
+            };
+
             settings.NavigateBackRequested = async () =>
             {
                 navigation.IsFirstRunSetupRequired = false;
@@ -155,16 +192,30 @@ public partial class App : Application
                 }
             };
             settings.RelaunchFailed += message => _ = modal.ShowFatalErrorAsync(message);
+            settings.RelaunchSucceeded += port =>
+            {
+                pipelineService.SetPort(port);
+                _ = eventStream.ConnectAsync(port);
+
+                // ui-viewmodels.md §7: a successful Save redirects logging to the
+                // new LogPath immediately - dispose the old factory (closing its
+                // Serilog file handle) before building the new one.
+                loggerFactory.Dispose();
+                loggerFactory = AppLogging.CreateLoggerFactory(settings.LogPath, configService.ConfigFilePath);
+                logger = loggerFactory.CreateLogger("LimelightX");
+            };
 
             var mainWindow = new MainWindow(navigation, fileLoader, editor, pipelineExecution, settings);
             mainWindowRef = mainWindow;
             desktop.MainWindow = mainWindow;
 
-            _ = RunStartupSequenceAsync(navigation, credentialService, llxProcessService, initialConfig, modal, configFileExisted: loadedConfig is not null);
+            _ = RunStartupSequenceAsync(navigation, credentialService, llxProcessService, eventStream, initialConfig, modal, configFileExisted: loadedConfig is not null);
 
             desktop.ShutdownRequested += (_, _) =>
             {
                 pipelineService.Dispose();
+                eventStream.Dispose();
+                loggerFactory.Dispose();
                 _ = llxProcessService.StopAsync();
             };
         }
@@ -185,6 +236,7 @@ public partial class App : Application
         NavigationViewModel navigation,
         ICredentialService credentialService,
         ILlxProcessService llxProcessService,
+        IEventStreamService eventStream,
         AppConfig config,
         IModalService modal,
         bool configFileExisted)
@@ -204,10 +256,15 @@ public partial class App : Application
             navigation.IsFirstRunSetupRequired = true;
             navigation.CurrentPage = PageType.Settings;
             await modal.ShowFatalErrorAsync(outcome.ErrorMessage ?? "Failed to start llx serve.");
+            return;
         }
+
+        // Connect before Home/Editor become reachable, so no event can ever
+        // be dropped for lack of a connected client (api.md §2.3).
+        await eventStream.ConnectAsync(config.Port);
     }
 
-    private static void SubscribeLogging<T>(ObservableCollection<T> collection, ILogService logService)
+    private static void SubscribeLogging<T>(ObservableCollection<T> collection, Func<ILogger> getLogger)
         where T : UiError
     {
         collection.CollectionChanged += (_, e) =>
@@ -219,7 +276,7 @@ public partial class App : Application
 
             foreach (T item in e.NewItems)
             {
-                logService.Log(item);
+                AppLogging.LogUiError(getLogger(), item);
             }
         };
     }

@@ -70,6 +70,13 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>Raised with a Category:Api, Severity:Fatal message on relaunch failure (ui-error-handling.md §10).</summary>
     public event Action<string>? RelaunchFailed;
 
+    /// <summary>
+    /// Raised with the new port on a successful relaunch, so the composition
+    /// root can repoint PipelineService and reconnect EventStreamService
+    /// before the user can trigger another execution.
+    /// </summary>
+    public event Action<int>? RelaunchSucceeded;
+
     partial void OnPortChanged(int value) => IsDirty = true;
 
     partial void OnLogPathChanged(string value) => IsDirty = true;
@@ -108,6 +115,8 @@ public partial class SettingsViewModel : ObservableObject
                 RelaunchFailed?.Invoke(outcome.ErrorMessage ?? "Failed to start llx serve with the new settings.");
                 return;
             }
+
+            RelaunchSucceeded?.Invoke(Port);
 
             _lastSaved = config;
             _lastSavedApiKey = ApiKey;

@@ -1,219 +1,251 @@
-# BDD UI Navigation
+# BDD — UI Navigation (Streaming Edition)
 
 ## Purpose
-This document defines Behavior‑Driven Development (BDD) scenarios for **navigation behavior** in Limelight‑X.  
-It covers page transitions, sidebar navigation, navigation guards, modal blocking, inspector constraints, and navigation‑specific error handling.  
-Scenarios use **mock backend responses**, **medium granularity**, and **behavioral naming**.  
-The document is organized by **navigation type**.
+This document defines all deterministic navigation scenarios for the Limelight‑X UI under the **event‑streaming API**.  
+It specifies how the UI must transition between pages during editing, execution, streaming, error handling, and settings updates.
 
-All scenarios follow **pure Given/When/Then** format.
-
----
-
-# 1. Sidebar Navigation
-
-## Scenario: Navigating to EditorPage requires a loaded file
-**Given** the user is on HomePage  
-**And** no file is loaded  
-**When** the user selects “Editor” in the sidebar  
-**Then** the UI shows a navigation guard modal  
-**And** remains on HomePage
-
-## Scenario: Sidebar navigation to EditorPage succeeds when a file is loaded
-**Given** the user is on HomePage  
-**And** a file is loaded  
-**When** the user selects “Editor” in the sidebar  
-**Then** the UI navigates to EditorPage
-
-## Scenario: Sidebar navigation to ExecutionPage requires a completed pipeline
-**Given** the user is on EditorPage  
-**And** no pipeline has been executed  
-**When** the user selects “Execution” in the sidebar  
-**Then** the UI shows a navigation guard modal  
-**And** remains on EditorPage
-
-## Scenario: Sidebar navigation to ExecutionPage succeeds after pipeline execution
-**Given** the user is on EditorPage  
-**And** the user previously executed a pipeline  
-**When** the user selects “Execution” in the sidebar  
-**Then** the UI navigates to ExecutionPage
-
-## Scenario: Sidebar navigation preserves inspector collapse state
-**Given** the user is on ExecutionPage  
-**And** the IR inspector is expanded  
-**When** the user navigates to EditorPage  
-**And** returns to ExecutionPage  
-**Then** the IR inspector remains expanded
-
-## Scenario: Sidebar navigation to SettingsPage succeeds from any page
-**Given** the user is on HomePage, EditorPage, or ExecutionPage  
-**When** the user selects "Settings" in the sidebar  
-**Then** the UI navigates to SettingsPage  
-**And** fields reflect the last-saved configuration values
-
-## Scenario: HomePage gear icon opens SettingsPage
-**Given** the user is on HomePage  
-**When** the user selects the gear icon  
-**Then** the UI navigates to SettingsPage
+This specification is authoritative.  
+All implementation must follow these scenarios exactly.
 
 ---
 
-# 2. Workflow Navigation
+# 1. Conventions
 
-## Scenario: Running a pipeline navigates to ExecutionPage
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates success  
-**When** the user presses Ctrl+R  
-**Then** the UI navigates to ExecutionPage  
-**And** displays the final result inspector
+Each scenario uses the extended BDD format:
 
-## Scenario: Explain navigates to ExecutionPage with AST inspectors
-**Given** the editor contains valid CNL  
-**And** the backend mock response includes raw and normalized AST  
-**When** the user presses Ctrl+E  
-**Then** the UI navigates to ExecutionPage  
-**And** displays the Raw AST and Normalized AST inspectors
+- **GIVEN** (initial state)  
+- **WHEN** (user action or backend event)  
+- **THEN** (UI reaction)  
+- **SO THAT** (user‑visible outcome)  
+- **AS MEASURED BY** (deterministic observable behavior)
 
-## Scenario: Trace navigates to ExecutionPage with IR and prompt inspectors
-**Given** the editor contains valid CNL  
-**And** the backend mock response includes IR, prompts, and model outputs  
-**When** the user presses Ctrl+T  
-**Then** the UI navigates to ExecutionPage  
-**And** displays the IR, Prompts, and Model Outputs inspectors
+All scenarios assume:
+
+- strict single‑execution mode  
+- deterministic MVVM state  
+- incremental WebSocket event streaming  
+- correlation‑ID filtering  
+- no parallel executions  
 
 ---
 
-# 3. Navigation Guards
+# 2. Page Definitions
 
-## Scenario: Validation errors block navigation to ExecutionPage
-**Given** the editor contains invalid CNL  
-**When** the user presses Ctrl+R  
-**Then** the UI shows inline validation errors  
-**And** remains on EditorPage
+The UI contains four pages:
 
-## Scenario: Pipeline errors allow navigation but show inspector errors
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates pipeline failure  
-**When** the user presses Ctrl+R  
-**Then** the UI navigates to ExecutionPage  
-**And** displays inline inspector errors  
-**And** shows a global error banner
+1. **Home Page**  
+2. **Editor Page**  
+3. **Execution Page**  
+4. **Settings Page**
 
-## Scenario: Navigation to ExecutionPage is blocked when backend returns no data
-**Given** the editor contains valid CNL  
-**And** the backend mock response contains no inspectors  
-**When** the user presses Ctrl+T  
-**Then** the UI shows a navigation guard modal  
-**And** remains on EditorPage
-
-## Scenario: Leaving SettingsPage with unsaved changes shows a confirmation modal
-**Given** the user is on SettingsPage  
-**And** the user has edited a field without saving  
-**When** the user selects a different page in the sidebar  
-**Then** the UI shows an "Unsaved Changes" confirmation modal  
-**And** remains on SettingsPage
-
-## Scenario: Choosing "Stay" keeps unsaved Settings changes
-**Given** the "Unsaved Changes" confirmation modal is visible  
-**When** the user selects "Stay"  
-**Then** the modal closes  
-**And** the UI remains on SettingsPage  
-**And** the edited field values are unchanged
-
-## Scenario: Choosing "Discard Changes" navigates away and reverts fields
-**Given** the "Unsaved Changes" confirmation modal is visible  
-**When** the user selects "Discard Changes"  
-**Then** the UI navigates to the originally requested page  
-**And** SettingsPage fields revert to their last-saved values on next visit
-
-## Scenario: Navigation to SettingsPage is blocked during pipeline execution
-**Given** the user is on EditorPage  
-**And** a pipeline is currently running  
-**When** the user selects "Settings" in the sidebar  
-**Then** the UI shows a navigation guard modal  
-**And** remains on EditorPage
+Navigation is controlled exclusively by `NavigationViewModel`.
 
 ---
 
-# 4. Fatal Navigation Errors
+# 3. Startup Navigation Scenarios
 
-## Scenario: Fatal navigation error disables interaction
-**Given** the user is on EditorPage  
-**And** a fatal navigation error occurs  
-**When** the user attempts to navigate  
-**Then** a modal dialog appears  
-**And** all actions are disabled until acknowledged
+## 3.1 Application Startup
+**GIVEN** the application launches  
+**WHEN** no file is provided  
+**THEN** UI navigates to Home Page  
+**SO THAT** the user sees entry‑point actions  
+**AS MEASURED BY** `CurrentPage == Home`
 
-## Scenario: Fatal backend error blocks navigation to ExecutionPage
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates a fatal error  
-**When** the user presses Ctrl+R  
-**Then** a modal dialog appears  
-**And** the UI does not navigate  
-**And** all actions are disabled until acknowledged
-
----
-
-# 5. Inspector Navigation Constraints
-
-## Scenario: Inspectors cannot be navigated to directly
-**Given** the user is on EditorPage  
-**When** the user attempts to navigate directly to an inspector  
-**Then** the UI shows a navigation guard modal  
-**And** remains on EditorPage
-
-## Scenario: Inspectors are only visible on ExecutionPage
-**Given** the user is on HomePage  
-**When** the user attempts to open the IR inspector  
-**Then** the UI shows a navigation guard modal  
-**And** remains on HomePage
-
-## Scenario: Inspector collapse state persists across navigation
-**Given** the user expands the Prompts inspector  
-**When** the user navigates away from ExecutionPage  
-**And** returns  
-**Then** the Prompts inspector remains expanded
+## 3.2 Startup With File
+**GIVEN** the application launches with a `.llx` file  
+**WHEN** the file loads successfully  
+**THEN** UI navigates to Editor Page  
+**SO THAT** the user can begin editing immediately  
+**AS MEASURED BY** `CurrentPage == Editor`
 
 ---
 
-# 6. Navigation Error Handling
+# 4. Editor Navigation Scenarios
 
-## Scenario: Navigation errors show a global banner on ExecutionPage
-**Given** the editor contains valid CNL  
-**And** the backend mock response indicates an IR error  
-**When** the user presses Ctrl+T  
-**Then** the UI navigates to ExecutionPage  
-**And** displays a global error banner  
-**And** displays inline inspector errors
+## 4.1 Navigate to Editor
+**GIVEN** the user is on Home Page  
+**WHEN** they click “Open File” or “Editor”  
+**THEN** UI navigates to Editor Page  
+**SO THAT** the user can edit CNL  
+**AS MEASURED BY** `CurrentPage == Editor`
 
-## Scenario: Navigation errors do not clear automatically
-**Given** the user is on ExecutionPage  
-**And** a navigation error banner is visible  
-**When** the user navigates to EditorPage  
-**And** returns to ExecutionPage  
-**Then** the error banner remains visible
+## 4.2 Editor → Settings
+**GIVEN** the user is on Editor Page  
+**WHEN** they click the gear icon  
+**THEN** UI navigates to Settings Page  
+**SO THAT** backend configuration can be updated  
+**AS MEASURED BY** `CurrentPage == Settings`
 
 ---
 
-# 7. State Persistence
+# 5. Execution Navigation Scenarios (Streaming)
 
-## Scenario: Editor text persists across navigation
-**Given** the user enters text in the editor  
-**When** the user navigates to HomePage  
-**And** returns to EditorPage  
-**Then** the editor text remains unchanged
+## 5.1 Editor → Execution on Run
+**GIVEN** the user is on Editor Page  
+**WHEN** they click Run  
+**THEN** UI navigates to Execution Page  
+**SO THAT** the user sees pipeline progress  
+**AS MEASURED BY** `CurrentPage == Execution`
 
-## Scenario: Inspector selection persists across navigation
-**Given** the user selects an IR node  
-**When** the user navigates to EditorPage  
-**And** returns to ExecutionPage  
-**Then** the same IR node remains selected
+## 5.2 Editor → Execution on Explain
+**GIVEN** the user is on Editor Page  
+**WHEN** they click Explain  
+**THEN** UI navigates to Execution Page  
+**SO THAT** the user sees AST and normalized AST  
+**AS MEASURED BY** `CurrentPage == Execution`
+
+## 5.3 Editor → Execution on Trace
+**GIVEN** the user is on Editor Page  
+**WHEN** they click Trace  
+**THEN** UI navigates to Execution Page  
+**SO THAT** the user sees full pipeline details  
+**AS MEASURED BY** `CurrentPage == Execution`
+
+---
+
+# 6. Streaming Event Navigation Scenarios
+
+## 6.1 Stay on Execution During Streaming
+**GIVEN** execution is running  
+**WHEN** any streaming event arrives  
+**THEN** UI remains on Execution Page  
+**SO THAT** pipeline progress is visible  
+**AS MEASURED BY** `CurrentPage == Execution`
+
+Events include:
+- `pipeline_started`  
+- `raw_ast_generated`  
+- `normalized_ast_generated`  
+- `ir_generated`  
+- `prompts_generated`  
+- `model_outputs_generated`  
+- `final_result_ready`  
+
+## 6.2 Final Result Does Not Trigger Navigation
+**GIVEN** `final_result_ready` arrives  
+**WHEN** execution completes  
+**THEN** UI stays on Execution Page  
+**SO THAT** user can inspect results  
+**AS MEASURED BY** `CurrentPage == Execution`
+
+---
+
+# 7. Navigation Lock Scenarios (Strict Single Execution)
+
+This section is the authoritative source for navigation-guard mechanics (when navigation/buttons lock and unlock). `bdd-ui-error-cases.md` §7 covers only the error-triggered variant of these same transitions (navigation behavior specifically after a `pipeline_failed`) and should be read as a special case of the rules here, not a duplicate — if the two ever appear to disagree, this section wins.
+
+## 7.1 Block Navigation During Execution
+**GIVEN** execution is running  
+**WHEN** the user attempts to navigate to Home, Editor, or Settings  
+**THEN** navigation is blocked  
+**SO THAT** UI remains consistent  
+**AS MEASURED BY** `CurrentPage == Execution`
+
+## 7.2 Disable All Execution Buttons During Execution
+**GIVEN** the user clicks Run, Explain, or Trace  
+**WHEN** execution begins  
+**THEN** all three execution buttons become disabled  
+**SO THAT** no parallel or overlapping executions can occur  
+**AS MEASURED BY** `PipelineExecutionViewModel.IsRunning == true` and all execution commands reporting `CanExecute == false`
+
+## 7.3 Allow Navigation After Completion
+**GIVEN** execution has completed  
+**WHEN** user clicks Home/Editor/Settings  
+**THEN** navigation succeeds  
+**SO THAT** workflow continues  
+**AS MEASURED BY** `CurrentPage != Execution`
+
+## 7.4 Re‑Enable Execution Buttons After Completion or Error
+**GIVEN** execution is running  
+**WHEN** either `final_result_ready` or `pipeline_failed` arrives  
+**THEN** Run, Explain, and Trace buttons re‑enable  
+**SO THAT** the user can begin a new execution or navigate away  
+**AS MEASURED BY** `PipelineExecutionViewModel.IsRunning == false` and all execution commands reporting `CanExecute == true`
+
+---
+
+# 8. Error Navigation Scenarios
+
+## 8.1 Pipeline Failure Does Not Navigate
+**GIVEN** execution is running  
+**WHEN** `pipeline_failed` arrives  
+**THEN** UI stays on Execution Page  
+**SO THAT** user sees error context  
+**AS MEASURED BY** `CurrentPage == Execution`
+
+## 8.2 Navigation Allowed After Error
+**GIVEN** pipeline failed  
+**WHEN** user clicks Editor  
+**THEN** navigation succeeds  
+**SO THAT** user can fix CNL  
+**AS MEASURED BY** `CurrentPage == Editor`
+
+## 8.3 Transport Error Does Not Navigate
+**GIVEN** execution is running  
+**WHEN** WebSocket disconnects  
+**THEN** UI stays on Execution Page  
+**SO THAT** user sees transport failure  
+**AS MEASURED BY** `CurrentPage == Execution`
+
+---
+
+# 9. Settings Navigation Scenarios
+
+## 9.1 Navigate to Settings
+**GIVEN** user is on any page  
+**WHEN** they click the gear icon  
+**THEN** UI navigates to Settings Page  
+**SO THAT** backend configuration can be updated  
+**AS MEASURED BY** `CurrentPage == Settings`
+
+## 9.2 Block Settings During Execution
+**GIVEN** execution is running  
+**WHEN** user clicks Settings  
+**THEN** navigation is blocked  
+**SO THAT** execution remains stable  
+**AS MEASURED BY** `CurrentPage == Execution`
+
+## 9.3 Return From Settings
+**GIVEN** user is on Settings Page  
+**WHEN** they click Home or Editor  
+**THEN** navigation succeeds  
+**SO THAT** workflow continues  
+**AS MEASURED BY** `CurrentPage != Settings`
+
+---
+
+# 10. Correlation‑ID Navigation Scenarios
+
+## 10.1 Ignore Events From Old Executions
+**GIVEN** active correlation ID = `abc-123`  
+**WHEN** event arrives with `xyz-999`  
+**THEN** UI ignores the event  
+**SO THAT** navigation remains stable  
+**AS MEASURED BY** unchanged `CurrentPage`
+
+## 10.2 Reset Navigation on New Execution
+**GIVEN** previous execution completed  
+**WHEN** new `pipeline_started` arrives  
+**THEN** UI navigates to Execution Page  
+**SO THAT** user sees new pipeline progress  
+**AS MEASURED BY** `CurrentPage == Execution`
+
+---
+
+# 11. Non‑Goals
+
+These scenarios do **not** cover:
+
+- parallel executions  
+- queued executions  
+- cancellation  
+- plugin pages  
+- multi‑file workflows  
+- nondeterministic animations  
 
 ---
 
 # Summary
 
-This BDD navigation specification defines deterministic Given/When/Then interactions for all navigation behaviors in Limelight‑X.  
-It covers page transitions, sidebar navigation, navigation guards, modal blocking, inspector constraints, navigation‑specific errors, and state persistence.  
-Backend responses are mocked, scenarios use medium granularity, and naming is behavioral.  
-This navigation model is authoritative and must be followed exactly.
+These BDD navigation scenarios define all deterministic routing behavior in the Limelight‑X UI under the streaming API.  
+They ensure predictable page transitions, strict execution locks, stable error handling, and correct incremental updates throughout the entire workflow.
