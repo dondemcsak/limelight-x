@@ -121,8 +121,8 @@ The tab that started the execution remains the only one whose inspectors update.
 | `raw_ast_generated` | Executing tab's Raw AST panel updates |
 | `normalized_ast_generated` | Executing tab's Normalized AST panel updates |
 | `ir_generated` | Executing tab's IR panel updates |
-| `prompts_generated` | Executing tab's Prompt panel updates |
-| `model_outputs_generated` | Executing tab's Model Output panel updates |
+| `prompt_generated` | Executing tab's Prompt panel appends the new prompt (may fire multiple times per execution) |
+| `model_output_generated` | Executing tab's Model Output panel appends the new output (may fire multiple times per execution) |
 | `final_result_ready` | Executing tab's Final Result panel updates; lock released |
 | `pipeline_failed` | Executing tab's error banner appears; lock released |
 

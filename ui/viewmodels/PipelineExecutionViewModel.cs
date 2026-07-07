@@ -61,9 +61,6 @@ public partial class PipelineExecutionViewModel : ObservableObject, IDisposable
         };
     }
 
-    /// <summary>Read-only display log backing this tab's ExecutionTimeline component (ui-viewmodels.md §7, ui-components.md §5.1) - not part of delivery/ordering logic.</summary>
-    public ObservableCollection<PipelineEvent> PipelineEvents { get; } = [];
-
     public string? CorrelationId => _activeCorrelationId;
 
     public RawAstViewModel RawAstViewModel { get; } = new();
@@ -128,7 +125,6 @@ public partial class PipelineExecutionViewModel : ObservableObject, IDisposable
         }
 
         ResetInspectors();
-        PipelineEvents.Clear();
         _activeKind = kind;
         _activeCorrelationId = result.CorrelationId;
         // IsRunning/lock-acquire happen on pipeline_started (OnEventReceived
@@ -155,8 +151,6 @@ public partial class PipelineExecutionViewModel : ObservableObject, IDisposable
             // (ui-data-contracts.md §10).
             return;
         }
-
-        PipelineEvents.Add(new PipelineEvent { EventType = wsEvent.EventType, Timestamp = DateTimeOffset.UtcNow });
 
         switch (wsEvent.EventType)
         {
@@ -186,20 +180,12 @@ public partial class PipelineExecutionViewModel : ObservableObject, IDisposable
                 ApplyIr(Deserialize<IrEventData>(wsEvent).Ir);
                 break;
 
-            case "prompts_generated":
-                foreach (var prompt in Deserialize<PromptsEventData>(wsEvent).Prompts)
-                {
-                    PromptViewModel.Prompts.Add(prompt);
-                }
-
+            case "prompt_generated":
+                PromptViewModel.Prompts.Add(Deserialize<PromptEventData>(wsEvent).Prompt);
                 break;
 
-            case "model_outputs_generated":
-                foreach (var output in Deserialize<ModelOutputsEventData>(wsEvent).ModelOutputs)
-                {
-                    ModelOutputViewModel.Outputs.Add(output);
-                }
-
+            case "model_output_generated":
+                ModelOutputViewModel.Outputs.Add(Deserialize<ModelOutputEventData>(wsEvent).ModelOutput);
                 break;
 
             case "final_result_ready":

@@ -131,10 +131,12 @@ pipeline_started
 raw_ast_generated
 normalized_ast_generated
 ir_generated
-prompts_generated
-model_outputs_generated
+( prompt_generated
+  model_output_generated ) × N
 final_result_ready
 ```
+where N is the number of model-calling IR operations in the program (0 or more); each pair may repeat, unlike the other listed events which fire exactly once per execution.
+
 The UI must:
 - update the owning tab's inspectors in exact order  
 - never reorder events  
@@ -174,8 +176,8 @@ Each inspector must be tested for:
 - Raw AST appears only after `raw_ast_generated`.  
 - Normalized AST appears only after `normalized_ast_generated`.  
 - IR appears only after `ir_generated`.  
-- Prompts appear only after `prompts_generated`.  
-- Model outputs appear only after `model_outputs_generated`.  
+- Prompts appear after the first `prompt_generated`; the collection's count increments with each subsequent `prompt_generated` rather than being fixed after the first.  
+- Model outputs appear after the first `model_output_generated`; the collection's count increments with each subsequent `model_output_generated` rather than being fixed after the first.  
 - Final result appears only after `final_result_ready`.
 
 ### 6.2 Collapse/Expand Behavior

@@ -37,6 +37,21 @@ pub struct ModelOutputRecord {
 }
 
 // ---------------------------------------------------------------------------
+// Evaluator observer hook (spec/evaluator-semantics.md §4.1)
+// ---------------------------------------------------------------------------
+
+/// Notified at the exact moment each prompt is constructed and each model
+/// output is received, so callers (e.g. `/src/api`) can stream events as
+/// evaluation happens instead of waiting for the whole program to finish.
+///
+/// This is a notification hook only — it must not influence control flow,
+/// ordering, or determinism.
+pub trait EvaluatorObserver {
+    fn on_prompt_generated(&self, operation_index: usize, prompt_text: &str);
+    fn on_model_output_generated(&self, operation_index: usize, raw_text: &str, latency_ms: u128);
+}
+
+// ---------------------------------------------------------------------------
 // Public entry points
 // ---------------------------------------------------------------------------
 
@@ -48,6 +63,7 @@ pub fn evaluate(
     trace: bool,
     raw_ast: Option<&RawAst>,
     normalized_ast: Option<&NormalizedAst>,
+    observer: Option<&dyn EvaluatorObserver>,
 ) -> Result<EvalOutcome, Error> {
     if trace {
         if let Some(raw) = raw_ast {
@@ -84,6 +100,7 @@ pub fn evaluate(
             trace,
             &mut prompts,
             &mut model_outputs,
+            observer,
         )?;
         results.push(result);
     }
@@ -116,6 +133,7 @@ fn execute_op(
     trace: bool,
     prompts: &mut Vec<PromptRecord>,
     model_outputs: &mut Vec<ModelOutputRecord>,
+    observer: Option<&dyn EvaluatorObserver>,
 ) -> Result<String, Error> {
     match op {
         IrOp::Load { path } => {
@@ -149,6 +167,7 @@ fn execute_op(
                 trace,
                 prompts,
                 model_outputs,
+                observer,
             )
         }
 
@@ -166,6 +185,7 @@ fn execute_op(
                 trace,
                 prompts,
                 model_outputs,
+                observer,
             )
         }
 
@@ -187,6 +207,7 @@ fn execute_op(
                 trace,
                 prompts,
                 model_outputs,
+                observer,
             )
         }
 
@@ -206,6 +227,7 @@ fn execute_op(
                 trace,
                 prompts,
                 model_outputs,
+                observer,
             )
         }
 
@@ -223,6 +245,7 @@ fn execute_op(
                     trace,
                     prompts,
                     model_outputs,
+                    observer,
                 )?;
                 table_to_json(&table, index, op_name)
             } else {
@@ -235,6 +258,7 @@ fn execute_op(
                     trace,
                     prompts,
                     model_outputs,
+                    observer,
                 )
             }
         }
@@ -339,6 +363,7 @@ fn call_model(
     trace: bool,
     prompts: &mut Vec<PromptRecord>,
     model_outputs: &mut Vec<ModelOutputRecord>,
+    observer: Option<&dyn EvaluatorObserver>,
 ) -> Result<String, Error> {
     if trace {
         println!("Prompt:\n{prompt}\n");
@@ -347,6 +372,9 @@ fn call_model(
         operation_index: index,
         prompt_text: prompt.to_string(),
     });
+    if let Some(obs) = observer {
+        obs.on_prompt_generated(index, prompt);
+    }
     let started = std::time::Instant::now();
     let output = adapter.complete(prompt).map_err(|e| Error::EvalError {
         index,
@@ -362,6 +390,9 @@ fn call_model(
         raw_text: output.clone(),
         latency_ms,
     });
+    if let Some(obs) = observer {
+        obs.on_model_output_generated(index, &output, latency_ms);
+    }
     Ok(output)
 }
 
@@ -387,7 +418,7 @@ mod tests {
     use crate::model::mock::{CapturingAdapter, MockModelAdapter};
 
     fn eval(ir: Ir, adapter: &dyn ModelAdapter) -> Result<String, Error> {
-        evaluate(&ir, adapter, std::path::Path::new("."), false, None, None)
+        evaluate(&ir, adapter, std::path::Path::new("."), false, None, None, None)
             .map(|outcome| outcome.final_result)
     }
 
@@ -586,8 +617,16 @@ mod tests {
                 prompt: None,
             },
         ]);
-        let outcome =
-            evaluate(&ir, &adapter, std::path::Path::new("."), false, None, None).unwrap();
+        let outcome = evaluate(
+            &ir,
+            &adapter,
+            std::path::Path::new("."),
+            false,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(outcome.final_result, "summary text");
         assert_eq!(outcome.prompts.len(), 1);
         assert_eq!(outcome.prompts[0].operation_index, 1);
@@ -613,8 +652,90 @@ mod tests {
                 prompt: None,
             },
         ]);
-        let result = evaluate(&ir, &adapter, std::path::Path::new("."), true, None, None);
+        let result = evaluate(
+            &ir,
+            &adapter,
+            std::path::Path::new("."),
+            true,
+            None,
+            None,
+            None,
+        );
         assert!(result.is_ok());
+    }
+
+    // BDD: Observer is notified before/after each model call, in order, across
+    // multiple model-calling operations
+    #[test]
+    fn test_observer_notified_around_each_model_call_in_order() {
+        // GIVEN: Load -> Summarize -> Translate (two model-calling operations)
+        // WHEN the evaluator runs with an observer attached
+        // THEN the observer sees prompt(1), output(1), prompt(2), output(2) in order
+        let adapter = MockModelAdapter::new("model output");
+        let ir = Ir(vec![
+            IrOp::Load {
+                path: make_temp_file("article text"),
+            },
+            IrOp::Summarize {
+                input: IrRef(0),
+                prompt: None,
+            },
+            IrOp::Translate {
+                input: IrRef(1),
+                language: "French".to_string(),
+                prompt: None,
+            },
+        ]);
+        let observer = RecordingObserver::default();
+        evaluate(
+            &ir,
+            &adapter,
+            std::path::Path::new("."),
+            false,
+            None,
+            None,
+            Some(&observer),
+        )
+        .unwrap();
+        assert_eq!(
+            observer.events(),
+            vec![
+                (1, "prompt".to_string()),
+                (1, "output".to_string()),
+                (2, "prompt".to_string()),
+                (2, "output".to_string()),
+            ]
+        );
+    }
+
+    #[derive(Default)]
+    struct RecordingObserver {
+        events: std::cell::RefCell<Vec<(usize, String)>>,
+    }
+
+    impl RecordingObserver {
+        fn events(&self) -> Vec<(usize, String)> {
+            self.events.borrow().clone()
+        }
+    }
+
+    impl EvaluatorObserver for RecordingObserver {
+        fn on_prompt_generated(&self, operation_index: usize, _prompt_text: &str) {
+            self.events
+                .borrow_mut()
+                .push((operation_index, "prompt".to_string()));
+        }
+
+        fn on_model_output_generated(
+            &self,
+            operation_index: usize,
+            _raw_text: &str,
+            _latency_ms: u128,
+        ) {
+            self.events
+                .borrow_mut()
+                .push((operation_index, "output".to_string()));
+        }
     }
 
     fn make_temp_file(content: &str) -> String {

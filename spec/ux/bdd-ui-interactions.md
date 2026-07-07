@@ -81,7 +81,7 @@ All scenarios assume:
 
 ## 3.3 Keep Buttons Disabled App‑Wide During Streaming
 **GIVEN** execution has begun in some tab  
-**WHEN** streaming events arrive (`pipeline_started`, `raw_ast_generated`, `normalized_ast_generated`, `ir_generated`, `prompts_generated`, `model_outputs_generated`)  
+**WHEN** streaming events arrive (`pipeline_started`, `raw_ast_generated`, `normalized_ast_generated`, `ir_generated`, `prompt_generated`, `model_output_generated`)  
 **THEN** Run and Explain remain disabled on every open tab  
 **SO THAT** the user cannot trigger a new execution mid‑pipeline  
 **AS MEASURED BY** `IExecutionLockService.IsAnyExecutionRunning == true` throughout the entire event sequence
@@ -113,17 +113,24 @@ All scenarios assume:
 
 ## 4.4 Prompts Appear
 **GIVEN** IR is visible  
-**WHEN** `prompts_generated` arrives  
+**WHEN** the first `prompt_generated` arrives  
 **THEN** PromptPanel becomes visible  
 **SO THAT** the user sees model prompts  
 **AS MEASURED BY** `PromptViewModel.Prompts.Count > 0`
 
 ## 4.5 Model Outputs Appear
 **GIVEN** prompts are visible  
-**WHEN** `model_outputs_generated` arrives  
+**WHEN** the first `model_output_generated` arrives  
 **THEN** ModelOutputPanel becomes visible  
 **SO THAT** the user sees model responses  
 **AS MEASURED BY** `ModelOutputViewModel.Outputs.Count > 0`
+
+## 4.7 Multiple Prompt/Output Pairs Accumulate Across a Multi-Step Trace
+**GIVEN** execution is running for a program with two model-calling operations (e.g. `Summarize` → `Translate`)  
+**WHEN** both `prompt_generated`/`model_output_generated` pairs arrive in order  
+**THEN** `PromptViewModel.Prompts` and `ModelOutputViewModel.Outputs` each grow by one entry per event, without being cleared or reset between the two pairs  
+**SO THAT** the user sees every model call in a chained transformation, not just the last one  
+**AS MEASURED BY** `PromptViewModel.Prompts.Count == 1` and `ModelOutputViewModel.Outputs.Count == 1` immediately after the first pair, and `PromptViewModel.Prompts.Count == 2` and `ModelOutputViewModel.Outputs.Count == 2` immediately after the second pair, with the first pair's entries still present and unchanged at both checkpoints
 
 ## 4.6 Final Result Appears
 **GIVEN** execution is running  

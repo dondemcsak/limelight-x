@@ -108,28 +108,37 @@ Claude must not modify them unless explicitly instructed.
 
 ## Scenario: Successful trace returns the full pipeline output
 **GIVEN** the server is running and the mock model adapter returns a fixed completion  
-**WHEN** the client sends `POST /trace` with valid CNL source  
-**THEN** the HTTP response is the accept envelope, and the WebSocket stream for that `correlation_id` emits, in order, `pipeline_started` → `raw_ast_generated` → `normalized_ast_generated` → `ir_generated` → `prompts_generated` → `model_outputs_generated` → `final_result_ready`, whose `data` payloads collectively contain `raw_ast`, `normalized_ast`, `ir`, `prompts`, `model_outputs`, and `final_result`  
+**WHEN** the client sends `POST /trace` with valid CNL source containing exactly one `Summarize` step  
+**THEN** the HTTP response is the accept envelope, and the WebSocket stream for that `correlation_id` emits, in order, `pipeline_started` → `raw_ast_generated` → `normalized_ast_generated` → `ir_generated` → `prompt_generated` → `model_output_generated` → `final_result_ready`, whose `data` payloads collectively contain `raw_ast`, `normalized_ast`, `ir`, `prompt`, `model_output`, and `final_result`  
 **SO THAT** the UI's Execution Page can populate all inspector panels as the trace progresses, ending with the final result  
-**AS MEASURED BY** the WebSocket event sequence for the `correlation_id` being exactly the 7 events above in order, with each event's `data` containing the correspondingly named key (e.g. `ir_generated.data.ir`), each non‑empty
+**AS MEASURED BY** the WebSocket event sequence for the `correlation_id` being exactly the 7 events above in order, with each event's `data` containing the correspondingly named key (e.g. `ir_generated.data.ir`, `prompt_generated.data.prompt`, `model_output_generated.data.model_output`), each non‑empty
 
 ---
 
 ## Scenario: Trace pipeline stage events are emitted incrementally, not batched after the pipeline completes
 **GIVEN** the server is running with a mock model adapter configured with an artificial minimum latency (e.g. 100ms) before it returns a completion, and a test harness subscribed to the WebSocket that records a wall-clock receipt timestamp for every event as it arrives  
-**WHEN** the client sends `POST /trace` with valid CNL source  
-**THEN** each of `raw_ast_generated`, `normalized_ast_generated`, and `ir_generated` is received strictly before the mock model adapter records its first invocation, and the events are not all delayed until the pipeline as a whole (including the model call) has finished  
+**WHEN** the client sends `POST /trace` with valid CNL source containing exactly one `Summarize` step  
+**THEN** each of `raw_ast_generated`, `normalized_ast_generated`, `ir_generated`, and `prompt_generated` is received well before the pipeline's elapsed time reaches the mock adapter's artificial delay, and `model_output_generated` is received strictly after the mock adapter's recorded invocation; none of these events are delayed until the pipeline as a whole (including the model call) has finished  
 **SO THAT** the UI's inspector panels populate progressively as the pipeline runs — giving visible incremental progress instead of a single delayed flush at the end — and so that a regression to “compute everything in one task, then fire all events” is caught automatically rather than silently shipping  
-**AS MEASURED BY** all of the following, on a single `POST /trace` call: (1) receipt timestamps of `raw_ast_generated < normalized_ast_generated < ir_generated` are strictly increasing; (2) `ir_generated`'s receipt timestamp is strictly earlier than the mock model adapter's recorded first-invocation timestamp; (3) `model_outputs_generated`'s receipt timestamp is strictly earlier than `final_result_ready`'s; (4) the gap between `pipeline_started`'s receipt and `ir_generated`'s receipt does not include the mock adapter's configured 100ms delay (proving `ir_generated` did not wait on the model call). An implementation that wraps `parser::parse`, `normalizer::normalize`, `ir::compiler::compile`, and `evaluator::evaluate` inside a single task and only emits events after awaiting that task to completion will fail checks (2) and (4), because every stage event — including `ir_generated` — will arrive only after the mock adapter's artificial delay has already elapsed
+**AS MEASURED BY** all of the following, on a single `POST /trace` call: (1) receipt timestamps of `raw_ast_generated < normalized_ast_generated < ir_generated` are strictly increasing; (2) the gap between `pipeline_started`'s receipt and `ir_generated`'s receipt does not include the mock adapter's configured 100ms delay (proving `ir_generated` did not wait on the model call); (3) the gap between `pipeline_started`'s receipt and `prompt_generated`'s receipt likewise does not include the configured delay (proving `prompt_generated` was sent before the model call, not synthesized from the evaluator's return value afterward — note this is checked via elapsed time against the configured delay, not by comparing directly against the adapter's own recorded invocation instant, since the server-side gap between sending `prompt_generated` and starting that same call is on the order of nanoseconds, too small for a network-delivered receipt timestamp to reliably precede); (4) `model_output_generated`'s receipt timestamp is strictly later than the mock adapter's recorded invocation timestamp and strictly earlier than `final_result_ready`'s (this direction has the full artificial delay as margin, so it is safe to compare directly against the adapter's own timestamp). An implementation that wraps `parser::parse`, `normalizer::normalize`, `ir::compiler::compile`, and `evaluator::evaluate` inside a single task and only emits events after awaiting that task to completion will fail checks (2) and (3), because every stage event — including `ir_generated` and `prompt_generated` — will arrive only after the mock adapter's artificial delay has already elapsed
 
 ---
 
 ## Scenario: Trace prompts match the evaluator's constructed prompts exactly
 **GIVEN** the server is running and the source contains a `Summarize` step with no custom prompt  
 **WHEN** the client sends `POST /trace`  
-**THEN** the `prompts_generated` event's `data.prompts[0].prompt_text` matches the built‑in summarization template exactly, per `evaluator-semantics.md`  
+**THEN** the `prompt_generated` event's `data.prompt.prompt_text` matches the built‑in summarization template exactly, per `evaluator-semantics.md`  
 **SO THAT** the UI's Prompt inspector shows the true prompt sent to the model, updated as soon as it is known rather than only at the end of the whole trace  
-**AS MEASURED BY** byte‑for‑byte equality between the `prompts_generated` event's `data.prompts[0].prompt_text` and the evaluator's constructed prompt, AND the `prompts_generated` event's receipt timestamp preceding the mock model adapter's invocation timestamp
+**AS MEASURED BY** byte‑for‑byte equality between the `prompt_generated` event's `data.prompt.prompt_text` and the evaluator's constructed prompt, AND the `prompt_generated` event's receipt timestamp preceding the mock model adapter's invocation timestamp
+
+---
+
+## Scenario: Multi-step trace emits a prompt/model-output pair per model-calling operation, in order
+**GIVEN** the server is running with a mock model adapter that records call order and per-call timestamps, and the source is `Load the article from "article.txt".\nSummarize it.\nTranslate it into French.` (one `Load`, one `Summarize`, one `Translate` — two model-calling operations)  
+**WHEN** the client sends `POST /trace`  
+**THEN** the WebSocket stream for that `correlation_id` emits, after `ir_generated`, two `prompt_generated`/`model_output_generated` pairs before `final_result_ready` — one for the `Summarize` operation (`operation_index` 1) and one for the `Translate` operation (`operation_index` 2) — with the `Translate` pair arriving only after the `Summarize` pair has fully completed  
+**SO THAT** chained transformations (e.g. summarize-then-translate) give the UI live visibility into each model call individually, rather than a single opaque batch covering the whole chain  
+**AS MEASURED BY** the WebSocket event sequence being exactly `["pipeline_started", "raw_ast_generated", "normalized_ast_generated", "ir_generated", "prompt_generated", "model_output_generated", "prompt_generated", "model_output_generated", "final_result_ready"]`; the first `prompt_generated`/`model_output_generated` pair's `data.prompt.operation_index`/`data.model_output.operation_index` both equal `1` and the second pair's both equal `2`; and the second `prompt_generated`'s receipt timestamp is strictly later than the first `model_output_generated`'s receipt timestamp (proving the second pair does not start until the first model call has fully returned)
 
 ---
 

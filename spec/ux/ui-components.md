@@ -45,7 +45,6 @@ The UI defines the following components:
 - `CnlTabView`
 - `Editor`
 - `PlainTextEditor`
-- `ExecutionTimeline`
 - `InspectorPanel`
 - `RawAstPanel`
 - `NormalizedAstPanel`
@@ -144,12 +143,12 @@ Each component is declarative and state‑derived.
 --------------------
 Editor (CnlEditor)
 --------------------
-Execution Panel (ExecutionTimeline + Inspector Panels, §5–§6)
+Execution Panel (Inspector Panels, §5)
 ```
 
 ### Bindings
 - `CnlTabViewModel.Editor` (§4.2)
-- `CnlTabViewModel.PipelineExecution` (drives §5–§6 below, scoped to this tab)
+- `CnlTabViewModel.PipelineExecution` (drives §5 below, scoped to this tab)
 
 ### Streaming Rules
 - Both halves belong to the same tab and share its `PipelineExecutionViewModel` instance — there is no separate "Execution Page" to navigate to.
@@ -192,29 +191,11 @@ Execution Panel (ExecutionTimeline + Inspector Panels, §5–§6)
 
 ---
 
-# 5. Execution Components
-
-## 5.1 ExecutionTimeline
-
-### Responsibilities
-- Displays vertical pipeline timeline for the owning `.llx` tab.
-- Highlights active stage based on event type.
-
-### Bindings
-- `PipelineExecutionViewModel.PipelineEvents` (this tab's instance)
-- `PipelineExecutionViewModel.IsRunning` (this tab's instance)
-
-### Streaming Rules
-- Timeline updates incrementally as events arrive for this tab only.  
-- Active stage highlights deterministically.
-
----
-
-# 6. Inspector Components
+# 5. Inspector Components
 
 Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appears when its event arrives.
 
-## 6.1 InspectorPanel (Base Component)
+## 5.1 InspectorPanel (Base Component)
 
 ### Responsibilities
 - Provides shared structure for all inspectors.
@@ -232,7 +213,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 
 ---
 
-## 6.2 RawAstPanel
+## 5.2 RawAstPanel
 
 ### Responsibilities
 - Displays raw AST nodes.
@@ -246,7 +227,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 
 ---
 
-## 6.3 NormalizedAstPanel
+## 5.3 NormalizedAstPanel
 
 ### Responsibilities
 - Displays normalized AST nodes.
@@ -260,7 +241,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 
 ---
 
-## 6.4 IrPanel
+## 5.4 IrPanel
 
 ### Responsibilities
 - Displays IR operations.
@@ -274,7 +255,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 
 ---
 
-## 6.5 PromptPanel
+## 5.5 PromptPanel
 
 ### Responsibilities
 - Displays prompts sent to the model.
@@ -284,11 +265,11 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 - `IsCollapsed`
 
 ### Streaming Rules
-- Appears on `prompts_generated`. Reachable only via Run.
+- Appears on the first `prompt_generated` event; subsequent `prompt_generated` events append to `PromptViewModel.Prompts` without hiding or re-showing the panel. Never appears if the trace has zero model-calling operations. Reachable only via Run.
 
 ---
 
-## 6.6 ModelOutputPanel
+## 5.6 ModelOutputPanel
 
 ### Responsibilities
 - Displays model outputs.
@@ -298,11 +279,11 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 - `IsCollapsed`
 
 ### Streaming Rules
-- Appears on `model_outputs_generated`. Reachable only via Run.
+- Appears on the first `model_output_generated` event; subsequent `model_output_generated` events append to `ModelOutputViewModel.Outputs` without hiding or re-showing the panel. Never appears if the trace has zero model-calling operations. Reachable only via Run.
 
 ---
 
-## 6.7 FinalResultPanel
+## 5.7 FinalResultPanel
 
 ### Responsibilities
 - Displays final result text.
@@ -317,9 +298,9 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 
 ---
 
-# 7. Error Components
+# 6. Error Components
 
-## 7.1 ErrorBanner
+## 6.1 ErrorBanner
 
 ### Responsibilities
 - Displays errors for a single tab (or, for Settings‑relaunch failures, within the Settings modal — see `ui-error-handling.md` §7.5).
@@ -339,7 +320,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 
 ---
 
-## 7.2 InspectorErrorPanel
+## 6.2 InspectorErrorPanel
 
 ### Responsibilities
 - Displays inspector‑specific errors.
@@ -354,9 +335,9 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 
 ---
 
-# 8. Settings Components
+# 7. Settings Components
 
-## 8.1 SettingsForm
+## 7.1 SettingsForm
 
 ### Responsibilities
 - Displays backend configuration fields, inside the Settings modal (`ui-routing-navigation.md` §2, §8).
@@ -376,7 +357,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 
 ---
 
-# 9. Component Determinism Rules
+# 8. Component Determinism Rules
 
 ### Allowed Behavior
 - collapse/expand  
@@ -393,7 +374,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 
 ---
 
-# 10. Component Testing Requirements
+# 9. Component Testing Requirements
 
 Each component must be tested for:
 
@@ -406,7 +387,7 @@ Each component must be tested for:
 
 ---
 
-# 11. Non‑Goals
+# 10. Non‑Goals
 
 Components do **not** support:
 
@@ -419,7 +400,7 @@ Components do **not** support:
 
 ---
 
-# 12. Future Extensions
+# 11. Future Extensions
 
 Potential enhancements:
 

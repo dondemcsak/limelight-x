@@ -56,10 +56,12 @@ The backend emits the following event types:
 | `raw_ast_generated` | Raw AST is ready |
 | `normalized_ast_generated` | Normalized AST is ready |
 | `ir_generated` | IR is ready |
-| `prompts_generated` | Prompts are ready |
-| `model_outputs_generated` | Model outputs are ready |
+| `prompt_generated` | A prompt has been constructed for one model-adapter call |
+| `model_output_generated` | A model-adapter call has returned its output |
 | `final_result_ready` | Final result is ready |
 | `pipeline_failed` | Pipeline encountered an error |
+
+`prompt_generated` and `model_output_generated` are emitted once **per model-calling IR operation**, not once per pipeline run — see the `/trace` sequence below.
 
 ### Per-Operation Event Sequences
 
@@ -86,10 +88,12 @@ pipeline_started
 raw_ast_generated
 normalized_ast_generated
 ir_generated
-prompts_generated
-model_outputs_generated
+( prompt_generated
+  model_output_generated ) × N
 final_result_ready
 ```
+
+where N is the number of model-calling IR operations in the program (0 or more), each pair emitted in program order before the next pair begins.
 
 ---
 
@@ -220,21 +224,19 @@ Used in `ir_generated` events.
 
 # 7. Prompt Block Contract
 
-Used in `prompts_generated` events.
+Used in `prompt_generated` events. Each event covers exactly **one** model-calling IR operation — `data.prompt` is a single object, not an array.
 
 ```json
 {
   "data": {
-    "prompts": [
-      {
-        "operation_index": 1,
-        "prompt_text": "Summarize the article.",
-        "metadata": {
-          "model": "claude-3-sonnet",
-          "temperature": 0.0
-        }
+    "prompt": {
+      "operation_index": 1,
+      "prompt_text": "Summarize the article.",
+      "metadata": {
+        "model": "claude-3-sonnet",
+        "temperature": 0.0
       }
-    ]
+    }
   }
 }
 ```
@@ -251,22 +253,20 @@ Used in `prompts_generated` events.
 
 # 8. Model Output Contract
 
-Used in `model_outputs_generated` events.
+Used in `model_output_generated` events. Each event covers exactly **one** model-calling IR operation — `data.model_output` is a single object, not an array.
 
 ```json
 {
   "data": {
-    "model_outputs": [
-      {
-        "operation_index": 1,
-        "raw_text": "Here is the summary...",
-        "content_type": "plain",
-        "metadata": {
-          "model": "claude-3-sonnet",
-          "tokens": 128
-        }
+    "model_output": {
+      "operation_index": 1,
+      "raw_text": "Here is the summary...",
+      "content_type": "plain",
+      "metadata": {
+        "model": "claude-3-sonnet",
+        "tokens": 128
       }
-    ]
+    }
   }
 }
 ```

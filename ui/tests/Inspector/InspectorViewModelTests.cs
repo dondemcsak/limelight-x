@@ -79,6 +79,38 @@ public class InspectorViewModelTests
     }
 
     [Fact]
+    public void PromptViewModel_Reset_ClearsPrompts()
+    {
+        var viewModel = new PromptViewModel();
+        viewModel.Prompts.Add(new PromptBlock
+        {
+            PromptText = "Summarize this",
+            Metadata = new PromptBlockMetadata(),
+        });
+
+        viewModel.Reset();
+
+        Assert.Empty(viewModel.Prompts);
+    }
+
+    [Fact]
+    public void PromptViewModel_HasPrompts_TracksCollectionAndResetsOnReset()
+    {
+        var viewModel = new PromptViewModel();
+        Assert.False(viewModel.HasPrompts);
+
+        viewModel.Prompts.Add(new PromptBlock
+        {
+            PromptText = "Summarize this",
+            Metadata = new PromptBlockMetadata(),
+        });
+        Assert.True(viewModel.HasPrompts);
+
+        viewModel.Reset();
+        Assert.False(viewModel.HasPrompts);
+    }
+
+    [Fact]
     public void ModelOutputViewModel_Reset_ClearsOutputs()
     {
         var viewModel = new ModelOutputViewModel();
@@ -93,6 +125,25 @@ public class InspectorViewModelTests
         viewModel.Reset();
 
         Assert.Empty(viewModel.Outputs);
+    }
+
+    [Fact]
+    public void ModelOutputViewModel_HasOutputs_TracksCollectionAndResetsOnReset()
+    {
+        var viewModel = new ModelOutputViewModel();
+        Assert.False(viewModel.HasOutputs);
+
+        viewModel.Outputs.Add(new ModelOutputBlock
+        {
+            RawText = "output",
+            ContentType = LimelightX.UI.Services.Dto.ResultContentType.Plain,
+            Parsed = new ParsedContent(),
+            Metadata = new ModelOutputMetadata(),
+        });
+        Assert.True(viewModel.HasOutputs);
+
+        viewModel.Reset();
+        Assert.False(viewModel.HasOutputs);
     }
 
     [Fact]

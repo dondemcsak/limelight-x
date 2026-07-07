@@ -77,15 +77,19 @@ All pipeline results must be emitted as **JSON events** over WebSocket.
 | Raw AST ready | `raw_ast_generated` |
 | Normalized AST ready | `normalized_ast_generated` |
 | IR ready | `ir_generated` |
-| Prompts ready | `prompts_generated` |
-| Model outputs ready | `model_outputs_generated` |
+| A prompt has been constructed for one model-adapter call | `prompt_generated` |
+| A model-adapter call has returned its output | `model_output_generated` |
 | Final result ready | `final_result_ready` |
 | Any pipeline error | `pipeline_failed` |
+
+`prompt_generated` and `model_output_generated` are emitted once **per model-calling IR operation** (`Extract`, `Summarize`, `Translate`, `Rewrite`, `Format`), not once per pipeline run — see "Per-operation rules" below.
 
 ### Per‑operation rules
 
 - `/run` emits:  
   `pipeline_started` → `final_result_ready`
+
+  (`/run` does not stream per-operation prompt/model-output visibility; that is `/trace`'s job.)
 
 - `/explain` emits:  
   `pipeline_started` → `raw_ast_generated` → `normalized_ast_generated`
@@ -93,7 +97,12 @@ All pipeline results must be emitted as **JSON events** over WebSocket.
   (`/explain` never invokes the evaluator, so it produces no final result; the arrival of `normalized_ast_generated` is itself the completion signal for this endpoint.)
 
 - `/trace` emits:  
-  `pipeline_started` → `raw_ast_generated` → `normalized_ast_generated` → `ir_generated` → `prompts_generated` → `model_outputs_generated` → `final_result_ready`
+  ```
+  pipeline_started → raw_ast_generated → normalized_ast_generated → ir_generated →
+  ( prompt_generated → model_output_generated ) × N
+  → final_result_ready
+  ```
+  where N is the number of model-calling IR operations in the program (0 or more), each pair emitted in program order. A program consisting only of `Load` operations has N = 0 and goes straight from `ir_generated` to `final_result_ready`.
 
 ### Event Emission Timing
 
@@ -101,15 +110,21 @@ All pipeline results must be emitted as **JSON events** over WebSocket.
   - `parser::parse` returns → emit `raw_ast_generated` → *then* call `normalizer::normalize`
   - `normalizer::normalize` returns → emit `normalized_ast_generated` → *then* call `ir::compiler::compile`
   - `ir::compiler::compile` returns → emit `ir_generated` → *then* call `evaluator::evaluate`
-  - `evaluator::evaluate` returns → emit `prompts_generated`, `model_outputs_generated`, and `final_result_ready`, in that order
+  - `evaluator::evaluate` returns → emit `final_result_ready`
 
-- The last three events may legitimately be emitted back-to-back immediately after `evaluator::evaluate` returns: `evaluate` is the final stage function, there is no later stage function whose invocation they must precede, and the evaluator itself does not stream internally (see `evaluator-semantics.md`'s "does not support streaming" non-goal — that governs the evaluator's *internal* per-operation behavior only, not `/src/api`'s transport-layer timing, and is unaffected by this requirement).
+- Unlike the stage functions above, `evaluator::evaluate` is not opaque with respect to events: per `evaluator-semantics.md` §4.1, `/src/api`'s worker must supply an `EvaluatorObserver` to `evaluator::evaluate`, and must forward each callback to the WebSocket **while `evaluate()` is still executing** — not by reading `prompts`/`model_outputs` out of the returned `EvalOutcome` after the fact. Concretely: `on_prompt_generated(i, ...)` fires → emit `prompt_generated` for operation `i` → *then* the evaluator calls `adapter.complete` for operation `i` → it returns → `on_model_output_generated(i, ...)` fires → emit `model_output_generated` for operation `i` → *then* the evaluator moves on to operation `i`'s successor (if any).
 
 - The critical invariant — and the one that catches the "compute everything, then burst-fire" failure mode — is upstream of that: `ir_generated` (and, transitively, `raw_ast_generated` and `normalized_ast_generated`) MUST be observable on the WebSocket strictly before `evaluator::evaluate` begins executing, and therefore strictly before any model adapter call happens. An implementation is non-compliant if `ir_generated` arrives only after the model adapter has already been invoked, even if the final on-wire event order is otherwise correct.
 
-- It is a spec violation to invoke two or more of `parser::parse`, `normalizer::normalize`, `ir::compiler::compile`, `evaluator::evaluate` inside a single opaque task/closure/future (e.g. one `tokio::task::spawn_blocking` body) and defer all of their corresponding events until that task/closure/future completes and is `.await`ed. Each stage function call and the sending of its event must be sequenced as independently observable steps.
+- A second, equally critical invariant now applies **inside** `evaluate()`'s execution: for IR operation *i* that requires a model call, `prompt_generated` for operation *i* MUST be observable on the WebSocket strictly before the model adapter is invoked for operation *i*, and `model_output_generated` for operation *i* MUST be observable strictly after that call returns and strictly before the model adapter is invoked for operation *i+1* (if any exists). An implementation that only synthesizes `prompt_generated`/`model_output_generated` from the `EvalOutcome` returned once `evaluate()` fully completes is non-compliant, even if the resulting on-wire order happens to look correct — the same "compute everything, then burst-fire" failure mode this section already prohibits for the earlier stages.
 
-- This requirement is purely about transport timing. It does not require changing the signatures of `parser::parse`, `normalizer::normalize`, `ir::compiler::compile`, or `evaluator::evaluate` (they remain plain synchronous `fn(...) -> Result<T, Error>`), and it does not introduce any new event type for evaluator-internal per-operation progress (no `op_evaluated` or similar) — the existing 7 stage events plus `pipeline_failed` are unchanged.
+- Error case: if the model adapter fails on operation *i*, `prompt_generated` for operation *i* will already have been emitted (it fires before the call), but `model_output_generated` for operation *i* must never be emitted, and no further stage events (including `final_result_ready`) are emitted — `pipeline_failed` is emitted instead, per §10.
+
+- `final_result_ready` remains the last event for a successful run, emitted immediately after `evaluator::evaluate` fully returns.
+
+- It is a spec violation to invoke two or more of `parser::parse`, `normalizer::normalize`, `ir::compiler::compile`, `evaluator::evaluate` inside a single opaque task/closure/future (e.g. one `tokio::task::spawn_blocking` body) and defer all of their corresponding events until that task/closure/future completes and is `.await`ed. Each stage function call and the sending of its event must be sequenced as independently observable steps. Because the observer callbacks in `evaluate()` fire synchronously during its execution, `evaluate()` itself may still run inside a single `spawn_blocking` body — the observer forwards events out of that blocking body as they occur, so the body being "opaque" to `.await` does not make its internal events opaque to the WebSocket.
+
+- This requirement does not require changing the signatures of `parser::parse`, `normalizer::normalize`, or `ir::compiler::compile` (they remain plain synchronous `fn(...) -> Result<T, Error>`). `evaluator::evaluate` does gain a new optional `observer` parameter, per `evaluator-semantics.md` §4.1 — this is the one deliberate exception, needed precisely to satisfy the per-operation invariant above. The existing 7 stage events are replaced by 6 fixed events plus a repeating `prompt_generated`/`model_output_generated` pair (see "Per-operation rules" above), plus `pipeline_failed`.
 
 ### Envelope Shape
 Every event uses the same envelope shape defined in `ui-data-contracts.md`:
@@ -187,8 +202,7 @@ Not applicable. `/src/api` streams the existing IR (produced by `/src/ir`) using
 ---
 
 # 7. Evaluator Semantics (If Applicable)
-Not applicable. `/src/api` does not alter evaluator behavior.  
-For `/run` and `/trace`, it invokes the existing evaluator exactly as `llx run`/`llx trace` do, one request at a time. "Streams prompts, model outputs, and final result" means: `prompts_generated`, `model_outputs_generated`, and `final_result_ready` are emitted immediately after `evaluator::evaluate` returns (see §2.1 "Event Emission Timing"), and — separately, and more importantly — `ir_generated` (and every stage event before it) is emitted before `evaluator::evaluate` is invoked at all, not deferred until the whole pipeline including the evaluator's model-adapter calls has completed.
+Not applicable. `/src/api` does not alter evaluator behavior — it invokes the existing evaluator exactly as `llx run`/`llx trace` do, one request at a time, supplying an `EvaluatorObserver` (per `evaluator-semantics.md` §4.1) so it can forward events as they occur. "Streams prompts, model outputs, and final result" means: `prompt_generated`/`model_output_generated` pairs are emitted incrementally *during* `evaluator::evaluate`'s execution, one pair per model-calling operation, in program order (see §2.1 "Event Emission Timing"); `final_result_ready` is emitted immediately after `evaluator::evaluate` fully returns; and — separately, and more importantly — `ir_generated` (and every stage event before it) is emitted before `evaluator::evaluate` is invoked at all, not deferred until the whole pipeline including the evaluator's model-adapter calls has completed.
 
 ---
 
@@ -230,7 +244,16 @@ Emits:
 - `normalized_ast_generated`
 
 ### `POST /trace`
-Emits the full sequence.
+Emits, for the same single-`Summarize`-step source above (N = 1 model-calling operation):
+- `pipeline_started`
+- `raw_ast_generated`
+- `normalized_ast_generated`
+- `ir_generated`
+- `prompt_generated`
+- `model_output_generated`
+- `final_result_ready`
+
+A program with more model-calling operations (e.g. `Summarize` → `Translate`) yields one additional `prompt_generated`/`model_output_generated` pair per operation, in program order, still ending in a single `final_result_ready`.
 
 ---
 

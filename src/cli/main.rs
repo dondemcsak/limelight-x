@@ -88,7 +88,7 @@ fn cmd_run(file: &PathBuf) -> Result<(), Error> {
     let normalized_ast = normalizer::normalize(&raw_ast)?;
     let program = ir::compiler::compile(&normalized_ast)?;
     let adapter = ClaudeModelAdapter::new()?;
-    let outcome = evaluator::evaluate(&program, &adapter, base_dir, false, None, None)?;
+    let outcome = evaluator::evaluate(&program, &adapter, base_dir, false, None, None, None)?;
     println!("{}", outcome.final_result);
     Ok(())
 }
@@ -133,6 +133,7 @@ fn cmd_trace(file: &PathBuf) -> Result<(), Error> {
         true,
         Some(&raw_ast),
         Some(&normalized_ast),
+        None,
     )?;
     println!("\n=== Final Result ===");
     println!("{}", outcome.final_result);

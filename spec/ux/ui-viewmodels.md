@@ -198,7 +198,6 @@ There is no `TraceCommand`. The Trace button and its distinct trigger are remove
 - `CorrelationId : string`
 - `IsRunning : bool` — this tab's own execution-state flag (see §6 for how it differs from the app‑wide lock).
 - `HasErrors : bool`
-- `PipelineEvents : ObservableCollection<PipelineEvent>` — a display-only history backing this tab's `ExecutionTimeline` component (`ui-components.md`); it is populated for UI rendering purposes only and is not part of the delivery pipeline. It does not violate the "no buffering or reordering" rule in §11/§13: that rule governs how incoming events are applied to state (in order, as received, without holding any back), not whether a read-only log of already-applied events is kept for display.
 - Inspector ViewModels (this tab's own instances):
   - `RawAst : RawAstViewModel`
   - `NormalizedAst : NormalizedAstViewModel`
@@ -229,11 +228,11 @@ All updates come from streaming events.
 #### `ir_generated`
 - Update `IrViewModel`.
 
-#### `prompts_generated`
-- Update `PromptViewModel`.
+#### `prompt_generated`
+- Append the incoming prompt to `PromptViewModel.Prompts`. This event may fire multiple times per execution — once per model-calling IR operation, in program order — so it must append rather than replace the collection.
 
-#### `model_outputs_generated`
-- Update `ModelOutputViewModel`.
+#### `model_output_generated`
+- Append the incoming output to `ModelOutputViewModel.Outputs`. Like `prompt_generated`, this event may fire multiple times per execution and must append rather than replace.
 
 #### `final_result_ready`
 - Update `FinalResultViewModel`.
@@ -320,7 +319,7 @@ Each is instantiated once per `.llx` tab (owned by that tab's `PipelineExecution
 State:
 - `AstNodes : ObservableCollection<AstNode>`
 - `IsCollapsed : bool`
-- `HasErrors : bool` — set when this inspector's data fails to render; backs `InspectorErrorPanel` (`ui-components.md` §7.2) via an `InspectorErrorViewModel`
+- `HasErrors : bool` — set when this inspector's data fails to render; backs `InspectorErrorPanel` (`ui-components.md` §6.2) via an `InspectorErrorViewModel`
 
 ### 10.2 NormalizedAstViewModel
 State:
@@ -336,13 +335,13 @@ State:
 
 ### 10.4 PromptViewModel
 State:
-- `Prompts : ObservableCollection<Prompt>`
+- `Prompts : ObservableCollection<Prompt>` — grows by one entry per `prompt_generated` event (one event per model-calling IR operation), rather than being set all at once.
 - `IsCollapsed : bool`
 - `HasErrors : bool`
 
 ### 10.5 ModelOutputViewModel
 State:
-- `Outputs : ObservableCollection<ModelOutput>`
+- `Outputs : ObservableCollection<ModelOutput>` — grows by one entry per `model_output_generated` event (one event per model-calling IR operation), rather than being set all at once.
 - `IsCollapsed : bool`
 - `HasErrors : bool`
 

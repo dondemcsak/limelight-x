@@ -128,8 +128,8 @@ Events include:
 - `raw_ast_generated`  
 - `normalized_ast_generated`  
 - `ir_generated`  
-- `prompts_generated`  
-- `model_outputs_generated`  
+- `prompt_generated` (may appear more than once per sequence, unlike the other events listed here — once per model-calling IR operation)  
+- `model_output_generated` (may appear more than once per sequence, unlike the other events listed here — once per model-calling IR operation)  
 - `final_result_ready`
 
 ## 6.2 Switching Tabs During Streaming Is Allowed

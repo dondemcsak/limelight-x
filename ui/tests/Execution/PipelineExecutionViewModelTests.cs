@@ -141,18 +141,14 @@ public class PipelineExecutionViewModelTests
             "ir_generated", "corr-run",
             new IrEventData { Ir = new IrResponse { RawText = "ir", Metadata = new IrMetadata() } }));
         eventStream.Raise(FakeEventStreamService.MakeEvent(
-            "prompts_generated", "corr-run",
-            new PromptsEventData { Prompts = [new PromptBlock { OperationIndex = 0, PromptText = "Summarize this", Metadata = new PromptBlockMetadata() }] }));
+            "prompt_generated", "corr-run",
+            new PromptEventData { Prompt = new PromptBlock { OperationIndex = 0, PromptText = "Summarize this", Metadata = new PromptBlockMetadata() } }));
         eventStream.Raise(FakeEventStreamService.MakeEvent(
-            "model_outputs_generated", "corr-run",
-            new ModelOutputsEventData
-            {
-                ModelOutputs =
-                [
-                    new ModelOutputBlock { OperationIndex = 0, RawText = "first output", ContentType = ResultContentType.Plain, Parsed = new ParsedContent(), Metadata = new ModelOutputMetadata() },
-                    new ModelOutputBlock { OperationIndex = 1, RawText = "final output", ContentType = ResultContentType.Markdown, Parsed = new ParsedContent(), Metadata = new ModelOutputMetadata() },
-                ],
-            }));
+            "model_output_generated", "corr-run",
+            new ModelOutputEventData { ModelOutput = new ModelOutputBlock { OperationIndex = 0, RawText = "first output", ContentType = ResultContentType.Plain, Parsed = new ParsedContent(), Metadata = new ModelOutputMetadata() } }));
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "model_output_generated", "corr-run",
+            new ModelOutputEventData { ModelOutput = new ModelOutputBlock { OperationIndex = 1, RawText = "final output", ContentType = ResultContentType.Markdown, Parsed = new ParsedContent(), Metadata = new ModelOutputMetadata() } }));
         Assert.True(viewModel.IsRunning);
 
         eventStream.Raise(FakeEventStreamService.MakeEvent(
@@ -164,6 +160,8 @@ public class PipelineExecutionViewModelTests
         Assert.Equal(LimelightX.UI.ViewModels.Inspectors.ResultContentType.Markdown, viewModel.FinalResultViewModel.ContentType);
         Assert.Single(viewModel.PromptViewModel.Prompts);
         Assert.Equal(2, viewModel.ModelOutputViewModel.Outputs.Count);
+        Assert.True(viewModel.PromptViewModel.HasPrompts);
+        Assert.True(viewModel.ModelOutputViewModel.HasOutputs);
     }
 
     [Fact]

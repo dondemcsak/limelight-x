@@ -6,7 +6,8 @@
              xmlns:inspectors="using:LimelightX.UI.ViewModels.Inspectors"
              mc:Ignorable="d" d:DesignWidth="800"
              x:Class="LimelightX.UI.Components.ModelOutputPanel"
-             x:DataType="inspectors:ModelOutputViewModel">
+             x:DataType="inspectors:ModelOutputViewModel"
+             IsVisible="{Binding HasOutputs}">
 
   <components:CollapsiblePanel Title="Model Outputs" IsCollapsed="{Binding IsCollapsed}">
     <components:CollapsiblePanel.PanelContent>

@@ -10,9 +10,9 @@
 
   <!--
     Composite view for an open .llx tab (ui-components.md §4.1): CNL editor
-    with Run/Explain above, execution panel (timeline + six inspectors)
-    below - both halves share this tab's own Editor/PipelineExecution
-    instances, so there is no separate "Execution Page" to navigate to.
+    with Run/Explain above, execution panel (six inspectors) below - both
+    halves share this tab's own Editor/PipelineExecution instances, so there
+    is no separate "Execution Page" to navigate to.
   -->
   <ScrollViewer>
     <StackPanel Margin="{StaticResource PaddingLargeThickness}" Spacing="0">
@@ -35,7 +35,6 @@
                              MinHeight="200"
                              Margin="0,0,0,12" />
 
-      <components:ExecutionTimeline DataContext="{Binding PipelineExecution}" />
       <components:RawAstPanel DataContext="{Binding PipelineExecution.RawAstViewModel}" />
       <components:NormalizedAstPanel DataContext="{Binding PipelineExecution.NormalizedAstViewModel}" />
       <components:IrPanel DataContext="{Binding PipelineExecution.IrViewModel}" />

@@ -11,7 +11,6 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::error::Error;
-use crate::evaluator::{ModelOutputRecord, PromptRecord};
 use crate::ir::op::{Ir, IrOp};
 use crate::normalizer::ast::{InputRef, NormalizedAst, NormalizedNode};
 use crate::parser::ast::{RawAst, RawInput, RawNode};
@@ -57,8 +56,8 @@ pub const EVENT_PIPELINE_STARTED: &str = "pipeline_started";
 pub const EVENT_RAW_AST_GENERATED: &str = "raw_ast_generated";
 pub const EVENT_NORMALIZED_AST_GENERATED: &str = "normalized_ast_generated";
 pub const EVENT_IR_GENERATED: &str = "ir_generated";
-pub const EVENT_PROMPTS_GENERATED: &str = "prompts_generated";
-pub const EVENT_MODEL_OUTPUTS_GENERATED: &str = "model_outputs_generated";
+pub const EVENT_PROMPT_GENERATED: &str = "prompt_generated";
+pub const EVENT_MODEL_OUTPUT_GENERATED: &str = "model_output_generated";
 pub const EVENT_FINAL_RESULT_READY: &str = "final_result_ready";
 pub const EVENT_PIPELINE_FAILED: &str = "pipeline_failed";
 
@@ -617,18 +616,15 @@ pub struct PromptBlock {
     pub metadata: PromptBlockMetadata,
 }
 
-pub fn prompt_blocks(records: &[PromptRecord]) -> Vec<PromptBlock> {
-    records
-        .iter()
-        .map(|r| PromptBlock {
-            operation_index: r.operation_index,
-            prompt_text: r.prompt_text.clone(),
-            metadata: PromptBlockMetadata {
-                length: r.prompt_text.chars().count(),
-                token_count: approx_token_count(&r.prompt_text),
-            },
-        })
-        .collect()
+pub fn prompt_block(operation_index: usize, prompt_text: &str) -> PromptBlock {
+    PromptBlock {
+        operation_index,
+        prompt_text: prompt_text.to_string(),
+        metadata: PromptBlockMetadata {
+            length: prompt_text.chars().count(),
+            token_count: approx_token_count(prompt_text),
+        },
+    }
 }
 
 #[derive(Serialize)]
@@ -654,33 +650,28 @@ pub struct ModelOutputBlock {
     pub metadata: ModelOutputMetadata,
 }
 
-pub fn model_output_blocks(records: &[ModelOutputRecord]) -> Vec<ModelOutputBlock> {
-    records
-        .iter()
-        .map(|r| {
-            let content_type = detect_content_type(&r.raw_text);
-            let json = if content_type == "json" {
-                serde_json::from_str(&r.raw_text).ok()
-            } else {
-                None
-            };
-            ModelOutputBlock {
-                operation_index: r.operation_index,
-                raw_text: r.raw_text.clone(),
-                content_type,
-                // Markdown-to-object parsing is deferred — no markdown
-                // parser dependency is approved for v0.1.
-                parsed: ParsedContent {
-                    markdown: None,
-                    json,
-                },
-                metadata: ModelOutputMetadata {
-                    token_usage: approx_token_count(&r.raw_text),
-                    latency_ms: r.latency_ms,
-                },
-            }
-        })
-        .collect()
+pub fn model_output_block(operation_index: usize, raw_text: &str, latency_ms: u128) -> ModelOutputBlock {
+    let content_type = detect_content_type(raw_text);
+    let json = if content_type == "json" {
+        serde_json::from_str(raw_text).ok()
+    } else {
+        None
+    };
+    ModelOutputBlock {
+        operation_index,
+        raw_text: raw_text.to_string(),
+        content_type,
+        // Markdown-to-object parsing is deferred — no markdown
+        // parser dependency is approved for v0.1.
+        parsed: ParsedContent {
+            markdown: None,
+            json,
+        },
+        metadata: ModelOutputMetadata {
+            token_usage: approx_token_count(raw_text),
+            latency_ms,
+        },
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -724,13 +715,13 @@ pub struct IrEventData {
 }
 
 #[derive(Serialize)]
-pub struct PromptsEventData {
-    pub prompts: Vec<PromptBlock>,
+pub struct PromptEventData {
+    pub prompt: PromptBlock,
 }
 
 #[derive(Serialize)]
-pub struct ModelOutputsEventData {
-    pub model_outputs: Vec<ModelOutputBlock>,
+pub struct ModelOutputEventData {
+    pub model_output: ModelOutputBlock,
 }
 
 /// Also used as `final_result_ready`'s event data for `/trace`.

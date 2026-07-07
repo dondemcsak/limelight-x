@@ -75,7 +75,7 @@ async fn run_run(
         let raw_ast = parser::parse(&source)?;
         let normalized_ast = normalizer::normalize(&raw_ast)?;
         let program = ir::compiler::compile(&normalized_ast)?;
-        evaluator::evaluate(&program, adapter.as_ref(), &base_dir, false, None, None)
+        evaluator::evaluate(&program, adapter.as_ref(), &base_dir, false, None, None, None)
     })
     .await
     .expect("pipeline task panicked");
@@ -163,14 +163,49 @@ async fn run_explain(source: String, correlation_id: String, state: &SharedState
 
 // ---------------------------------------------------------------------------
 // /trace: pipeline_started -> raw_ast_generated -> normalized_ast_generated
-// -> ir_generated -> prompts_generated -> model_outputs_generated
+// -> ir_generated -> (prompt_generated -> model_output_generated) x N
 // -> final_result_ready
 //
 // Same per-stage `spawn_blocking` pattern as `run_explain`. `ir_generated`
 // (and everything before it) is emitted, and therefore observable on the
 // WebSocket, strictly before `evaluator::evaluate` — and therefore any model
 // adapter call — begins (spec/api.md §2.1).
+//
+// `prompt_generated`/`model_output_generated` are streamed from *inside*
+// `evaluator::evaluate`'s execution via a `TraceObserver` passed as its
+// `observer` argument (spec/evaluator-semantics.md §4.1) — one pair per
+// model-calling IR operation, emitted as it happens rather than batched from
+// the returned `EvalOutcome` after the whole program finishes.
 // ---------------------------------------------------------------------------
+
+/// Forwards evaluator observer callbacks to the WebSocket as they occur,
+/// while `evaluator::evaluate` is still executing (spec/api.md §2.1).
+struct TraceObserver {
+    state: SharedState,
+    correlation_id: String,
+}
+
+impl evaluator::EvaluatorObserver for TraceObserver {
+    fn on_prompt_generated(&self, operation_index: usize, prompt_text: &str) {
+        self.state.client_tx.send(Event::ok(
+            dto::EVENT_PROMPT_GENERATED,
+            self.correlation_id.clone(),
+            dto::PromptEventData {
+                prompt: dto::prompt_block(operation_index, prompt_text),
+            },
+        ));
+    }
+
+    fn on_model_output_generated(&self, operation_index: usize, raw_text: &str, latency_ms: u128) {
+        self.state.client_tx.send(Event::ok(
+            dto::EVENT_MODEL_OUTPUT_GENERATED,
+            self.correlation_id.clone(),
+            dto::ModelOutputEventData {
+                model_output: dto::model_output_block(operation_index, raw_text, latency_ms),
+            },
+        ));
+    }
+}
 
 async fn run_trace(
     source: String,
@@ -243,10 +278,24 @@ async fn run_trace(
         },
     ));
 
+    let state_for_eval = Arc::clone(state);
+    let correlation_id_for_eval = correlation_id.clone();
     let eval_result = tokio::task::spawn_blocking(move || {
+        let observer = TraceObserver {
+            state: state_for_eval,
+            correlation_id: correlation_id_for_eval,
+        };
         // trace=false: this is a server process, not a CLI invocation — no
         // stdout printing per request.
-        evaluator::evaluate(&program, adapter.as_ref(), &base_dir, false, None, None)
+        evaluator::evaluate(
+            &program,
+            adapter.as_ref(),
+            &base_dir,
+            false,
+            None,
+            None,
+            Some(&observer),
+        )
     })
     .await
     .expect("pipeline task panicked");
@@ -259,20 +308,6 @@ async fn run_trace(
         }
     };
 
-    state.client_tx.send(Event::ok(
-        dto::EVENT_PROMPTS_GENERATED,
-        correlation_id.clone(),
-        dto::PromptsEventData {
-            prompts: dto::prompt_blocks(&outcome.prompts),
-        },
-    ));
-    state.client_tx.send(Event::ok(
-        dto::EVENT_MODEL_OUTPUTS_GENERATED,
-        correlation_id.clone(),
-        dto::ModelOutputsEventData {
-            model_outputs: dto::model_output_blocks(&outcome.model_outputs),
-        },
-    ));
     state.client_tx.send(Event::ok(
         dto::EVENT_FINAL_RESULT_READY,
         correlation_id,

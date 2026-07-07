@@ -21,10 +21,14 @@ public partial class ModelOutputViewModel : ObservableObject
     public ModelOutputViewModel()
     {
         Errors.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasErrors));
+        Outputs.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasOutputs));
     }
 
     /// <summary>Set when this inspector's own data fails to render (ui-error-handling.md §6.3).</summary>
     public bool HasErrors => Errors.Count > 0;
+
+    /// <summary>Whether the panel should be shown yet - true from the first `model_output_generated` event, false again after <see cref="Reset"/> (ui-components.md §6.6).</summary>
+    public bool HasOutputs => Outputs.Count > 0;
 
     public void Reset()
     {

@@ -47,6 +47,14 @@ impl DelayedAdapter {
     pub fn first_invocation(&self) -> Option<Instant> {
         self.invocations.lock().unwrap().first().copied()
     }
+
+    /// Every `complete()` call's `Instant`, in call order — used to verify
+    /// ordering/timing across multiple model calls in a single program (e.g.
+    /// a `Summarize` -> `Translate` chain), spec/bdd-api.md §4 "Multi-step
+    /// trace emits a prompt/model-output pair per model-calling operation".
+    pub fn invocations(&self) -> Vec<Instant> {
+        self.invocations.lock().unwrap().clone()
+    }
 }
 
 impl ModelAdapter for DelayedAdapter {

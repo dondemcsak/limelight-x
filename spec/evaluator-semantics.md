@@ -296,6 +296,27 @@ The evaluator must not:
 
 All model behavior is defined in `model-adapter.md`.
 
+## 4.1 Evaluator Observer Hook
+
+The evaluator accepts an optional observer so callers can be notified at the exact moment each prompt is constructed and each model output is received — without waiting for the whole IR program to finish evaluating:
+
+```rust
+pub trait EvaluatorObserver {
+    fn on_prompt_generated(&self, operation_index: usize, prompt_text: &str);
+    fn on_model_output_generated(&self, operation_index: usize, raw_text: &str, latency_ms: u128);
+}
+```
+
+`evaluate()`'s signature gains an optional parameter: `observer: Option<&dyn EvaluatorObserver>`.
+
+### Rules
+
+- For every IR operation that calls the model adapter (`Extract`, `Summarize`, `Translate`, `Rewrite`, `Format`), the evaluator must call `on_prompt_generated` immediately before invoking `adapter.complete(prompt)`, and `on_model_output_generated` immediately after that call returns successfully — before constructing the next operation's prompt. `latency_ms` reports that call's wall-clock duration, matching the same measurement already captured in `ModelOutputRecord.latency_ms`.
+- `Load` never triggers either callback; it does not call the model adapter.
+- If `adapter.complete` returns `Err`, `on_prompt_generated` has already fired for that operation (it fires before the call), but `on_model_output_generated` must not fire for it, and evaluation halts immediately per §7.
+- The observer is a notification hook only — it must not influence control flow, ordering, or determinism. It is invoked synchronously, in-line with the existing per-operation loop; nothing about when the model is called or in what order changes because an observer is present.
+- Passing `None` must not change evaluator behavior in any way other than skipping the callbacks.
+
 ---
 
 # 5. Trace Mode
@@ -314,6 +335,8 @@ When running in trace mode, the evaluator must print:
 5. Final result  
 
 Trace output must be human‑readable.
+
+Stdout trace printing (`trace: bool`) and the `EvaluatorObserver` hook (§4.1) are independent mechanisms — a caller may supply neither, either, or both. Trace-mode printing is not implemented in terms of the observer, and the observer does not depend on `trace` being `true`.
 
 ---
 
@@ -382,9 +405,11 @@ The evaluator does **not**:
 
 These may be added in future versions.
 
+**Scope note on streaming:** "support streaming" above refers to token-level/incremental streaming from the model API itself, and to out-of-order or partial IR evaluation — it does not refer to the `EvaluatorObserver` hook in §4.1. That hook only reports on already-deterministic, already-ordered, one-at-a-time execution as it happens; it does not change when the model is called, in what order, or with what inputs, so it does not violate this non-goal.
+
 ---
 
 # Summary
 
-The evaluator executes IR operations deterministically, constructs prompts according to strict templates, delegates model calls to the model adapter, and produces a final result.  
+The evaluator executes IR operations deterministically, constructs prompts according to strict templates, delegates model calls to the model adapter, and produces a final result. It may also notify a caller-supplied `EvaluatorObserver` immediately before and after each model-adapter call, in addition to returning the final `EvalOutcome`.  
 Trace and explain modes provide full transparency into the pipeline.

@@ -21,10 +21,14 @@ public partial class PromptViewModel : ObservableObject
     public PromptViewModel()
     {
         Errors.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasErrors));
+        Prompts.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPrompts));
     }
 
     /// <summary>Set when this inspector's own data fails to render (ui-error-handling.md §6.3).</summary>
     public bool HasErrors => Errors.Count > 0;
+
+    /// <summary>Whether the panel should be shown yet - true from the first `prompt_generated` event, false again after <see cref="Reset"/> (ui-components.md §6.5).</summary>
+    public bool HasPrompts => Prompts.Count > 0;
 
     public void Reset()
     {
