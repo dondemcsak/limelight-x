@@ -162,6 +162,20 @@ All scenarios assume:
 **SO THAT** the user can start a new execution (in any tab) after the current one finishes  
 **AS MEASURED BY** `IExecutionLockService.IsAnyExecutionRunning == false` and `CanExecute == true` for Run and Explain on every tab
 
+## 4.8 Awaiting-Model Indicator Shows After a Prompt Is Sent
+**GIVEN** a trace is running  
+**WHEN** `prompt_generated` arrives  
+**THEN** the awaiting-model indicator (`ui-components.md` §4.4) becomes visible  
+**SO THAT** the user gets feedback during the wait for a model call, since `ModelOutputPanel` itself stays hidden until its first output arrives  
+**AS MEASURED BY** `PipelineExecutionViewModel.IsAwaitingModelOutput == true`
+
+## 4.9 Awaiting-Model Indicator Hides When Output Arrives
+**GIVEN** the awaiting-model indicator is visible  
+**WHEN** `model_output_generated` arrives for that operation  
+**THEN** the indicator hides  
+**SO THAT** the user isn't shown a stale "waiting" state once the output is already on screen  
+**AS MEASURED BY** `PipelineExecutionViewModel.IsAwaitingModelOutput == false`
+
 ---
 
 # 5. Collapse/Expand Interactions

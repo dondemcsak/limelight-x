@@ -44,6 +44,9 @@
       <components:NormalizedAstPanel DataContext="{Binding PipelineExecution.NormalizedAstViewModel}" />
       <components:IrPanel DataContext="{Binding PipelineExecution.IrViewModel}" />
       <components:PromptPanel DataContext="{Binding PipelineExecution.PromptViewModel}" />
+      <components:LoadingIndicator IsLoading="{Binding PipelineExecution.IsAwaitingModelOutput}"
+                                    Text="Waiting for model response..."
+                                    Margin="0,0,0,12" />
       <components:ModelOutputPanel DataContext="{Binding PipelineExecution.ModelOutputViewModel}" />
       <components:FinalResultPanel DataContext="{Binding PipelineExecution.FinalResultViewModel}" />
 

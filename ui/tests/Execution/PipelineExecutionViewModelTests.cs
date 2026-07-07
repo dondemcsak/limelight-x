@@ -165,6 +165,51 @@ public class PipelineExecutionViewModelTests
     }
 
     [Fact]
+    public async Task PromptGenerated_SetsIsAwaitingModelOutput_ClearedOnModelOutputGenerated()
+    {
+        var eventStream = new FakeEventStreamService();
+        var pipeline = new FakePipelineService { TraceResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-run" } };
+        var viewModel = new PipelineExecutionViewModel(pipeline, eventStream, new ExecutionLockService());
+
+        await viewModel.RunPipelineAsync("Load the article from \"a.txt\".\nSummarize it.");
+        eventStream.Raise(FakeEventStreamService.MakeEvent("pipeline_started", "corr-run"));
+        Assert.False(viewModel.IsAwaitingModelOutput);
+
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "prompt_generated", "corr-run",
+            new PromptEventData { Prompt = new PromptBlock { OperationIndex = 0, PromptText = "Summarize this", Metadata = new PromptBlockMetadata() } }));
+        Assert.True(viewModel.IsAwaitingModelOutput);
+
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "model_output_generated", "corr-run",
+            new ModelOutputEventData { ModelOutput = new ModelOutputBlock { OperationIndex = 0, RawText = "output", ContentType = ResultContentType.Plain, Parsed = new ParsedContent(), Metadata = new ModelOutputMetadata() } }));
+        Assert.False(viewModel.IsAwaitingModelOutput);
+    }
+
+    [Fact]
+    public async Task PipelineFailedEvent_ClearsIsAwaitingModelOutput()
+    {
+        var eventStream = new FakeEventStreamService();
+        var pipeline = new FakePipelineService { TraceResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-run" } };
+        var viewModel = new PipelineExecutionViewModel(pipeline, eventStream, new ExecutionLockService());
+
+        await viewModel.RunPipelineAsync("Load the article from \"a.txt\".\nSummarize it.");
+        eventStream.Raise(FakeEventStreamService.MakeEvent("pipeline_started", "corr-run"));
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "prompt_generated", "corr-run",
+            new PromptEventData { Prompt = new PromptBlock { OperationIndex = 0, PromptText = "Summarize this", Metadata = new PromptBlockMetadata() } }));
+        Assert.True(viewModel.IsAwaitingModelOutput);
+
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "pipeline_failed",
+            "corr-run",
+            success: false,
+            errors: [new UiError { Code = "ERR_MODEL_ADAPTER", Message = "model call failed", Severity = ErrorSeverity.Fatal, Category = ErrorCategory.Pipeline }]));
+
+        Assert.False(viewModel.IsAwaitingModelOutput);
+    }
+
+    [Fact]
     public async Task PipelineFailedEvent_DistributesErrorToMatchingInspectorAndBannerAndReleasesLock()
     {
         var eventStream = new FakeEventStreamService();

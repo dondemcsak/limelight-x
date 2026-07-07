@@ -222,6 +222,7 @@ There is no `TraceCommand`. The Trace button and its distinct trigger are remove
 ### State
 - `CorrelationId : string`
 - `IsRunning : bool` — this tab's own execution-state flag (see §6 for how it differs from the app‑wide lock). Drives this tab's execution progress indicator (`ui-components.md` §4.4) — shown while `true`, hidden while `false`. This is a per-tab signal, distinct from the app-wide `IExecutionLockService.IsAnyExecutionRunning` that gates `CanExecute` on every tab (§6).
+- `IsAwaitingModelOutput : bool` — true from a `prompt_generated` event until the matching `model_output_generated` arrives. Drives a second `LoadingIndicator` (`ui-components.md` §4.4) positioned between `PromptPanel` and `ModelOutputPanel`, since `ModelOutputPanel` itself stays hidden until its first `model_output_generated` (`ui-components.md` §5.6) and would otherwise leave that wait with no visible feedback. Reset to `false` on `pipeline_started`, `final_result_ready`, and `pipeline_failed`.
 - `HasErrors : bool`
 - Inspector ViewModels (this tab's own instances):
   - `RawAst : RawAstViewModel`
@@ -240,6 +241,7 @@ All updates come from streaming events.
 #### `pipeline_started`
 - Clear this tab's inspector ViewModels.
 - Set `IsRunning = true`.
+- Set `IsAwaitingModelOutput = false`.
 - Set `HasErrors = false`.
 - Acquire the app‑wide lock via `IExecutionLockService.TryAcquire(this tab)`.
 
@@ -255,19 +257,23 @@ All updates come from streaming events.
 
 #### `prompt_generated`
 - Append the incoming prompt to `PromptViewModel.Prompts`. This event may fire multiple times per execution — once per model-calling IR operation, in program order — so it must append rather than replace the collection.
+- Set `IsAwaitingModelOutput = true`.
 
 #### `model_output_generated`
 - Append the incoming output to `ModelOutputViewModel.Outputs`. Like `prompt_generated`, this event may fire multiple times per execution and must append rather than replace.
+- Set `IsAwaitingModelOutput = false`.
 
 #### `final_result_ready`
 - Update `FinalResultViewModel`.
 - Set `IsRunning = false`.
+- Set `IsAwaitingModelOutput = false`.
 - Release the app‑wide lock via `IExecutionLockService.Release(this tab)`.
 
 #### `pipeline_failed`
 - Set `HasErrors = true`.
 - Populate this tab's error banner.
 - Set `IsRunning = false`.
+- Set `IsAwaitingModelOutput = false`.
 - Release the app‑wide lock via `IExecutionLockService.Release(this tab)`.
 
 ### Rules

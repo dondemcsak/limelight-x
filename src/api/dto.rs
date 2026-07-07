@@ -63,18 +63,39 @@ pub const EVENT_PIPELINE_FAILED: &str = "pipeline_failed";
 
 /// A single streamed WebSocket event: the same envelope shape as [`Envelope`]
 /// plus `event_type`/`correlation_id` (spec/api.md §2.1).
+///
+/// Generic over its own payload type `T` so a single `serde_json::to_writer`
+/// call at the point of sending (see `ws.rs::ClientSender::send`) serializes
+/// straight from the typed DTO to bytes — no intermediate `serde_json::Value`
+/// tree, per spec/api.md §2.3.
 #[derive(Serialize)]
-pub struct Event {
+pub struct Event<T: Serialize> {
     pub version: &'static str,
     pub success: bool,
     pub errors: Vec<ErrorObject>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Value>,
+    pub data: Option<T>,
     pub event_type: &'static str,
     pub correlation_id: String,
 }
 
-impl Event {
+impl<T: Serialize> Event<T> {
+    pub fn ok(event_type: &'static str, correlation_id: String, data: T) -> Self {
+        Self {
+            version: "v1",
+            success: true,
+            errors: vec![],
+            data: Some(data),
+            event_type,
+            correlation_id,
+        }
+    }
+}
+
+/// `started`/`failed` carry no per-event payload, so `T` is never actually
+/// serialized (`skip_serializing_if` hides `data: None`) — `()` is just a
+/// placeholder to satisfy the `Event<T>` type.
+impl Event<()> {
     pub fn started(correlation_id: String) -> Self {
         Self {
             version: "v1",
@@ -82,17 +103,6 @@ impl Event {
             errors: vec![],
             data: None,
             event_type: EVENT_PIPELINE_STARTED,
-            correlation_id,
-        }
-    }
-
-    pub fn ok<T: Serialize>(event_type: &'static str, correlation_id: String, data: T) -> Self {
-        Self {
-            version: "v1",
-            success: true,
-            errors: vec![],
-            data: Some(serde_json::to_value(data).expect("DTO must be serializable")),
-            event_type,
             correlation_id,
         }
     }

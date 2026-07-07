@@ -35,6 +35,13 @@ public partial class ModelOutputPanel : UserControl
                 FontSize = 11,
             });
             content.Children.Add(ContentRenderer.Render(block.RawText, MapContentType(block.ContentType)));
+            content.Children.Add(new TextBlock
+            {
+                Text = $"{block.Metadata.TokenUsage} tokens · {block.Metadata.LatencyMs} ms",
+                Foreground = (IBrush)Application.Current!.FindResource("TextMutedBrush")!,
+                FontFamily = (FontFamily)Application.Current!.FindResource("InterFontFamily")!,
+                FontSize = 11,
+            });
 
             card.Child = content;
             return card;

@@ -84,6 +84,16 @@ public partial class PipelineExecutionViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isRunning;
 
+    /// <summary>
+    /// True from a `prompt_generated` event until the matching `model_output_generated`
+    /// arrives - drives the "Waiting for model response..." LoadingIndicator
+    /// (ui-components.md §4.4) shown between PromptPanel and ModelOutputPanel, since
+    /// ModelOutputPanel itself stays hidden until its first output arrives
+    /// (ui-components.md §5.6) and would otherwise leave that wait with no visible feedback.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isAwaitingModelOutput;
+
     /// <summary>This tab's error banner (ui-components.md §7.1, ui-viewmodels.md §7) - "populate this tab's error banner" on pipeline_failed means this.</summary>
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -158,6 +168,7 @@ public partial class PipelineExecutionViewModel : ObservableObject, IDisposable
                 ResetInspectors();
                 ErrorBanner.Clear();
                 IsRunning = true;
+                IsAwaitingModelOutput = false;
                 _executionLock.TryAcquire(this);
                 break;
 
@@ -182,15 +193,18 @@ public partial class PipelineExecutionViewModel : ObservableObject, IDisposable
 
             case "prompt_generated":
                 PromptViewModel.Prompts.Add(Deserialize<PromptEventData>(wsEvent).Prompt);
+                IsAwaitingModelOutput = true;
                 break;
 
             case "model_output_generated":
                 ModelOutputViewModel.Outputs.Add(Deserialize<ModelOutputEventData>(wsEvent).ModelOutput);
+                IsAwaitingModelOutput = false;
                 break;
 
             case "final_result_ready":
                 ApplyFinalResult(Deserialize<RunData>(wsEvent).FinalResult);
                 IsRunning = false;
+                IsAwaitingModelOutput = false;
                 _executionLock.Release(this);
                 break;
 
@@ -198,6 +212,7 @@ public partial class PipelineExecutionViewModel : ObservableObject, IDisposable
                 ErrorBanner.Show(wsEvent.Errors);
                 DistributeErrorsToInspectors(wsEvent.Errors);
                 IsRunning = false;
+                IsAwaitingModelOutput = false;
                 _executionLock.Release(this);
                 break;
         }

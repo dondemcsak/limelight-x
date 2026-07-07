@@ -255,9 +255,10 @@ Execution Panel (Inspector Panels, §5)
 ### Usages
 - In `CnlTabView` (§4.1): bound to `PipelineExecutionViewModel.IsRunning`, `Text="Running..."`, positioned between the CNL editor and the execution panel.
 - In the Settings modal (`ui-routing-navigation.md` §2, §8; see also `ui-components.md` §7.1): bound to `SettingsViewModel.IsApplying`, `Text="Applying settings..."`.
+- In `CnlTabView` (§4.1), a second instance: bound to `PipelineExecutionViewModel.IsAwaitingModelOutput`, `Text="Waiting for model response..."`, positioned between `PromptPanel` (§5.5) and `ModelOutputPanel` (§5.6) — gives visible feedback while waiting for a model call's output, since `ModelOutputPanel` itself stays hidden until its first `model_output_generated` event.
 
 ### Streaming Rules
-- Purely a display of its bound `IsLoading` flag — has no streaming logic of its own; each caller is responsible for deriving `IsLoading` from its own state (this tab's `IsRunning` for `CnlTabView`, `IsApplying` for the Settings modal).
+- Purely a display of its bound `IsLoading` flag — has no streaming logic of its own; each caller is responsible for deriving `IsLoading` from its own state (this tab's `IsRunning` for `CnlTabView`, `IsApplying` for the Settings modal, `IsAwaitingModelOutput` for the second `CnlTabView` instance).
 
 ---
 
@@ -343,6 +344,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 
 ### Responsibilities
 - Displays model outputs.
+- Each item shows a `{Metadata.TokenUsage} tokens · {Metadata.LatencyMs} ms` caption below the rendered output, so the user can see the model call's real cost/duration rather than guessing whether a wait is the app or the model.
 
 ### Bindings
 - `ModelOutputViewModel.Outputs`  

@@ -24,10 +24,16 @@ impl ClientSender {
     /// event if no client is connected — pipeline execution is never gated
     /// on WS presence, and spec/api.md §2.3's ordering/determinism
     /// guarantees are about emission order, not delivery guarantees.
-    pub fn send(&self, event: Event) {
+    ///
+    /// Serializes directly from the typed `Event<T>` to bytes via
+    /// `serde_json::to_writer` (spec/api.md §2.3) — no intermediate
+    /// `serde_json::Value` tree.
+    pub fn send<T: serde::Serialize>(&self, event: Event<T>) {
         let sender = self.0.lock().expect("client sender mutex poisoned");
         if let Some(tx) = sender.as_ref() {
-            let text = serde_json::to_string(&event).expect("Event must be serializable");
+            let mut buf = Vec::new();
+            serde_json::to_writer(&mut buf, &event).expect("Event must be serializable");
+            let text = String::from_utf8(buf).expect("serde_json must produce valid UTF-8");
             // Ignore send errors: a full/closed channel means the read loop
             // will observe the disconnect and clear this sender shortly.
             let _ = tx.send(Message::Text(text));

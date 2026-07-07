@@ -233,8 +233,8 @@ Used in `prompt_generated` events. Each event covers exactly **one** model-calli
       "operation_index": 1,
       "prompt_text": "Summarize the article.",
       "metadata": {
-        "model": "claude-3-sonnet",
-        "temperature": 0.0
+        "length": 24,
+        "token_count": 4
       }
     }
   }
@@ -263,8 +263,8 @@ Used in `model_output_generated` events. Each event covers exactly **one** model
       "raw_text": "Here is the summary...",
       "content_type": "plain",
       "metadata": {
-        "model": "claude-3-sonnet",
-        "tokens": 128
+        "token_usage": 128,
+        "latency_ms": 842
       }
     }
   }
