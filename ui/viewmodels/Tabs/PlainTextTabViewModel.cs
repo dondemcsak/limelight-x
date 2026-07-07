@@ -6,9 +6,17 @@ namespace LimelightX.UI.ViewModels.Tabs;
 public sealed class PlainTextTabViewModel : TabViewModel
 {
     public PlainTextTabViewModel(string filePath, string initialText)
-        : base(filePath)
+        : base(filePath, Path.GetFileName(filePath))
     {
         Editor = new PlainTextEditorViewModel { Text = initialText };
+        Editor.PropertyChanged += OnEditorPropertyChanged;
+    }
+
+    /// <summary>Untitled-tab constructor (File > New TXT File, ui-viewmodels.md §3) - no backing file, starts with empty text and IsDirty == false.</summary>
+    public PlainTextTabViewModel(string header)
+        : base(null, header)
+    {
+        Editor = new PlainTextEditorViewModel { Text = string.Empty };
         Editor.PropertyChanged += OnEditorPropertyChanged;
     }
 

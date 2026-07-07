@@ -5,6 +5,13 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <AssemblyName>LimelightX.UI</AssemblyName>
     <RootNamespace>LimelightX.UI</RootNamespace>
+    <!-- Single source of truth for the shipped version (ui-build-pipeline.md
+         §4.1): build-msix.ps1 reads this and stamps it into the staged
+         AppxManifest.xml's Identity/@Version at package time, and
+         AboutViewModel.Version reads it back at runtime via
+         Assembly.GetExecutingAssembly().GetName().Version. Bump this (and
+         only this) before tagging a release. -->
+    <Version>0.5.1.0</Version>
     <!-- ui-build-pipeline.md §7.1: Windows-only, win-x64 CI runners. Listing
          win-x64 here (plural form) only makes `dotnet restore` capture win-x64
          assets into packages.lock.json for later publish - it does NOT pin

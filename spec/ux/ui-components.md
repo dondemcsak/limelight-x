@@ -39,6 +39,7 @@ The UI is MVVM‑pure:
 
 The UI defines the following components:
 
+- `MenuBar`
 - `FileTreeView`
 - `TabStrip`
 - `TabContentHost`
@@ -55,6 +56,7 @@ The UI defines the following components:
 - `FinalResultPanel`
 - `ErrorBanner`
 - `SettingsForm`
+- `AboutContent`
 
 Each component is declarative and state‑derived.
 
@@ -127,6 +129,51 @@ Each component is declarative and state‑derived.
 
 ### Streaming Rules
 - Disabled while any tab's execution is in flight (`ui-routing-navigation.md` §7).
+- File > Settings (§3.5) is a second entry point bound to this same `OpenSettingsCommand` and the same disable condition — this icon is not removed or replaced by the menu item.
+
+---
+
+## 3.5 MenuBar
+
+### Responsibilities
+- Custom in‑window menu bar rendered in the title‑bar row, styled with existing theme tokens (`ui-styling-theming.md` §4.9) — not a native OS menu bar.
+- Exposes exactly two top‑level menus, **File** and **Help**, with no other top‑level menus.
+
+### Structure
+```
+File                          Help
+├─ New LLX File      Ctrl+N   └─ About
+├─ New TXT File
+├─ Open File          Ctrl+O
+├─ Open Folder   Ctrl+K,Ctrl+O
+├─ ───────────────────────
+├─ Save               Ctrl+S
+├─ Save As      Ctrl+Shift+S
+├─ Save All         Ctrl+K,S
+├─ ───────────────────────
+└─ Settings              Ctrl+,
+```
+
+### Bindings
+- File > New LLX File → `WorkspaceViewModel.NewLlxFileCommand`
+- File > New TXT File → `WorkspaceViewModel.NewTxtFileCommand`
+- File > Open File → `WorkspaceViewModel.OpenFileCommand`
+- File > Open Folder → `WorkspaceViewModel.OpenFolderCommand`
+- File > Save → `WorkspaceViewModel.SaveCommand`
+- File > Save As → `WorkspaceViewModel.SaveAsCommand`
+- File > Save All → `WorkspaceViewModel.SaveAllCommand`
+- File > Settings → `WorkspaceViewModel.OpenSettingsCommand` (same command as §3.4)
+- Help > About → `WorkspaceViewModel.OpenAboutCommand`
+
+### Rules
+- New LLX File, New TXT File, Open File, and Open Folder are always enabled — they do not require a folder to already be open.
+- Save and Save As are enabled only when there is an `ActiveTab`.
+- Save All is enabled only when at least one open tab has `IsDirty == true`.
+- Settings is disabled while `IExecutionLockService.IsAnyExecutionRunning == true` (same gate as §3.4).
+- About is never disabled by execution state (`ui-routing-navigation.md` §7.1).
+
+### Streaming Rules
+- None — the MenuBar itself has no relationship to the streaming pipeline; individual item enablement derives from tab/dirty/execution‑lock state as described above.
 
 ---
 
@@ -358,7 +405,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 
 ---
 
-# 7. Settings Components
+# 7. Settings & About Components
 
 ## 7.1 SettingsForm
 
@@ -378,6 +425,24 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 ### Streaming Rules
 - The Settings gear that opens this modal is disabled while `IExecutionLockService.IsAnyExecutionRunning == true` (§3.4).
 - While settings are being applied, a `LoadingIndicator` (§4.4) is shown, bound to `IsApplying`, `Text="Applying settings..."`.
+
+---
+
+## 7.2 AboutContent
+
+### Responsibilities
+- Displays read‑only project information inside the About modal (`ui-routing-navigation.md` §2, §9): app name, project description, version string, and a link to the GitHub repository (`https://github.com/dondemcsak/limelight-x`).
+- Provides a close action.
+
+### Bindings
+- `AboutViewModel.AppName`  
+- `AboutViewModel.Description`  
+- `AboutViewModel.Version`  
+- `AboutViewModel.GitHubUrl`  
+- `AboutViewModel.CloseCommand`
+
+### Streaming Rules
+- None — never gated by execution state, in explicit contrast with §7.1 SettingsForm (About has no backend side effects).
 
 ---
 
@@ -407,7 +472,9 @@ Each component must be tested for:
 - correct collapse/expand behavior  
 - correct incremental updates  
 - correct error rendering  
-- correct execution lock behavior (app‑wide disable/enable, scoped per‑tab results)
+- correct execution lock behavior (app‑wide disable/enable, scoped per‑tab results)  
+- correct MenuBar bindings and item enablement (New/Open always enabled, Save/Save As require an active tab, Save All requires a dirty tab, Settings gated by execution lock, About never gated)  
+- correct About modal rendering (app name, description, version, GitHub link)
 
 ---
 
@@ -438,4 +505,5 @@ Potential enhancements:
 # Summary
 
 Limelight‑X UI components are deterministic, MVVM‑pure, and fully aligned with the streaming API.  
-A folder tree and tab strip replace the old navigation Sidebar; each open `.llx` tab hosts its own editor and execution panel, updating incrementally as events arrive for that tab, and all components derive their behavior exclusively from ViewModels.
+A folder tree and tab strip replace the old navigation Sidebar; each open `.llx` tab hosts its own editor and execution panel, updating incrementally as events arrive for that tab, and all components derive their behavior exclusively from ViewModels.  
+A custom‑themed MenuBar (File, Help) provides discoverable entry points for file operations and the About modal, alongside the existing Settings gear icon.

@@ -32,12 +32,13 @@ All scenarios assume:
 
 # 2. Workspace Areas
 
-The UI contains four workspace areas:
+The UI contains five workspace areas:
 
-1. **Explorer** — folder directory tree of the open root folder  
-2. **Tab Strip** — one tab per open file  
-3. **Tab Content Area** — the active tab's content, or a welcome/empty state  
-4. **Settings** — a modal, opened via a persistent gear icon
+1. **MenuBar** — File and Help top‑level menus in the title‑bar row  
+2. **Explorer** — folder directory tree of the open root folder  
+3. **Tab Strip** — one tab per open file  
+4. **Tab Content Area** — the active tab's content, or a welcome/empty state  
+5. **Modals — Settings and About** — Settings opened via a persistent gear icon or File > Settings; About opened via Help > About
 
 The workspace shell is controlled exclusively by `WorkspaceViewModel`. There is no `PageType`/`CurrentPage` concept.
 
@@ -247,16 +248,115 @@ This section is the authoritative source for execution‑lock mechanics (when Ru
 
 ---
 
-# 10. Correlation‑ID Scenarios
+# 10. About Scenarios
 
-## 10.1 Ignore Events From Old Executions
+## 10.1 Open About
+**GIVEN** the application is running  
+**WHEN** the user selects Help > About  
+**THEN** the About modal opens, showing app name, description, version, and GitHub link  
+**SO THAT** the user can identify the app version and find the project repository  
+**AS MEASURED BY** `WorkspaceViewModel.IsAboutOpen == true`
+
+## 10.2 About Not Blocked During Execution
+**GIVEN** execution is running in some tab  
+**WHEN** the user selects Help > About  
+**THEN** the About modal opens normally — explicit contrast with §9.2  
+**SO THAT** users can check version/repo info without disrupting execution  
+**AS MEASURED BY** `WorkspaceViewModel.IsAboutOpen == true` while `IExecutionLockService.IsAnyExecutionRunning == true`
+
+## 10.3 Close About
+**GIVEN** the About modal is open  
+**WHEN** the user closes it  
+**THEN** the modal closes and the previously active tab is shown again  
+**SO THAT** the workflow continues where it left off  
+**AS MEASURED BY** `WorkspaceViewModel.IsAboutOpen == false`
+
+---
+
+# 11. File Menu Scenarios
+
+## 11.1 New LLX File Creates an Untitled Tab
+**GIVEN** the application is running  
+**WHEN** the user selects File > New LLX File  
+**THEN** a new `CnlTabViewModel` opens and becomes active, titled `Untitled-N`, with `IsUntitled == true` and `IsDirty == false`  
+**SO THAT** the user can start writing CNL without first choosing a file location  
+**AS MEASURED BY** `WorkspaceViewModel.ActiveTab.IsUntitled == true` and `ActiveTab.FilePath == null`
+
+## 11.2 New TXT File Creates an Untitled Tab
+**GIVEN** the application is running  
+**WHEN** the user selects File > New TXT File  
+**THEN** a new `PlainTextTabViewModel` opens and becomes active, titled `Untitled-N` (sharing the counter with 11.1), with `IsUntitled == true` and `IsDirty == false`  
+**SO THAT** the user can start writing plain text without first choosing a file location  
+**AS MEASURED BY** `WorkspaceViewModel.ActiveTab.IsUntitled == true` and `ActiveTab.FilePath == null`
+
+## 11.3 Open File Opens a Picker, Then a Tab
+**GIVEN** the application is running  
+**WHEN** the user selects File > Open File and chooses a file  
+**THEN** a tab opens (or focuses, if already open) for that file, using the same `.llx`→Cnl / else→PlainText dispatch as opening from the Explorer  
+**SO THAT** files outside the open folder (or with no folder open) can still be opened  
+**AS MEASURED BY** `WorkspaceViewModel.ActiveTab.FilePath` equals the chosen file's path
+
+## 11.4 Open File Cancelled
+**GIVEN** the application is running  
+**WHEN** the user selects File > Open File and cancels the picker  
+**THEN** no tab is opened and the active tab is unchanged  
+**SO THAT** cancelling has no side effects  
+**AS MEASURED BY** `WorkspaceViewModel.OpenTabs.Count` and `ActiveTab` unchanged
+
+## 11.5 Open Folder via Menu Is a New Entry Point Only
+**GIVEN** the application is running  
+**WHEN** the user selects File > Open Folder  
+**THEN** the same `WorkspaceViewModel.OpenFolderCommand` runs as when triggered from the welcome‑state action or `Ctrl+K,Ctrl+O`  
+**SO THAT** the menu introduces no new folder‑opening behavior  
+**AS MEASURED BY** identical resulting state to the existing Open Folder entry points
+
+## 11.6 Save on an Untitled Tab Behaves as Save As
+**GIVEN** the active tab is untitled (`IsUntitled == true`) with unsaved content  
+**WHEN** the user selects File > Save  
+**THEN** a save‑location picker appears; on confirmation the tab is written to disk, `FilePath` is set, `IsUntitled` becomes `false`, `IsDirty` becomes `false`  
+**SO THAT** Save on a new file behaves like Save As  
+**AS MEASURED BY** `ActiveTab.IsUntitled == false`, `ActiveTab.FilePath != null`, `ActiveTab.IsDirty == false`
+
+## 11.7 Save on an Existing Tab Writes Directly
+**GIVEN** the active tab has an existing `FilePath` and `IsDirty == true`  
+**WHEN** the user selects File > Save  
+**THEN** the tab is written directly to `FilePath` with no picker shown, and `IsDirty` becomes `false`  
+**SO THAT** saving a known file is a single action  
+**AS MEASURED BY** `ActiveTab.IsDirty == false`, no picker dialog shown
+
+## 11.8 Save As Always Prompts
+**GIVEN** the active tab has an existing `FilePath`  
+**WHEN** the user selects File > Save As  
+**THEN** a save‑location picker appears regardless of whether the tab already has a path  
+**SO THAT** the user can always redirect a save to a new location  
+**AS MEASURED BY** picker shown even when `ActiveTab.FilePath != null`
+
+## 11.9 Save All Persists Every Dirty Tab
+**GIVEN** multiple open tabs, some with `IsDirty == true`  
+**WHEN** the user selects File > Save All  
+**THEN** every dirty tab is saved (direct write if it has a `FilePath`, prompted if untitled); clean tabs are untouched  
+**SO THAT** all pending changes can be persisted in one action  
+**AS MEASURED BY** all previously dirty tabs report `IsDirty == false` afterward
+
+## 11.10 Save All Continues Past a Cancelled Per‑Tab Prompt
+**GIVEN** multiple dirty tabs including at least one untitled tab  
+**WHEN** the user selects File > Save All and cancels that untitled tab's save‑location prompt  
+**THEN** the cancelled tab remains dirty and untitled; the remaining dirty tabs are still saved  
+**SO THAT** one cancellation does not abort the whole Save All operation  
+**AS MEASURED BY** the cancelled tab's `IsDirty`/`IsUntitled` unchanged; other dirty tabs report `IsDirty == false`
+
+---
+
+# 12. Correlation‑ID Scenarios
+
+## 12.1 Ignore Events From Old Executions
 **GIVEN** a tab's active correlation ID = `abc-123`  
 **WHEN** an event arrives with `xyz-999`  
 **THEN** the UI ignores the event  
 **SO THAT** workspace state remains stable  
 **AS MEASURED BY** unchanged tab/inspector state
 
-## 10.2 New Execution Clears Only Its Own Tab
+## 12.2 New Execution Clears Only Its Own Tab
 **GIVEN** a previous execution completed in tab A  
 **WHEN** a new `pipeline_started` arrives for tab A  
 **THEN** tab A's inspectors clear; tab B's inspectors (if any) are unaffected  
@@ -265,7 +365,7 @@ This section is the authoritative source for execution‑lock mechanics (when Ru
 
 ---
 
-# 11. Non‑Goals
+# 13. Non‑Goals
 
 These scenarios do **not** cover:
 
@@ -274,11 +374,15 @@ These scenarios do **not** cover:
 - cancellation  
 - plugin panels  
 - nondeterministic animations  
-- a persisted project/workspace manifest (open folder/tabs are session state only)
+- a persisted project/workspace manifest (open folder/tabs are session state only)  
+- autosave  
+- drag‑and‑drop file open  
+- multi‑select Open File
 
 ---
 
 # Summary
 
 These BDD workspace scenarios define all deterministic folder/tab behavior in the Limelight‑X UI under the streaming API.  
-They ensure predictable tab opening/switching/closing, an app‑wide execution lock that never blocks workspace navigation, stable per‑tab error handling, and correct incremental updates throughout the entire workflow.
+They ensure predictable tab opening/switching/closing, an app‑wide execution lock that never blocks workspace navigation, stable per‑tab error handling, and correct incremental updates throughout the entire workflow.  
+File menu scenarios cover untitled‑tab creation and Save/Save As/Save All persistence; About modal scenarios confirm it is never blocked by the execution lock, unlike Settings.

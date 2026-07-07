@@ -1,0 +1,66 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    MenuBar (ui-components.md §3.5, ui-styling-theming.md §4.9) - no new
+    tokens, reuses existing Colors.axaml/Effects.axaml resources exclusively.
+    Avalonia's stock Fluent Menu/MenuItem controls are unstyled anywhere
+    else in this app (confirmed: no prior Menu/MenuItem/MenuFlyout usage),
+    so this is a from-scratch reskin. Rather than reaching into the Fluent
+    theme's compiled control template via "/template/ Xyz" selectors (whose
+    exact part names are version-specific and cannot be verified without a
+    live app), this overrides Fluent's documented ThemeResource extension
+    points for MenuFlyout/MenuItem - the officially supported way to reskin
+    these controls. If the installed Avalonia.Themes.Fluent version has
+    renamed any of these keys, the affected visual (hover/popup color) will
+    silently fall back to the Fluent default rather than error - verify
+    visually during manual testing (see the plan's Verification step 3/4).
+  -->
+
+  <Style Selector="Menu.titleBarMenu">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="Menu.titleBarMenu MenuItem">
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="FontFamily" Value="{StaticResource InterFontFamily}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSizeSmall}" />
+  </Style>
+
+  <Style Selector="Menu.titleBarMenu MenuItem:disabled">
+    <Setter Property="Foreground" Value="{StaticResource DisabledTextBrush}" />
+  </Style>
+
+  <!-- Open top-level item accent (ui-styling-theming.md §4.9: "Item Open Accent: AccentPrimary"), same bottom-border-indicator pattern as TabStrip.axaml's active tab -->
+  <Style Selector="Menu.titleBarMenu > MenuItem:selected">
+    <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,2" />
+  </Style>
+
+  <Style Selector="TextBlock.menuShortcutHint">
+    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+    <Setter Property="FontFamily" Value="{StaticResource InterFontFamily}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSizeSmall}" />
+  </Style>
+
+  <!--
+    Fluent's documented MenuFlyout/MenuItem ThemeResource override points -
+    dropdown popup surface and item hover state. Reused tokens only: same
+    Color resources Colors.axaml itself builds SurfaceBrush/BorderBrush/
+    SurfaceHoverBrush/TextPrimaryBrush/DisabledTextBrush from, and the same
+    shadow value as ShadowMedium (Effects.axaml) for the popup - its first
+    real use anywhere in the app.
+  -->
+  <Styles.Resources>
+    <ResourceDictionary>
+      <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="{StaticResource SurfaceColor}" />
+      <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="{StaticResource BorderColor}" />
+      <BoxShadows x:Key="MenuFlyoutPresenterShadow">0 4 8 0 #59000000</BoxShadows>
+      <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPointerOver" Color="{StaticResource SurfaceHoverColor}" />
+      <SolidColorBrush x:Key="MenuFlyoutItemForegroundPointerOver" Color="{StaticResource TextPrimaryColor}" />
+      <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPressed" Color="{StaticResource SurfaceHoverColor}" />
+      <SolidColorBrush x:Key="MenuFlyoutItemForegroundDisabled" Color="{StaticResource DisabledTextColor}" />
+    </ResourceDictionary>
+  </Styles.Resources>
+
+</Styles>

@@ -206,6 +206,27 @@ All scenarios assume:
 **SO THAT** only backend-affecting actions are gated, not workspace navigation  
 **AS MEASURED BY** `WorkspaceViewModel.IsSettingsOpen == false` while `ActiveTab` changes freely
 
+## 6.3 Save and Save As Disabled With No Active Tab
+**GIVEN** no tabs are open  
+**WHEN** the user views the File menu  
+**THEN** Save and Save As are disabled  
+**SO THAT** the user cannot invoke a save with nothing to save  
+**AS MEASURED BY** `SaveCommand.CanExecute == false` and `SaveAsCommand.CanExecute == false` while `WorkspaceViewModel.ActiveTab == null`
+
+## 6.4 Save All Disabled With No Dirty Tabs
+**GIVEN** one or more tabs are open, all with `IsDirty == false`  
+**WHEN** the user views the File menu  
+**THEN** Save All is disabled  
+**SO THAT** the user cannot invoke a no‑op save  
+**AS MEASURED BY** `SaveAllCommand.CanExecute == false` while no open tab has `IsDirty == true`
+
+## 6.5 Save All Re-Enables When Any Tab Becomes Dirty
+**GIVEN** Save All is disabled because no tab is dirty  
+**WHEN** the user edits any open tab, setting its `IsDirty` to `true`  
+**THEN** Save All becomes enabled  
+**SO THAT** the menu always reflects current save‑pending state  
+**AS MEASURED BY** `SaveAllCommand.CanExecute == true` once any open tab has `IsDirty == true`
+
 ---
 
 # 7. Error Interactions

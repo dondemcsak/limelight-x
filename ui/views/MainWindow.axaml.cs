@@ -20,6 +20,7 @@ public partial class MainWindow : Window
 
     private DispatcherTimer? _chordTimer;
     private bool _chordArmed;
+    private SettingsViewModel? _settings;
 
     /// <summary>Design-time/XAML-runtime-loader constructor only (AVLN3001) - the composition root always uses the constructor below.</summary>
     public MainWindow()
@@ -27,25 +28,21 @@ public partial class MainWindow : Window
         InitializeComponent();
     }
 
-    public MainWindow(WorkspaceViewModel workspace, SettingsViewModel settings)
+    public MainWindow(WorkspaceViewModel workspace, SettingsViewModel settings, AboutViewModel about)
         : this()
     {
         DataContext = workspace;
         SettingsModal.DataContext = settings;
-
-        // Ctrl+S only matters while the Settings modal is open; SettingsViewModel
-        // is a single composition-root instance (ui-viewmodels.md §9), so a
-        // fixed command reference here is safe (unlike Run/Explain, which must
-        // track whichever tab is active - see the XAML KeyBindings).
-        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.S, KeyModifiers.Control), Command = settings.SaveSettingsCommand });
+        AboutModal.DataContext = about;
+        _settings = settings;
 
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
 
         // ui-accessibility.md §3: focus moves to the first interactive element
-        // after switching tabs or opening/closing Settings.
+        // after switching tabs or opening/closing Settings/About.
         workspace.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(WorkspaceViewModel.ActiveTab) or nameof(WorkspaceViewModel.IsSettingsOpen))
+            if (e.PropertyName is nameof(WorkspaceViewModel.ActiveTab) or nameof(WorkspaceViewModel.IsSettingsOpen) or nameof(WorkspaceViewModel.IsAboutOpen))
             {
                 Dispatcher.UIThread.Post(() => FocusFirstDescendant(this), DispatcherPriority.Loaded);
             }
@@ -57,10 +54,20 @@ public partial class MainWindow : Window
         if (_chordArmed)
         {
             DisarmChord();
-            if (e.Key == Key.O && e.KeyModifiers == KeyModifiers.Control && DataContext is WorkspaceViewModel workspace)
+            if (DataContext is not WorkspaceViewModel workspace)
+            {
+                return;
+            }
+
+            if (e.Key == Key.O && e.KeyModifiers == KeyModifiers.Control)
             {
                 e.Handled = true;
                 workspace.OpenFolderCommand.Execute(null);
+            }
+            else if (e.Key == Key.S && e.KeyModifiers == KeyModifiers.None)
+            {
+                e.Handled = true;
+                workspace.SaveAllCommand.Execute(null);
             }
 
             return;
@@ -73,6 +80,26 @@ public partial class MainWindow : Window
             _chordTimer = new DispatcherTimer { Interval = ChordTimeout };
             _chordTimer.Tick += (_, _) => DisarmChord();
             _chordTimer.Start();
+            return;
+        }
+
+        // Plain Ctrl+S resolves between two different commands depending on
+        // whether the Settings modal is open (ui-accessibility.md §9) -
+        // SettingsViewModel is a single composition-root instance
+        // (ui-viewmodels.md §9), so a fixed reference here is safe (unlike
+        // Run/Explain, which must track whichever tab is active - see the
+        // XAML KeyBindings).
+        if (e.Key == Key.S && e.KeyModifiers == KeyModifiers.Control && DataContext is WorkspaceViewModel ws)
+        {
+            e.Handled = true;
+            if (ws.IsSettingsOpen)
+            {
+                _settings?.SaveSettingsCommand.Execute(null);
+            }
+            else
+            {
+                ws.SaveCommand.Execute(null);
+            }
         }
     }
 

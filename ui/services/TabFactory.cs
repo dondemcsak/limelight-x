@@ -13,4 +13,10 @@ public sealed class TabFactory(
 
     public PlainTextTabViewModel CreatePlainTextTab(string filePath) =>
         new(filePath, File.ReadAllText(filePath));
+
+    public CnlTabViewModel CreateUntitledCnlTab(string header) =>
+        new(header, pipelineService, eventStream, executionLock);
+
+    public PlainTextTabViewModel CreateUntitledPlainTextTab(string header) =>
+        new(header);
 }

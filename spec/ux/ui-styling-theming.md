@@ -240,6 +240,30 @@ Hover: SurfaceHover
 
 ---
 
+## 4.9 MenuBar & About Modal
+The MenuBar (`ui-components.md` §3.5) and About modal (`ui-components.md` §7.2) introduce **no new tokens** — both reuse existing ones:
+
+```
+MenuBar Background: BackgroundSecondary
+MenuBar Text: TextPrimary
+Item Hover / Open: SurfaceHover
+Item Open Accent: AccentPrimary (subtle highlight on the open top-level menu)
+Dropdown Surface: Surface
+Dropdown Border: BorderColor
+Dropdown Shadow: ShadowMedium
+Disabled Item: same tokens as Disabled Buttons (§4.2)
+Shortcut Hint Text: TextSecondary
+About Modal Scrim: #CC000000 (same overlay as Settings)
+About Modal Surface: Surface
+GitHub Link Text: AccentPrimary
+```
+
+- `ShadowMedium` (defined in §4.1) sees its first actual use here for the MenuBar's open dropdown surface — previously defined but unused elsewhere.  
+- The GitHub link is the first hyperlink‑style text element in the UI; it uses `AccentPrimary` text, consistent with the existing accent‑sparingly rule (§2.2) — this is a new *usage* of an existing token, not a new token.  
+- No new animation timings — dropdown open/close, if animated, follows the existing 100–150ms linear/ease‑out rule (§7).
+
+---
+
 # 5. Syntax Highlighting
 
 Limelight‑X uses **VS Code Dark+** as the base theme.
@@ -265,6 +289,7 @@ Limelight‑X uses **Fluent UI icons** exclusively.
 - Fluent run/explain icons (no Trace icon — the Trace trigger is removed, see `ui-viewmodels.md` §6)  
 - Fluent Dismiss icon for tab close buttons  
 - Fluent gear icon for the Settings entry point (persistent title/activity‑bar icon, `ui-components.md` §3.4)  
+- MenuBar items (`ui-components.md` §3.5) are **text‑only, no icons** — consistent with compact layout density and requiring no new Fluent icons  
 - No Material icons  
 - No custom SVGs in v0.1  
 
@@ -349,4 +374,5 @@ Future versions may introduce extensibility.
 Limelight‑X uses a dark neon aesthetic with a sparingly applied neon‑lime accent, embodying the “limelight” identity.  
 The UI is compact, developer‑friendly, and deterministic, with VS Code Dark+ syntax highlighting, Fluent UI icons, soft shadows, and subtle depth.  
 Inspector panels use card‑style surfaces, AST panels use VS Code‑style tree views, and all animations are minimal and deterministic.  
+The MenuBar and About modal introduce no new tokens, reusing existing surface, accent, and shadow tokens.  
 This styling system is fixed for v0.1 and must be followed exactly.

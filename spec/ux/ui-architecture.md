@@ -111,25 +111,31 @@ The UI repository must follow this structure:
 
 The UI uses a **folder‑explorer + tab‑strip workspace**, replacing the previous page‑based navigation model entirely:
 
-1. **Explorer (left pane)**  
+1. **MenuBar (title‑bar row)**  
+   - Custom in‑window Avalonia `Menu`, styled with existing theme tokens (no native OS menu bar; see `ui-styling-theming.md` §4.9)  
+   - Exactly two top‑level menus: **File** (New LLX File, New TXT File, Open File, Open Folder, Save, Save As, Save All, Settings) and **Help** (About)  
+   - File > Settings routes to the same `OpenSettingsCommand`/`IsSettingsOpen` flow as the persistent gear icon (item 4 below) — the gear icon is not removed  
+   - Help > About opens the About modal (item 4 below); About has no persistent icon of its own, the menu is its only entry point
+
+2. **Explorer (left pane)**  
    - Folder directory tree of the currently open root folder  
    - "Open Folder" action  
    - Expand/collapse folders  
    - Clicking a file opens (or focuses, if already open) a tab in the Tab Content Area
 
-2. **Tab Strip + Tab Content Area (right pane)**  
+3. **Tab Strip + Tab Content Area (right pane)**  
    - One tab per open file  
    - When no folder is open, or no tabs are open, shows a welcome/empty state with an "Open Folder" action (this replaces the old Home Page as a destination)  
    - `.llx` tab content: CNL editor (top) + execution panel (bottom), with **Run** and **Explain** buttons above the editor  
    - Plain text tab content: generic text editor only, no execution split  
-   - Tabs are freely switchable, closable (with an unsaved‑changes confirmation for dirty tabs), and reorderable
+   - Tabs are freely switchable, closable (with an unsaved‑changes confirmation for dirty tabs), and reorderable  
+   - Tabs created via File > New LLX File / New TXT File are **untitled** — `IsUntitled = true`, no backing `FilePath`, titled `Untitled-N` (shared counter across both file kinds, e.g. `Untitled-1`, `Untitled-2`) — and are not written to disk until Save or Save As (see `ui-viewmodels.md` §3, §5.1)
 
-3. **Settings (modal)**  
-   - Opened via a persistent gear icon (title/activity‑bar style), not a tab  
-   - Backend port, log path, `ANTHROPIC_API_KEY`, environment profile  
-   - Disabled while any execution is running app‑wide (see §9)
+4. **Modals — Settings and About**  
+   - **Settings**: opened via a persistent gear icon (title/activity‑bar style) *or* File > Settings — both route to the same command; not a tab. Backend port, log path, `ANTHROPIC_API_KEY`, environment profile. Disabled while any execution is running app‑wide (see §9).  
+   - **About**: opened only via Help > About; not a tab. Shows the app name, project description, version string, and a link to the GitHub repository. Unlike Settings, About has **no execution‑lock gating** — it has no backend side effects and remains available while an execution is in flight.
 
-There is no more full‑page "Editor Page" / "Execution Page" / "Home Page" — editing and execution live together inside each `.llx` tab, and the Explorer replaces the old navigation Sidebar. The shell is controlled by a `WorkspaceViewModel` and must be deterministic (see `ui-viewmodels.md` §3–§4, `ui-routing-navigation.md`).
+There is no more full‑page "Editor Page" / "Execution Page" / "Home Page" — editing and execution live together inside each `.llx` tab, and the Explorer replaces the old navigation Sidebar. The shell is controlled by a `WorkspaceViewModel` and must be deterministic (see `ui-viewmodels.md` §3–§5, `ui-routing-navigation.md`).
 
 ---
 
@@ -316,7 +322,10 @@ UI state must be fully derived from ViewModels.
 - active tab  
 - expanded/collapsed folder tree nodes  
 - editor cursor position  
-- whether any execution is in flight app‑wide (`IExecutionLockService.IsAnyExecutionRunning`)
+- whether any execution is in flight app‑wide (`IExecutionLockService.IsAnyExecutionRunning`)  
+- whether the Settings modal is open (`IsSettingsOpen`)  
+- whether the About modal is open (`IsAboutOpen`)  
+- per‑tab untitled state (`IsUntitled`, `FilePath`)
 
 ### Forbidden UI State
 - implicit transitions  
@@ -365,6 +374,9 @@ The UI does **not** support:
 - reimplementing pipeline stages  
 - **single‑response API mode** (removed)
 - a saved project/workspace manifest (open tabs and folder are session state only, not persisted as a project file)
+- a native OS menu bar (the MenuBar is a custom in‑window control, see §4)
+- menus beyond File and Help (no Edit, View, or other top‑level menus)
+- autosave (untitled and dirty tabs are only persisted via an explicit Save/Save As/Save All)
 
 ---
 
@@ -380,6 +392,7 @@ Potential future enhancements:
 - integrated model output diffing  
 - additional streaming observability events (timing, resource usage)
 - per‑tab independent execution (concurrent executions across tabs), superseding the app‑wide single‑execution lock
+- additional top‑level menus (Edit, View, etc.)
 
 ---
 
@@ -387,4 +400,5 @@ Potential future enhancements:
 
 The Limelight‑X UI is a deterministic folder‑explorer and tab‑based workspace built using Avalonia and MVVM.  
 It integrates with a streaming HTTP + WebSocket API, provides a CNL editor with live validation inside each `.llx` tab, and exposes the full pipeline through collapsible vertical inspector panels that update in real time as events arrive, scoped to the tab that started the execution.  
+A custom themed MenuBar (File, Help) provides discoverable entry points for file operations, untitled‑tab creation, Settings, and the About modal.  
 All behavior is spec‑driven, deterministic, and aligned with the Limelight‑X architecture.

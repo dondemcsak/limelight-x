@@ -52,6 +52,7 @@ The UI defines the following ViewModels:
 - `PipelineExecutionViewModel` (per `CnlTabViewModel`)
 - `IExecutionLockService`
 - `SettingsViewModel`
+- `AboutViewModel`
 - Inspector ViewModels (per `CnlTabViewModel`):
   - `RawAstViewModel`  
   - `NormalizedAstViewModel`  
@@ -70,13 +71,15 @@ Each ViewModel is deterministic and state‑derived.
 - Holds the open root folder path.
 - Owns the folder tree (`FileTreeViewModel`) and the collection of open tabs.
 - Opens or focuses a tab when a file is selected in the tree.
-- Coordinates the Settings‑modal open/close gate.
+- Coordinates the Settings‑modal and About‑modal open/close gates.
+- Creates untitled tabs and resolves file paths for Save/Save As/Save All.
 
 ### State
 - `RootFolderPath : string?`
 - `OpenTabs : ObservableCollection<TabViewModel>`
 - `ActiveTab : TabViewModel?`
 - `IsSettingsOpen : bool`
+- `IsAboutOpen : bool`
 
 ### Commands
 - `OpenFolderCommand`
@@ -84,11 +87,31 @@ Each ViewModel is deterministic and state‑derived.
 - `CloseTabCommand(TabViewModel)`
 - `OpenSettingsCommand`
 - `CloseSettingsCommand`
+- `OpenAboutCommand`
+- `CloseAboutCommand`
+- `NewLlxFileCommand`
+- `NewTxtFileCommand`
+- `OpenFileCommand`
+- `SaveCommand`
+- `SaveAsCommand`
+- `SaveAllCommand`
 
 ### Rules
 - Must not depend on pipeline state except: `OpenSettingsCommand` is blocked while `IExecutionLockService.IsAnyExecutionRunning == true` (see §8).
+- `OpenAboutCommand` is **never** blocked by execution state — explicit contrast with `OpenSettingsCommand`; About has no backend side effects.
 - Tab open/focus/close and folder browsing are never gated by execution state.
 - Closing a dirty tab (or closing Settings with unsaved changes) triggers the same unsaved‑changes confirmation dialog (see `ui-error-handling.md` and `ui-components.md`'s `ModalService` usage).
+- `NewLlxFileCommand` creates a new `CnlTabViewModel`, and `NewTxtFileCommand` a new `PlainTextTabViewModel`, both with `IsUntitled = true`, `FilePath = null`, and `Header` set from a single shared session‑scoped counter (`Untitled-1`, `Untitled-2`, …) incremented across both commands — not two independent counters. The new tab starts with `IsDirty = false` (no unsaved‑changes prompt until the user actually edits it).
+- `OpenFileCommand` opens an unfiltered "open any file" picker and dispatches the chosen path through the same `.llx`→`CnlTabViewModel` / else→`PlainTextTabViewModel` rule already used by `OpenOrFocusTabCommand` (§4), independent of whether a folder (`RootFolderPath`) is open.
+- `SaveCommand` on an untitled tab (`IsUntitled == true`) behaves exactly like `SaveAsCommand`: prompts for a location, then writes and clears `IsUntitled`/sets `FilePath`/`IsDirty = false`. On a non‑untitled tab it writes directly to the existing `FilePath` and sets `IsDirty = false`.
+- `SaveAsCommand` always prompts for a location, regardless of whether the tab is untitled, then writes and updates `FilePath`/`IsDirty = false` (and clears `IsUntitled` if it was set).
+- `SaveAllCommand` iterates every open tab with `IsDirty == true`, applying `SaveCommand`'s per‑tab resolution (direct write, or prompt if untitled) to each. If the user cancels an individual tab's save‑location prompt, that tab is skipped and the command continues to the remaining dirty tabs rather than aborting.
+- `SaveCommand`/`SaveAsCommand`/`SaveAllCommand` are enabled only when applicable (see `ui-components.md` §3.5 Rules for exact enablement conditions).
+
+### File & Save Picker Behavior
+- Opening a file (`OpenFileCommand`) requires an unfiltered file picker capability — broader than today's `.llx`‑only `PickCnlFileAsync()`.
+- Saving (`SaveCommand`/`SaveAsCommand` when prompting) requires a save‑file picker that suggests a file name and default extension based on the tab kind (`.llx` for `CnlTabViewModel`, no forced extension for `PlainTextTabViewModel`).
+- These are new picker capabilities beyond today's `PickCnlFileAsync()`/`PickFolderAsync()` — this document describes the required behavior; the underlying picker/service abstraction is an implementation detail.
 
 ---
 
@@ -120,18 +143,20 @@ Each ViewModel is deterministic and state‑derived.
 # 5. TabViewModel Family
 
 ### 5.1 TabViewModel (base)
-- `Header : string` (file name)
-- `FilePath : string`
+- `Header : string` (file name, or `Untitled-N` while `IsUntitled`)
+- `FilePath : string?` (`null` while `IsUntitled`)
+- `IsUntitled : bool` — `true` for tabs created via New LLX File/New TXT File that have never been saved
 - `IsDirty : bool`
 - `CloseCommand`
 
 ### 5.2 CnlTabViewModel : TabViewModel
 - Owns one `EditorViewModel` instance (§6).
-- Owns one `PipelineExecutionViewModel` instance (§7), which in turn owns the six inspector ViewModels (§10) for this tab only.
-- Instantiated when a `.llx` file is opened; disposed (along with its owned `EditorViewModel`/`PipelineExecutionViewModel`/inspectors) when the tab closes.
+- Owns one `PipelineExecutionViewModel` instance (§7), which in turn owns the six inspector ViewModels (§11) for this tab only.
+- Instantiated when a `.llx` file is opened, **or** when `NewLlxFileCommand` (§3) creates a new untitled tab; disposed (along with its owned `EditorViewModel`/`PipelineExecutionViewModel`/inspectors) when the tab closes.
 
 ### 5.3 PlainTextTabViewModel : TabViewModel
 - Owns one `PlainTextEditorViewModel` instance.
+- Instantiated when a non‑`.llx` file is opened, **or** when `NewTxtFileCommand` (§3) creates a new untitled tab.
 
 ### 5.4 PlainTextEditorViewModel
 - `Text : string`
@@ -304,7 +329,29 @@ All updates come from streaming events.
 
 ---
 
-# 10. Inspector ViewModels
+# 10. AboutViewModel
+
+### Responsibilities
+- Holds read‑only project information for the About modal.
+- Closes the About modal.
+
+### State
+- `AppName : string` — immutable
+- `Description : string` — immutable, the project description shown in the modal
+- `Version : string` — immutable, sourced from the assembly version at runtime (see `ui-build-pipeline.md`)
+- `GitHubUrl : string` — immutable, `https://github.com/dondemcsak/limelight-x`
+
+### Commands
+- `CloseCommand` — delegates to `WorkspaceViewModel.CloseAboutCommand` (§3).
+
+### Rules
+- `AboutViewModel` is a single composition‑root instance (not per‑tab) — About is not file‑scoped, mirroring §9 SettingsViewModel.
+- Never gated by `IExecutionLockService` — explicit contrast with §9.
+- Activating the GitHub link opens the system default browser out‑of‑process; it does not navigate within the app.
+
+---
+
+# 11. Inspector ViewModels
 
 Each inspector ViewModel is responsible for:
 
@@ -315,37 +362,37 @@ Each inspector ViewModel is responsible for:
 
 Each is instantiated once per `.llx` tab (owned by that tab's `PipelineExecutionViewModel`, §7), not app‑wide.
 
-### 10.1 RawAstViewModel
+### 11.1 RawAstViewModel
 State:
 - `AstNodes : ObservableCollection<AstNode>`
 - `IsCollapsed : bool`
 - `HasErrors : bool` — set when this inspector's data fails to render; backs `InspectorErrorPanel` (`ui-components.md` §6.2) via an `InspectorErrorViewModel`
 
-### 10.2 NormalizedAstViewModel
+### 11.2 NormalizedAstViewModel
 State:
 - `NormalizedNodes : ObservableCollection<NormalizedAstNode>`
 - `IsCollapsed : bool`
 - `HasErrors : bool`
 
-### 10.3 IrViewModel
+### 11.3 IrViewModel
 State:
 - `Operations : ObservableCollection<IrOperation>`
 - `IsCollapsed : bool`
 - `HasErrors : bool`
 
-### 10.4 PromptViewModel
+### 11.4 PromptViewModel
 State:
 - `Prompts : ObservableCollection<Prompt>` — grows by one entry per `prompt_generated` event (one event per model-calling IR operation), rather than being set all at once.
 - `IsCollapsed : bool`
 - `HasErrors : bool`
 
-### 10.5 ModelOutputViewModel
+### 11.5 ModelOutputViewModel
 State:
 - `Outputs : ObservableCollection<ModelOutput>` — grows by one entry per `model_output_generated` event (one event per model-calling IR operation), rather than being set all at once.
 - `IsCollapsed : bool`
 - `HasErrors : bool`
 
-### 10.6 FinalResultViewModel
+### 11.6 FinalResultViewModel
 State:
 - `ResultText : string`
 - `ContentType : string`
@@ -359,7 +406,7 @@ State:
 
 ---
 
-# 11. Deterministic State Rules
+# 12. Deterministic State Rules
 
 ### Allowed State
 - collapse/expand  
@@ -369,7 +416,9 @@ State:
 - editor cursor position  
 - current correlation_id (per tab)  
 - inspector contents (per tab)  
-- whether any execution is in flight app‑wide (`IExecutionLockService.IsAnyExecutionRunning`)
+- whether any execution is in flight app‑wide (`IExecutionLockService.IsAnyExecutionRunning`)  
+- whether the Settings modal is open (`IsSettingsOpen`) or the About modal is open (`IsAboutOpen`)  
+- per‑tab untitled state (`IsUntitled`, `FilePath`)
 
 ### Forbidden State
 - implicit transitions  
@@ -380,7 +429,7 @@ State:
 
 ---
 
-# 12. Error Handling
+# 13. Error Handling
 
 Errors may originate from:
 
@@ -393,6 +442,7 @@ Errors may originate from:
 - malformed event  
 - WebSocket disconnect  
 - `pipeline_failed` events
+- file open/save (e.g. permission denied, disk full, invalid path)
 
 ### Rules
 - Errors must appear immediately.
@@ -403,10 +453,11 @@ Errors may originate from:
   - that tab's inspector panels (if applicable)  
   - inline editor (validation errors)
 - Each tab's `ErrorBannerViewModel` clears when a new `pipeline_started` event arrives for that tab (per §7), or when the user dismisses it — see `ui-error-handling.md` §8. Switching tabs never clears another tab's banner.
+- A failed Open File, Save, Save As, or Save All leaves the affected tab's state unchanged (still dirty/untitled as before the attempt) and surfaces the failure via that tab's error banner; it does not partially update `FilePath`/`IsDirty`/`IsUntitled`.
 
 ---
 
-# 13. Non‑Goals
+# 14. Non‑Goals
 
 ViewModels do **not** support:
 
@@ -418,10 +469,11 @@ ViewModels do **not** support:
 - nondeterministic behavior  
 - reconstructing pipeline stages  
 - buffering or reassembling event streams
+- autosave
 
 ---
 
-# 14. Future Extensions
+# 15. Future Extensions
 
 Potential enhancements:
 
@@ -431,6 +483,7 @@ Potential enhancements:
 - visual IR graph  
 - per‑tab independent execution (superseding `IExecutionLockService`'s app‑wide lock)  
 - additional observability events (timing, resource usage)
+- autosave for dirty/untitled tabs
 
 ---
 
@@ -439,4 +492,5 @@ Potential enhancements:
 The Limelight‑X ViewModel layer is deterministic, MVVM‑pure, and fully aligned with the streaming API.  
 Pipeline results arrive incrementally over WebSocket and update the owning tab's inspector ViewModels in real time.  
 App‑wide single‑execution mode ensures predictable behavior and simplifies state management, while each `.llx` tab retains its own independent execution results.  
+`WorkspaceViewModel` also owns untitled‑tab creation and Save/Save As/Save All resolution, and coordinates the Settings and About modals — the latter never gated by execution state.  
 All ViewModels are state‑derived, spec‑driven, and free of nondeterministic logic.

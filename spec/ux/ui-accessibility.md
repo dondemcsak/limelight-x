@@ -6,14 +6,14 @@ It specifies standards, keyboard navigation rules, focus management, screen read
 This specification is authoritative.  
 All implementation must follow these accessibility rules exactly.
 
-Limelight‑X targets WCAG 2.2 AA — implementation must follow this spec directly, but conformance is **not independently verified for v0.1** (see §15) — and provides full keyboard navigation, exposes complete screen reader semantics, ensures deterministic focus behavior, and maintains high‑contrast visual indicators.  
+Limelight‑X targets WCAG 2.2 AA — implementation must follow this spec directly, but conformance is **not independently verified for v0.1** (see §16) — and provides full keyboard navigation, exposes complete screen reader semantics, ensures deterministic focus behavior, and maintains high‑contrast visual indicators.  
 Animations remain enabled, and basic keyboard shortcuts support core workflow actions.
 
 ---
 
 # 1. Accessibility Standard Baseline
 
-Limelight‑X targets **WCAG 2.2 AA** as its design baseline (see §15 on verification scope).
+Limelight‑X targets **WCAG 2.2 AA** as its design baseline (see §16 on verification scope).
 
 ### Requirements
 - All text must meet AA contrast requirements.  
@@ -132,16 +132,24 @@ Limelight‑X does **not** provide a reduced‑motion mode.
 
 Limelight‑X provides **basic keyboard shortcuts**:
 
-| Action       | Shortcut |
-|--------------|----------|
-| Run          | Ctrl+R   |
-| Explain      | Ctrl+E   |
-| Save         | Ctrl+S   |
-| Settings     | Ctrl+,   |
-| Close Tab    | Ctrl+W   |
-| Open Folder  | Ctrl+K, Ctrl+O |
+| Action        | Shortcut |
+|---------------|----------|
+| Run           | Ctrl+R   |
+| Explain       | Ctrl+E   |
+| New LLX File  | Ctrl+N   |
+| New TXT File  | — (menu only, no shortcut) |
+| Open File     | Ctrl+O   |
+| Open Folder   | Ctrl+K, Ctrl+O |
+| Save          | Ctrl+S   |
+| Save As       | Ctrl+Shift+S |
+| Save All      | Ctrl+K, S |
+| Settings      | Ctrl+,   |
+| About         | — (menu only, no shortcut) |
+| Close Tab     | Ctrl+W   |
 
-There is no Trace shortcut — the Trace trigger is removed entirely (see `ui-viewmodels.md` §6). Run and Explain act on the active tab.
+There is no Trace shortcut — the Trace trigger is removed entirely (see `ui-viewmodels.md` §6). Run and Explain act on the active tab.  
+Save is now wired to `WorkspaceViewModel.SaveCommand` (`ui-viewmodels.md` §3) — previously documented here but unimplemented.  
+`Ctrl+K` is a two‑key chord prefix shared by two distinct completions: `Ctrl+K, Ctrl+O` (Open Folder) and `Ctrl+K, S` (Save All). Both reuse the same chord‑handling mechanism (arm on `Ctrl+K`, complete on the next keypress within the existing timeout window).
 
 ### Requirements
 - Shortcuts must not conflict with OS‑level shortcuts.  
@@ -210,7 +218,23 @@ The gear icon (`ui-components.md` §3.4) exposes an accessible name of "Open Set
 
 ---
 
-# 13. Inspector Collapse/Expand Accessibility
+# 13. MenuBar & Modal Accessibility
+
+### MenuBar Requirements
+- The MenuBar (`ui-components.md` §3.5) must expose role="menubar"; each top‑level menu exposes role="menu"; each item exposes role="menuitem".  
+- File and Help must be reachable via `Alt+F` / `Alt+H` mnemonics, in addition to `Tab`/arrow‑key navigation.  
+- Arrow keys navigate within an open menu and between top‑level menus; `Escape` closes an open menu and returns focus to the MenuBar.  
+- Disabled items (e.g. Save with no active tab, Settings during execution) expose the standard disabled‑control semantics, the same pattern as the Settings Gear Icon above.  
+- Each item's exposed keyboard shortcut hint must match the `ui-styling-theming.md`/§9 shortcuts table exactly — no divergent or stale hints.
+
+### About Modal Requirements
+- The About modal announces itself immediately on open, using the same ARIA‑alert pattern as other modals (§10).  
+- Closing the About modal returns focus to the first interactive element, the same as any modal (§3).  
+- The GitHub link must expose an accessible name indicating it opens externally (e.g. "Limelight‑X on GitHub (opens in browser)"), not a bare URL.
+
+---
+
+# 14. Inspector Collapse/Expand Accessibility
 
 Inspector collapsible sections use **ARIA details/summary semantics**.
 
@@ -222,7 +246,7 @@ Inspector collapsible sections use **ARIA details/summary semantics**.
 
 ---
 
-# 14. Focus Indicators
+# 15. Focus Indicators
 
 Focus indicators use a **high‑contrast white outline**.
 
@@ -234,7 +258,7 @@ Focus indicators use a **high‑contrast white outline**.
 
 ---
 
-# 15. Accessibility Testing
+# 16. Accessibility Testing
 
 Limelight‑X does **not** require automated or manual accessibility testing for v0.1.
 
@@ -247,7 +271,8 @@ Limelight‑X does **not** require automated or manual accessibility testing for
 
 # Summary
 
-Limelight‑X targets WCAG 2.2 AA as a design baseline (unverified for v0.1, see §15), and provides full keyboard navigation, deterministic focus management, complete screen reader semantics, and high‑contrast visual indicators.  
+Limelight‑X targets WCAG 2.2 AA as a design baseline (unverified for v0.1, see §16), and provides full keyboard navigation, deterministic focus management, complete screen reader semantics, and high‑contrast visual indicators.  
 Inspector panels expose full semantic tree structures, error surfaces use ARIA alerts for modals, and the editor exposes full ARIA textfield semantics.  
+The MenuBar and About modal follow the same keyboard, ARIA, and focus‑management patterns as the rest of the workspace.  
 Animations remain enabled, and basic keyboard shortcuts support core workflow actions.  
 This accessibility model is deterministic and must be followed exactly.

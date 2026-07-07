@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LimelightX.UI.Services;
@@ -40,6 +42,8 @@ public partial class WorkspaceViewModel : ObservableObject
                 OpenOrFocusTabCommand.Execute(node);
             }
         };
+
+        OpenTabs.CollectionChanged += OnOpenTabsChanged;
     }
 
     public FileTreeViewModel FileTree { get; } = new();
@@ -65,6 +69,8 @@ public partial class WorkspaceViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(ActiveCnlEditor));
+        SaveCommand.NotifyCanExecuteChanged();
+        SaveAsCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand]
@@ -75,6 +81,12 @@ public partial class WorkspaceViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isSettingsOpen;
+
+    [ObservableProperty]
+    private bool _isAboutOpen;
+
+    /// <summary>Single shared session-scoped counter for untitled tabs (ui-viewmodels.md §3) - incremented across both New LLX File and New TXT File, never reset per-kind.</summary>
+    private int _untitledCounter;
 
     /// <summary>Filesystem errors surfaced by the file tree (ui-testing.md §11 names this collection "WorkspaceViewModel.Errors").</summary>
     public ObservableCollection<UiError> Errors => FileTree.Errors;
@@ -111,36 +123,85 @@ public partial class WorkspaceViewModel : ObservableObject
             return;
         }
 
-        var existing = OpenTabs.FirstOrDefault(t => string.Equals(t.FilePath, node.FullPath, StringComparison.OrdinalIgnoreCase));
-        if (existing is not null)
+        if (TryFocusExisting(node.FullPath))
         {
-            ActiveTab = existing;
             return;
         }
 
-        TabViewModel tab;
+        if (TryCreateTab(node.FullPath, out var tab))
+        {
+            AddNewTab(tab);
+        }
+    }
+
+    /// <summary>Shared .llx-vs-else dispatch (ui-viewmodels.md §3) used by both OpenOrFocusTab (Explorer clicks) and OpenFileCommand (File > Open File), so the rule lives in exactly one place.</summary>
+    private TabViewModel CreateTabForPath(string path) =>
+        path.EndsWith(".llx", StringComparison.OrdinalIgnoreCase)
+            ? _tabFactory.CreateCnlTab(path)
+            : _tabFactory.CreatePlainTextTab(path);
+
+    private bool TryFocusExisting(string path)
+    {
+        var existing = OpenTabs.FirstOrDefault(t => string.Equals(t.FilePath, path, StringComparison.OrdinalIgnoreCase));
+        if (existing is null)
+        {
+            return false;
+        }
+
+        ActiveTab = existing;
+        return true;
+    }
+
+    private bool TryCreateTab(string path, out TabViewModel tab)
+    {
         try
         {
-            tab = node.FullPath.EndsWith(".llx", StringComparison.OrdinalIgnoreCase)
-                ? _tabFactory.CreateCnlTab(node.FullPath)
-                : _tabFactory.CreatePlainTextTab(node.FullPath);
+            tab = CreateTabForPath(path);
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             FileTree.Errors.Add(new UiError
             {
                 Code = "ERR_FILE_READ",
-                Message = $"Could not open \"{node.FullPath}\": {ex.Message}",
+                Message = $"Could not open \"{path}\": {ex.Message}",
                 Severity = ErrorSeverity.Error,
                 Category = ErrorCategory.State,
             });
-            return;
+            tab = null!;
+            return false;
         }
+    }
 
+    private void AddNewTab(TabViewModel tab)
+    {
         tab.CloseRequested = () => CloseTabCommand.Execute(tab);
         OpenTabs.Add(tab);
         ActiveTab = tab;
         TabOpened?.Invoke(tab);
+    }
+
+    [RelayCommand]
+    private void NewLlxFile() => AddNewTab(_tabFactory.CreateUntitledCnlTab(NextUntitledHeader()));
+
+    [RelayCommand]
+    private void NewTxtFile() => AddNewTab(_tabFactory.CreateUntitledPlainTextTab(NextUntitledHeader()));
+
+    private string NextUntitledHeader() => $"Untitled-{++_untitledCounter}";
+
+    [RelayCommand]
+    private async Task OpenFileAsync()
+    {
+        var path = await _filePicker.PickAnyFileAsync();
+        if (path is null || TryFocusExisting(path))
+        {
+            return;
+        }
+
+        if (TryCreateTab(path, out var tab))
+        {
+            AddNewTab(tab);
+        }
     }
 
     [RelayCommand]
@@ -195,5 +256,113 @@ public partial class WorkspaceViewModel : ObservableObject
     [RelayCommand]
     private void CloseSettings() => IsSettingsOpen = false;
 
+    /// <summary>ui-routing-navigation.md §7.1: unlike Settings, never gated by execution state - About has no backend side effects.</summary>
+    [RelayCommand]
+    private void OpenAbout() => IsAboutOpen = true;
+
+    [RelayCommand]
+    private void CloseAbout() => IsAboutOpen = false;
+
     private void NotifyExecutionGatedCommandsCanExecuteChanged() => OpenSettingsCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand(CanExecute = nameof(CanSave))]
+    private Task SaveAsync() => ActiveTab is { } tab ? SaveTabAsync(tab, forcePrompt: false) : Task.CompletedTask;
+
+    private bool CanSave() => ActiveTab is not null;
+
+    [RelayCommand(CanExecute = nameof(CanSaveAs))]
+    private Task SaveAsAsync() => ActiveTab is { } tab ? SaveTabAsync(tab, forcePrompt: true) : Task.CompletedTask;
+
+    private bool CanSaveAs() => ActiveTab is not null;
+
+    [RelayCommand(CanExecute = nameof(CanSaveAll))]
+    private async Task SaveAllAsync()
+    {
+        foreach (var tab in OpenTabs.Where(t => t.IsDirty).ToList())
+        {
+            await SaveTabAsync(tab, forcePrompt: false);
+        }
+    }
+
+    private bool CanSaveAll() => OpenTabs.Any(t => t.IsDirty);
+
+    /// <summary>
+    /// Save on an untitled tab (or any tab when forcePrompt is true, i.e.
+    /// Save As) prompts for a location; Save on a tab with an existing path
+    /// writes directly. Returns false if the user cancelled the prompt or
+    /// the write failed - callers (notably SaveAllAsync) use this to skip
+    /// past a cancelled/failed tab rather than aborting (ui-viewmodels.md §3).
+    /// </summary>
+    private async Task<bool> SaveTabAsync(TabViewModel tab, bool forcePrompt)
+    {
+        var path = tab.FilePath;
+        if (path is null || forcePrompt)
+        {
+            var suggestedName = path is not null ? Path.GetFileNameWithoutExtension(path) : tab.Header;
+            var defaultExtension = tab is CnlTabViewModel ? "llx" : null;
+            var picked = await _filePicker.PickSaveFileAsync(suggestedName, defaultExtension);
+            if (picked is null)
+            {
+                return false;
+            }
+
+            path = picked;
+        }
+
+        try
+        {
+            await File.WriteAllTextAsync(path, GetTabContent(tab));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            tab.ErrorBanner.Show(new UiError
+            {
+                Code = "ERR_FILE_WRITE",
+                Message = $"Could not save \"{path}\": {ex.Message}",
+                Severity = ErrorSeverity.Error,
+                Category = ErrorCategory.State,
+            });
+            return false;
+        }
+
+        tab.AssignFilePath(path);
+        tab.IsDirty = false;
+        return true;
+    }
+
+    private static string GetTabContent(TabViewModel tab) => tab switch
+    {
+        CnlTabViewModel cnl => cnl.Editor.Text,
+        PlainTextTabViewModel txt => txt.Editor.Text,
+        _ => throw new InvalidOperationException($"Unknown tab type {tab.GetType()}"),
+    };
+
+    private void OnOpenTabsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems is not null)
+        {
+            foreach (TabViewModel tab in e.OldItems)
+            {
+                tab.PropertyChanged -= OnAnyTabDirtyChanged;
+            }
+        }
+
+        if (e.NewItems is not null)
+        {
+            foreach (TabViewModel tab in e.NewItems)
+            {
+                tab.PropertyChanged += OnAnyTabDirtyChanged;
+            }
+        }
+
+        SaveAllCommand.NotifyCanExecuteChanged();
+    }
+
+    private void OnAnyTabDirtyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TabViewModel.IsDirty))
+        {
+            SaveAllCommand.NotifyCanExecuteChanged();
+        }
+    }
 }

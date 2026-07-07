@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using LimelightX.UI.Components;
 using LimelightX.UI.Services;
 using LimelightX.UI.Services.Dto;
+using LimelightX.UI.ViewModels;
 using LimelightX.UI.ViewModels.Tabs;
 using LimelightX.UI.ViewModels.Workspace;
 using Xunit;
@@ -34,6 +35,10 @@ public class WorkspaceShellRenderTests
         public Task<string?> PickCnlFileAsync() => throw new NotImplementedException();
 
         public Task<string?> PickFolderAsync() => throw new NotImplementedException();
+
+        public Task<string?> PickAnyFileAsync() => throw new NotImplementedException();
+
+        public Task<string?> PickSaveFileAsync(string suggestedFileName, string? defaultExtension) => throw new NotImplementedException();
     }
 
     private sealed class FakeModalService : IModalService
@@ -187,5 +192,68 @@ public class WorkspaceShellRenderTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [AvaloniaFact]
+    public void MenuBar_RendersFileAndHelpMenus()
+    {
+        var workspace = MakeWorkspace();
+
+        var view = new MenuBar { DataContext = workspace };
+        var window = new Window { Content = view, Width = 400, Height = 40 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var menu = view.FindControl<Menu>("RootMenu")!;
+
+        Assert.Equal(2, menu.Items.Count);
+        var headers = menu.Items.OfType<MenuItem>().Select(item => item.Header?.ToString() ?? string.Empty).ToList();
+        Assert.Contains(headers, h => h.Contains("File"));
+        Assert.Contains(headers, h => h.Contains("Help"));
+    }
+
+    [AvaloniaFact]
+    public void MenuBar_SaveCommand_DisabledWithNoActiveTab_EnabledAfterOpeningTab()
+    {
+        var root = CreateTempFolderWithFiles(out var llxPath, out _);
+        try
+        {
+            var workspace = MakeWorkspace();
+
+            var view = new MenuBar { DataContext = workspace };
+            var window = new Window { Content = view, Width = 400, Height = 40 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(workspace.SaveCommand.CanExecute(null));
+
+            workspace.OpenRoot(root);
+            workspace.OpenOrFocusTabCommand.Execute(workspace.FileTree.Nodes.Single(n => n.FullPath == llxPath));
+
+            Assert.True(workspace.SaveCommand.CanExecute(null));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public void AboutModalView_RendersProjectInfo()
+    {
+        var about = new AboutViewModel();
+
+        var view = new AboutModalView { DataContext = about };
+        var window = new Window { Content = view, Width = 420, Height = 260 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var appNameText = view.FindControl<TextBlock>("AppNameText")!;
+        var descriptionText = view.FindControl<TextBlock>("DescriptionText")!;
+        var versionText = view.FindControl<TextBlock>("VersionText")!;
+
+        Assert.Equal(about.AppName, appNameText.Text);
+        Assert.False(string.IsNullOrWhiteSpace(descriptionText.Text));
+        Assert.StartsWith("Version ", versionText.Text);
     }
 }

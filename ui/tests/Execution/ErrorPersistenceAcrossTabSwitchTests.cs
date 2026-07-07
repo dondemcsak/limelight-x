@@ -30,6 +30,10 @@ public class ErrorPersistenceAcrossTabSwitchTests
         public Task<string?> PickCnlFileAsync() => throw new NotImplementedException();
 
         public Task<string?> PickFolderAsync() => throw new NotImplementedException();
+
+        public Task<string?> PickAnyFileAsync() => throw new NotImplementedException();
+
+        public Task<string?> PickSaveFileAsync(string suggestedFileName, string? defaultExtension) => throw new NotImplementedException();
     }
 
     private sealed class FakeModalService : IModalService

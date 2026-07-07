@@ -22,6 +22,10 @@ public class WorkspaceViewModelTests
         public Task<string?> PickCnlFileAsync() => throw new NotImplementedException();
 
         public Task<string?> PickFolderAsync() => Task.FromResult(folderPath);
+
+        public Task<string?> PickAnyFileAsync() => throw new NotImplementedException();
+
+        public Task<string?> PickSaveFileAsync(string suggestedFileName, string? defaultExtension) => throw new NotImplementedException();
     }
 
     private sealed class FakeModalService : IModalService
@@ -191,5 +195,30 @@ public class WorkspaceViewModelTests
 
         workspace.CloseSettingsCommand.Execute(null);
         Assert.False(workspace.IsSettingsOpen);
+    }
+
+    [Fact]
+    public void OpenAboutCommand_SetsIsAboutOpen_AndCloseAboutClearsIt()
+    {
+        var workspace = MakeWorkspace();
+
+        workspace.OpenAboutCommand.Execute(null);
+        Assert.True(workspace.IsAboutOpen);
+
+        workspace.CloseAboutCommand.Execute(null);
+        Assert.False(workspace.IsAboutOpen);
+    }
+
+    [Fact]
+    public void OpenAboutCommand_NeverBlockedByExecutionLock()
+    {
+        var executionLock = new ExecutionLockService();
+        var workspace = MakeWorkspace(executionLock: executionLock);
+
+        Assert.True(workspace.OpenAboutCommand.CanExecute(null));
+
+        executionLock.TryAcquire(new object());
+
+        Assert.True(workspace.OpenAboutCommand.CanExecute(null));
     }
 }

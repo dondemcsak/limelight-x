@@ -115,6 +115,7 @@ This workflow is local‑only, is never invoked by CI, and is not a substitute f
 - Increment semantic version (major.minor.patch)  
 - Tag release commit with version  
 - Push tag to repository
+- Stamp the incremented version from a single source of truth into both `LimelightX.UI.csproj`'s `<Version>` and `ui/packaging/AppxManifest.xml`'s `Identity/@Version` — the two must never diverge. `AboutViewModel.Version` (`ui-viewmodels.md` §10) reads the stamped assembly version at runtime via `Assembly.GetExecutingAssembly().GetName().Version` reflection; there is no separate manual step to keep the About modal's version string in sync.
 
 ## 4.2. Build Stage
 - Run full CI build workflow  

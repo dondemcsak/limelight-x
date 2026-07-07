@@ -50,6 +50,25 @@ Copy-Item $LlxExePath "$layoutDir/llx.exe" -Force
 Copy-Item "$packagingDir/AppxManifest.xml" "$layoutDir/AppxManifest.xml" -Force
 Copy-Item "$packagingDir/assets/*.png" "$layoutDir/assets/" -Force
 
+# ui-build-pipeline.md §4.1: LimelightX.UI.csproj's <Version> is the single
+# source of truth - stamp it into the *staged* manifest copy (never the
+# committed source file) so the shipped MSIX's version always matches the
+# assembly version baked into LimelightX.UI.dll by the publish that already
+# ran. Read via a plain string match rather than a full MSBuild-project XML
+# parse, since the csproj is not itself well-formed against the AppxManifest
+# schema and doesn't need a heavier parser for one element.
+$csprojPath = "$RepoRoot/ui/LimelightX.UI.csproj"
+$versionMatch = Select-String -Path $csprojPath -Pattern "<Version>(.*?)</Version>" | Select-Object -First 1
+if (-not $versionMatch) {
+    throw "LimelightX.UI.csproj has no <Version> element - cannot stamp AppxManifest.xml."
+}
+$version = $versionMatch.Matches[0].Groups[1].Value
+
+$manifestPath = "$layoutDir/AppxManifest.xml"
+[xml]$manifestXml = Get-Content $manifestPath
+$manifestXml.Package.Identity.Version = $version
+$manifestXml.Save($manifestPath)
+
 # ui-architecture.md §3 requires the assembly name to stay "LimelightX.UI"
 # (so avares:// resource URIs baked into the compiled XAML keep resolving),
 # but the shipped executable must be named "LimelightX.exe". Renaming the

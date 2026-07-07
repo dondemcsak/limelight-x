@@ -1,0 +1,48 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:LimelightX.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="260"
+             x:Class="LimelightX.UI.Components.AboutModalView"
+             x:DataType="vm:AboutViewModel">
+
+  <!--
+    About modal content (ui-routing-navigation.md §2/§9, ui-components.md
+    §7.2). Hosted inside an overlay Border toggled by
+    WorkspaceViewModel.IsAboutOpen (MainWindow.axaml) - the previously
+    active tab remains underneath, unaffected, while this is shown. Unlike
+    Settings, never gated by execution state and has no editable state.
+  -->
+  <Border Classes="card" Padding="{StaticResource PaddingLargeThickness}" MaxWidth="420"
+          HorizontalAlignment="Center" VerticalAlignment="Center">
+    <StackPanel Spacing="{StaticResource PanelSpacing}">
+
+      <TextBlock x:Name="AppNameText" Text="{Binding AppName}" Classes="cardHeader" />
+
+      <TextBlock x:Name="DescriptionText" Text="{Binding Description}"
+                 Foreground="{StaticResource TextPrimaryBrush}"
+                 FontFamily="{StaticResource InterFontFamily}"
+                 FontSize="{StaticResource FontSizeMedium}"
+                 TextWrapping="Wrap" />
+
+      <TextBlock x:Name="VersionText" Text="{Binding Version, StringFormat='Version {0}'}"
+                 Foreground="{StaticResource TextSecondaryBrush}"
+                 FontFamily="{StaticResource InterFontFamily}"
+                 FontSize="{StaticResource FontSizeSmall}" />
+
+      <Button Classes="link"
+              Content="Limelight-X on GitHub"
+              Command="{Binding OpenGitHubCommand}"
+              Cursor="Hand"
+              ToolTip.Tip="{Binding GitHubUrl}"
+              AutomationProperties.Name="Limelight-X on GitHub (opens in browser)" />
+
+      <StackPanel Orientation="Horizontal" Spacing="{StaticResource PanelSpacing}" Margin="0,8,0,0" HorizontalAlignment="Right">
+        <Button Classes="secondary" Content="Close" Command="{Binding CloseCommand}" AutomationProperties.Name="Close" />
+      </StackPanel>
+
+    </StackPanel>
+  </Border>
+
+</UserControl>

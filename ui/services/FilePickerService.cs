@@ -48,4 +48,39 @@ public sealed class FilePickerService(Func<TopLevel?> topLevelAccessor) : IFileP
 
         return folders.Count > 0 ? folders[0].Path.LocalPath : null;
     }
+
+    public async Task<string?> PickAnyFileAsync()
+    {
+        var topLevel = topLevelAccessor();
+        if (topLevel is null)
+        {
+            return null;
+        }
+
+        var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Open File",
+            AllowMultiple = false,
+        });
+
+        return files.Count > 0 ? files[0].Path.LocalPath : null;
+    }
+
+    public async Task<string?> PickSaveFileAsync(string suggestedFileName, string? defaultExtension)
+    {
+        var topLevel = topLevelAccessor();
+        if (topLevel is null)
+        {
+            return null;
+        }
+
+        var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save As",
+            SuggestedFileName = suggestedFileName,
+            DefaultExtension = defaultExtension,
+        });
+
+        return file?.Path.LocalPath;
+    }
 }

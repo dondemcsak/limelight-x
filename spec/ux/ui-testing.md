@@ -333,7 +333,7 @@ Potential enhancements:
 
 - automated inspector diffing  
 - visual IR graph testing  
-- per‑tab concurrent execution testing (if per‑tab independent execution is implemented, see `ui-viewmodels.md` §14)  
+- per‑tab concurrent execution testing (if per‑tab independent execution is implemented, see `ui-viewmodels.md` §15)  
 - performance tests for large pipelines  
 - timing‑based observability tests  
 

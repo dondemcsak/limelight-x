@@ -19,7 +19,7 @@ public sealed class CnlTabViewModel : TabViewModel
         IPipelineService pipelineService,
         IEventStreamService eventStream,
         IExecutionLockService executionLock)
-        : base(filePath)
+        : base(filePath, Path.GetFileName(filePath))
     {
         Editor = new EditorViewModel(pipelineService, eventStream, executionLock) { Text = initialText };
         PipelineExecution = new PipelineExecutionViewModel(pipelineService, eventStream, executionLock);
@@ -29,6 +29,23 @@ public sealed class CnlTabViewModel : TabViewModel
 
         // Only track dirtiness after the initial load above - opening a file
         // must never itself mark the tab dirty.
+        Editor.PropertyChanged += OnEditorPropertyChanged;
+    }
+
+    /// <summary>Untitled-tab constructor (File > New LLX File, ui-viewmodels.md §3) - no backing file, starts with empty text and IsDirty == false.</summary>
+    public CnlTabViewModel(
+        string header,
+        IPipelineService pipelineService,
+        IEventStreamService eventStream,
+        IExecutionLockService executionLock)
+        : base(null, header)
+    {
+        Editor = new EditorViewModel(pipelineService, eventStream, executionLock) { Text = string.Empty };
+        PipelineExecution = new PipelineExecutionViewModel(pipelineService, eventStream, executionLock);
+
+        Editor.RunRequested = PipelineExecution.RunPipelineAsync;
+        Editor.ExplainRequested = PipelineExecution.ExplainPipelineAsync;
+
         Editor.PropertyChanged += OnEditorPropertyChanged;
     }
 

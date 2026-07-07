@@ -74,4 +74,21 @@
     <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
   </Style>
 
+  <!-- Hyperlink-style button (About modal's GitHub link, ui-styling-theming.md §4.9 - "first hyperlink-style element in the UI," AccentPrimary text per §2.2's accent-sparingly rule) -->
+  <Style Selector="Button.link">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
+    <Setter Property="FontFamily" Value="{StaticResource InterFontFamily}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSizeMedium}" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+  </Style>
+  <Style Selector="Button.link:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.link:pointerover /template/ ContentPresenter TextBlock">
+    <Setter Property="TextDecorations" Value="Underline" />
+  </Style>
+
 </Styles>

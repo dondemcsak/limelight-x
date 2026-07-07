@@ -82,7 +82,7 @@ The spec is organized by **deployment stages**:
 - **Step 1:** Launch Limelight‑X UI  
 - **Step 2:** Confirm main window renders without errors  
 - **Step 3:** Confirm environment profile is active (e.g., backend port)  
-- **Step 4:** Confirm `llx serve` started successfully. If `config.json` is missing/invalid or `ANTHROPIC_API_KEY` is unset (first launch, or a broken config), `LimelightX.exe` auto‑opens the Settings modal on launch instead of restoring the last workspace. The Explorer and Tab Strip remain fully usable in this state (browsing folders and opening tabs needs no backend), but Run/Explain stay disabled on every `.llx` tab until the user saves valid Settings (see `ui-routing-navigation.md` §9). This is the only first-run experience; there is no separate onboarding page or installer-hosted wizard.  
+- **Step 4:** Confirm `llx serve` started successfully. If `config.json` is missing/invalid or `ANTHROPIC_API_KEY` is unset (first launch, or a broken config), `LimelightX.exe` auto‑opens the Settings modal on launch instead of restoring the last workspace. The Explorer and Tab Strip remain fully usable in this state (browsing folders and opening tabs needs no backend), but Run/Explain stay disabled on every `.llx` tab until the user saves valid Settings (see `ui-routing-navigation.md` §10). This is the only first-run experience; there is no separate onboarding page or installer-hosted wizard.  
 - **Step 5:** Optionally run a simple pipeline to confirm connectivity
 
 ---

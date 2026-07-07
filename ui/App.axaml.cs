@@ -43,6 +43,7 @@ public partial class App : Application
             var tabFactory = new TabFactory(pipelineService, eventStream, executionLock);
             var workspace = new WorkspaceViewModel(tabFactory, filePicker, modal, executionLock);
             var settings = new SettingsViewModel(configService, credentialService, llxProcessService);
+            var about = new AboutViewModel();
 
             // Persistent diagnostic log (ui-deployment.md §4.3, ui-error-handling.md
             // §2.5) - Microsoft.Extensions.Logging backed by Serilog's file sink.
@@ -57,9 +58,13 @@ public partial class App : Application
 
             // Tabs (and their EditorViewModel/PipelineExecutionViewModel) are
             // created dynamically, not once at startup - hook logging as each
-            // new .llx tab opens (ui-viewmodels.md §5.2).
+            // new .llx tab opens (ui-viewmodels.md §5.2). Every tab (Cnl or
+            // PlainText) has its own ErrorBanner for Open/Save failures
+            // (ui-viewmodels.md §13).
             workspace.TabOpened += tab =>
             {
+                SubscribeLogging(tab.ErrorBanner.Errors, () => logger);
+
                 if (tab is CnlTabViewModel cnl)
                 {
                     SubscribeLogging(cnl.Editor.ValidationErrors, () => logger);
@@ -69,6 +74,7 @@ public partial class App : Application
 
             settings.ConfirmDiscardChangesAsync = () => modal.ShowUnsavedChangesConfirmationAsync();
             settings.CloseRequested = () => workspace.CloseSettingsCommand.Execute(null);
+            about.CloseRequested = () => workspace.CloseAboutCommand.Execute(null);
             settings.RelaunchSucceeded += port =>
             {
                 pipelineService.SetPort(port);
@@ -94,7 +100,7 @@ public partial class App : Application
                 configService.Save(initialConfig with { LastOpenedFolder = path, RecentFolders = recentFolders.Take(5).ToList() });
             };
 
-            var mainWindow = new MainWindow(workspace, settings);
+            var mainWindow = new MainWindow(workspace, settings, about);
             mainWindowRef = mainWindow;
             desktop.MainWindow = mainWindow;
 
