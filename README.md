@@ -279,7 +279,35 @@ Limelight‑X also has an optional desktop UI (`/ui`), a separate Avalonia/.NET 
 
 ---
 
-# 11. License
+# 11. Building & CI
+
+Full details are the authoritative spec at `spec/ux/ui-build-pipeline.md`. Summary below.
+
+## 11.1 CI Build
+
+Every push and pull request to `main` runs the CI workflow (`.github/workflows/ui-ci.yml`), which builds and validates **both** components together in a single job on `windows-latest`:
+
+- **Prepare** — checkout, restore .NET/Cargo caches, validate `Cargo.lock` / `packages.lock.json` are present and committed, restore both components in locked mode, run dependency audits (`cargo audit`, `dotnet list package --vulnerable`)
+- **Compile** — `dotnet build ui/LimelightX.slnx -c Release -warnaserror`, `dotnet format --verify-no-changes`, `cargo build --release --locked`, `cargo fmt --check`, `cargo clippy -- -D warnings`
+- **Test** — `dotnet test`, `cargo test --release --locked`
+- **Package** — `dotnet publish` for `LimelightX.UI`, then `ui/packaging/build-msix.ps1` builds an unsigned MSIX bundling `LimelightX.exe` + `llx.exe`, followed by structural validation of the unpacked MSIX
+- **Publish artifacts** — uploads the `LimelightX.exe` + `llx.exe` bundle and the MSIX as CI artifacts (`limelight-x-bundle-stable`, `limelight-x-msix-stable`)
+
+Tagged pushes matching `v*.*.*` additionally trigger `.github/workflows/ui-release.yml`, which reuses this CI workflow and publishes its artifacts to a GitHub Release (stable channel only).
+
+## 11.2 Manual Testing (Debug) Build
+
+Running the full CI-equivalent build locally just to manually try out a change is unnecessary overhead — it lints, audits, tests, and packages an MSIX. For quick local iteration, use:
+
+```
+./scripts/build-manual-testing.ps1
+```
+
+This builds `/src` (`cargo build`) and `/ui` (`dotnet publish ui/LimelightX.UI.csproj --no-self-contained`) in **Debug** configuration by default (pass `-Configuration Release` for a release build), and stages `LimelightX.UI.exe`, `llx.exe`, and every required runtime dependency (DLLs, `.deps.json`, `.runtimeconfig.json`) together into `target/manual-testing/` so the app can be run from one folder. It does not lint, audit, test, or package — see `spec/ux/ui-build-pipeline.md` §2.5 for the full spec.
+
+---
+
+# 12. License
 
 MIT License.
 

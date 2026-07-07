@@ -6,7 +6,7 @@ The UI (`/ui`) is a separate Avalonia/.NET (C#) project built with the **.NET SD
 The pipeline supports Windows‑only builds, produces MSIX installers, uses semantic versioning, and publishes stable‑channel artifacts.
 
 The pipeline is organized by **workflow**:
-- Local Build Workflow  
+- Local Build Workflow (including a reduced Manual Testing sub‑workflow, §2.5)  
 - CI Build Workflow  
 - Release Build Workflow  
 
@@ -56,6 +56,16 @@ Build artifacts:
 - Generate MSIX installer  
 - Bundle UI executable + CLI server binary  
 - Validate installer structure
+
+## 2.5. Manual Testing (Debug) Build Workflow
+Running the full Local Build Workflow (§2.1–§2.4) — static analysis, dependency audits, tests, and MSIX packaging — is unnecessary overhead when a developer just wants to manually exercise the app after a change. `scripts/build-manual-testing.ps1` provides a reduced, compile‑only workflow for this purpose:
+
+- Builds `/src` via `cargo build` (Debug by default; `-Configuration Release` supported) — produces `llx.exe`  
+- Builds `/ui` via `dotnet publish ui/LimelightX.UI.csproj --no-self-contained` (same configuration) — produces `LimelightX.UI.exe` plus all managed dependencies (DLLs, `.deps.json`, `.runtimeconfig.json`)  
+- Stages both binaries and all required dependencies together into `target/manual-testing/` (Windows paths are case‑insensitive, so this is the same location as `Target/manual-testing` — intentionally a subdirectory of Cargo's own `target/` output root)  
+- Does **not** run static analysis, dependency audits, unit tests, or MSIX packaging — those remain exclusive to the Local Build Workflow (§2.1–§2.4) and CI Build Workflow (§3)
+
+This workflow is local‑only, is never invoked by CI, and is not a substitute for it — it exists solely to let developers manually test their changes without the overhead of the full pipeline.
 
 ---
 
@@ -162,7 +172,9 @@ Build artifacts:
 ## 7.1. Windows‑Only UI Build
 - `LimelightX.UI` targets Windows (`net8.0-windows` or later) and produces `LimelightX.exe`  
 - Avalonia build uses Windows runtime  
-- No macOS or Linux UI builds
+- No macOS or Linux UI builds  
+- `LimelightX.UI.csproj` pins `RuntimeIdentifier=win-x64` (matching the `windows-latest` CI runner) and `SelfContained=false`. Without a pinned RID, `dotnet build`/`publish` stages a `runtimes/{RID}/native/` folder for *every* platform each native-asset package supports (Avalonia, SkiaSharp, HarfBuzzSharp, Tmds.DBus, etc.) — Linux, macOS, and all three Windows architectures — even though only `win-x64` is ever used. Pinning the RID confines native assets to `win-x64` only, flattened directly into the output root instead of a `runtimes/` subfolder; this cut the MSIX from ~195 MB to ~45 MB. Pinning the RID also inserts a `win-x64` segment into the build/publish output path (`ui/bin/<Configuration>/net8.0-windows/win-x64/...`), which `ui/packaging/build-msix.ps1` and `scripts/build-manual-testing.ps1` account for.  
+- `ui/packages.lock.json` must be regenerated (`dotnet restore --force-evaluate`) whenever the RID changes, since the lock file records RID-specific package assets.
 
 ## 7.2. CLI/Server Build
 - `llx.exe` built for Windows via Cargo (the same binary the CLI uses; `llx serve` runs its `/src/api` server mode)  

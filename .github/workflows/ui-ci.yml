@@ -103,7 +103,7 @@ jobs:
 
       # --- Package stage (§3.5) ---
       - name: Publish LimelightX.UI
-        run: dotnet publish ui/LimelightX.UI.csproj -c Release --no-self-contained
+        run: dotnet publish ui/LimelightX.UI.csproj -c Release -r win-x64 --self-contained false
 
       - name: Build MSIX package
         shell: pwsh

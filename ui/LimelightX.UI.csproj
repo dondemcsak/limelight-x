@@ -5,6 +5,23 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <AssemblyName>LimelightX.UI</AssemblyName>
     <RootNamespace>LimelightX.UI</RootNamespace>
+    <!-- ui-build-pipeline.md §7.1: Windows-only, win-x64 CI runners. Listing
+         win-x64 here (plural form) only makes `dotnet restore` capture win-x64
+         assets into packages.lock.json for later publish - it does NOT pin
+         `dotnet build`/`dotnet test` to a RID, so those keep running against
+         whatever RID the host actually is (e.g. win-arm64 on an ARM64 dev
+         machine, win-x64 in CI). The singular <RuntimeIdentifier> form was
+         tried first and pinned build/test to win-x64 unconditionally, which
+         hung `dotnet test` on an ARM64 dev machine (an arm64 test host cannot
+         load the resulting x64-only native SkiaSharp/HarfBuzzSharp/Avalonia
+         libraries, and no x64 emulation was available in that environment).
+         The actual win-x64-only trim (avoiding a runtimes/{RID}/native/ folder
+         per platform for every native-asset package) is applied explicitly via
+         the "-r win-x64" and "self-contained false" publish flags on the
+         commands that produce shipped output (CI's publish step,
+         build-manual-testing.ps1), not here. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <SelfContained>false</SelfContained>
     <Nullable>enable</Nullable>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>

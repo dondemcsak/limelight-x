@@ -28,7 +28,9 @@ $ErrorActionPreference = "Stop"
 
 $packagingDir = "$RepoRoot/ui/packaging"
 $layoutDir = "$packagingDir/layout"
-$publishDir = "$RepoRoot/ui/bin/$Configuration/net8.0-windows/publish"
+# ui-build-pipeline.md §7.1: LimelightX.UI.csproj pins RuntimeIdentifier=win-x64,
+# which inserts a RID segment into the publish output path.
+$publishDir = "$RepoRoot/ui/bin/$Configuration/net8.0-windows/win-x64/publish"
 
 if (-not (Test-Path $LlxExePath)) {
     throw "llx.exe not found at '$LlxExePath' - build /src first (cargo build --release)."
