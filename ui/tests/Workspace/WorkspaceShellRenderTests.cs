@@ -3,6 +3,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using LimelightX.UI.Components;
 using LimelightX.UI.Services;
+using LimelightX.UI.Services.Dto;
 using LimelightX.UI.ViewModels.Tabs;
 using LimelightX.UI.ViewModels.Workspace;
 using Xunit;
@@ -141,6 +142,46 @@ public class WorkspaceShellRenderTests
             workspace.OpenOrFocusTabCommand.Execute(workspace.FileTree.Nodes.Single(n => n.FullPath == txtPath));
             Dispatcher.UIThread.RunJobs();
             Assert.IsType<PlainTextTabViewModel>(workspace.ActiveTab);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task CnlTabView_ProgressIndicator_ShowsWhileRunningAndHidesOnCompletion()
+    {
+        var root = CreateTempFolderWithFiles(out var llxPath, out _);
+        try
+        {
+            var eventStream = new TestDoubles.FakeEventStreamService();
+            var lockService = new ExecutionLockService();
+            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService);
+            var workspace = new WorkspaceViewModel(tabFactory, new FakeFilePickerService(), new FakeModalService(), lockService);
+            workspace.OpenRoot(root);
+            workspace.OpenOrFocusTabCommand.Execute(workspace.FileTree.Nodes.Single(n => n.FullPath == llxPath));
+            var tab = (CnlTabViewModel)workspace.ActiveTab!;
+
+            var view = new CnlTabView { DataContext = tab };
+            var window = new Window { Content = view, Width = 900, Height = 700 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            var indicator = view.FindControl<LoadingIndicator>("ProgressIndicator")!;
+            Assert.False(indicator.IsLoading);
+
+            await tab.Editor.RunCommand.ExecuteAsync(null);
+            eventStream.Raise(TestDoubles.FakeEventStreamService.MakeEvent("pipeline_started", "corr"));
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(indicator.IsLoading);
+
+            eventStream.Raise(TestDoubles.FakeEventStreamService.MakeEvent(
+                "final_result_ready",
+                "corr",
+                new RunData { FinalResult = new FinalResult { Text = "done", ContentType = ResultContentType.Plain } }));
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(indicator.IsLoading);
         }
         finally
         {

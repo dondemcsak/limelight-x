@@ -188,6 +188,13 @@ This section is the authoritative source for execution‑lock mechanics (when Ru
 **SO THAT** the user can begin a new execution or open Settings  
 **AS MEASURED BY** `IExecutionLockService.IsAnyExecutionRunning == false` and every tab's `CanExecute == true`
 
+## 7.6 Progress Indicator Stays Tab‑Scoped, Not App‑Wide
+**GIVEN** tab A is executing and tab B is open and idle  
+**WHEN** tab A's execution is in flight  
+**THEN** tab A's progress indicator is visible while tab B's Run/Explain are disabled (per §7.2) but tab B's own progress indicator remains hidden  
+**SO THAT** users are never misled into thinking work is happening in a tab where nothing is running  
+**AS MEASURED BY** tab A's `IsRunning == true` with its indicator visible, and tab B's `IsRunning == false` with its indicator hidden, simultaneously with tab B's `CanExecute == false`
+
 ---
 
 # 8. Error Scenarios

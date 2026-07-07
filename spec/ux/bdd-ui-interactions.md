@@ -86,6 +86,20 @@ All scenarios assume:
 **SO THAT** the user cannot trigger a new execution mid‑pipeline  
 **AS MEASURED BY** `IExecutionLockService.IsAnyExecutionRunning == true` throughout the entire event sequence
 
+## 3.4 Progress Indicator Shows While This Tab Executes
+**GIVEN** a `.llx` tab is idle  
+**WHEN** the user clicks Run or Explain and `pipeline_started` arrives for that tab  
+**THEN** that tab's progress indicator becomes visible  
+**SO THAT** the user gets immediate feedback that their click registered  
+**AS MEASURED BY** that tab's `PipelineExecutionViewModel.IsRunning == true` and its `LoadingIndicator.IsLoading == true`
+
+## 3.5 Progress Indicator Hides When This Tab's Execution Ends
+**GIVEN** that tab's progress indicator is visible  
+**WHEN** its terminal event arrives (`final_result_ready`, `pipeline_failed`, or — for Explain — `normalized_ast_generated`)  
+**THEN** the progress indicator hides in that tab at the same moment Run/Explain re‑enable app‑wide  
+**SO THAT** the indicator never outlives the actual execution  
+**AS MEASURED BY** `IsRunning == false` coinciding with `IExecutionLockService.IsAnyExecutionRunning == false`
+
 ---
 
 # 4. Inspector Interactions (Incremental Updates)

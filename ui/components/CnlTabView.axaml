@@ -35,6 +35,11 @@
                              MinHeight="200"
                              Margin="0,0,0,12" />
 
+      <components:LoadingIndicator x:Name="ProgressIndicator"
+                                    IsLoading="{Binding PipelineExecution.IsRunning}"
+                                    Text="Running..."
+                                    Margin="0,0,0,12" />
+
       <components:RawAstPanel DataContext="{Binding PipelineExecution.RawAstViewModel}" />
       <components:NormalizedAstPanel DataContext="{Binding PipelineExecution.NormalizedAstViewModel}" />
       <components:IrPanel DataContext="{Binding PipelineExecution.IrViewModel}" />

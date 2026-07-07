@@ -45,6 +45,7 @@ The UI defines the following components:
 - `CnlTabView`
 - `Editor`
 - `PlainTextEditor`
+- `LoadingIndicator`
 - `InspectorPanel`
 - `RawAstPanel`
 - `NormalizedAstPanel`
@@ -143,15 +144,18 @@ Each component is declarative and state‑derived.
 --------------------
 Editor (CnlEditor)
 --------------------
+LoadingIndicator (§4.4)
+--------------------
 Execution Panel (Inspector Panels, §5)
 ```
 
 ### Bindings
 - `CnlTabViewModel.Editor` (§4.2)
-- `CnlTabViewModel.PipelineExecution` (drives §5 below, scoped to this tab)
+- `CnlTabViewModel.PipelineExecution` (drives §4.4 and §5 below, scoped to this tab)
 
 ### Streaming Rules
 - Both halves belong to the same tab and share its `PipelineExecutionViewModel` instance — there is no separate "Execution Page" to navigate to.
+- The `LoadingIndicator` (§4.4) between the editor and the execution panel shows while `PipelineExecution.IsRunning` is `true` (from `pipeline_started` until this tab's terminal event) and is hidden otherwise. It is scoped to this tab only — it does not appear in other open tabs even though their Run/Explain buttons are also disabled by the app-wide lock during this time (see `ui-viewmodels.md` §7, `bdd-ui-navigation.md` §7.6).
 
 ---
 
@@ -188,6 +192,25 @@ Execution Panel (Inspector Panels, §5)
 
 ### Streaming Rules
 - None — this component has no relationship to the streaming pipeline.
+
+---
+
+## 4.4 LoadingIndicator
+
+### Responsibilities
+- A small, generic reusable control: an indeterminate spinner plus a text label.
+- Shows or hides as a whole based on a single bound flag — no independent state of its own.
+
+### Bindings
+- `IsLoading : bool`
+- `Text : string`
+
+### Usages
+- In `CnlTabView` (§4.1): bound to `PipelineExecutionViewModel.IsRunning`, `Text="Running..."`, positioned between the CNL editor and the execution panel.
+- In the Settings modal (`ui-routing-navigation.md` §2, §8; see also `ui-components.md` §7.1): bound to `SettingsViewModel.IsApplying`, `Text="Applying settings..."`.
+
+### Streaming Rules
+- Purely a display of its bound `IsLoading` flag — has no streaming logic of its own; each caller is responsible for deriving `IsLoading` from its own state (this tab's `IsRunning` for `CnlTabView`, `IsApplying` for the Settings modal).
 
 ---
 
@@ -354,6 +377,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 
 ### Streaming Rules
 - The Settings gear that opens this modal is disabled while `IExecutionLockService.IsAnyExecutionRunning == true` (§3.4).
+- While settings are being applied, a `LoadingIndicator` (§4.4) is shown, bound to `IsApplying`, `Text="Applying settings..."`.
 
 ---
 

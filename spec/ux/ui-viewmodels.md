@@ -196,7 +196,7 @@ There is no `TraceCommand`. The Trace button and its distinct trigger are remove
 
 ### State
 - `CorrelationId : string`
-- `IsRunning : bool` — this tab's own execution-state flag (see §6 for how it differs from the app‑wide lock).
+- `IsRunning : bool` — this tab's own execution-state flag (see §6 for how it differs from the app‑wide lock). Drives this tab's execution progress indicator (`ui-components.md` §4.4) — shown while `true`, hidden while `false`. This is a per-tab signal, distinct from the app-wide `IExecutionLockService.IsAnyExecutionRunning` that gates `CanExecute` on every tab (§6).
 - `HasErrors : bool`
 - Inspector ViewModels (this tab's own instances):
   - `RawAst : RawAstViewModel`
