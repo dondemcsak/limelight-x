@@ -7,15 +7,55 @@
 //! per-binary warnings.
 #![allow(dead_code)]
 
+mod subprocess;
 mod ws_client;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use limelight_x::api;
+use limelight_x::error::Error;
 use limelight_x::model::mock::MockModelAdapter;
 use limelight_x::model::ModelAdapter;
 
+#[allow(unused_imports)]
+pub use subprocess::spawn_llx_serve;
 pub use ws_client::TestWsClient;
+
+/// A `ModelAdapter` that sleeps for a configurable delay before returning a
+/// fixed response, recording each invocation's `Instant` — proves a
+/// pipeline-stage event was observed strictly before the model was ever
+/// called (spec/bdd-api.md §4, "Trace pipeline stage events are emitted
+/// incrementally"). Unlike `CapturingAdapter`'s `RefCell`, this is `Sync`, so
+/// it can be wrapped in `Arc<dyn ModelAdapter + Send + Sync>` for `AppState`.
+pub struct DelayedAdapter {
+    response: String,
+    delay: Duration,
+    invocations: Mutex<Vec<Instant>>,
+}
+
+impl DelayedAdapter {
+    pub fn new(response: impl Into<String>, delay: Duration) -> Self {
+        Self {
+            response: response.into(),
+            delay,
+            invocations: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// The `Instant` of this adapter's first `complete()` call, if any.
+    pub fn first_invocation(&self) -> Option<Instant> {
+        self.invocations.lock().unwrap().first().copied()
+    }
+}
+
+impl ModelAdapter for DelayedAdapter {
+    fn complete(&self, _prompt: &str) -> Result<String, Error> {
+        self.invocations.lock().unwrap().push(Instant::now());
+        std::thread::sleep(self.delay);
+        Ok(self.response.clone())
+    }
+}
 
 /// Starts `api::serve_on` on an OS-assigned ephemeral port in a background
 /// task, using a mock model adapter that always returns `mock_response`.

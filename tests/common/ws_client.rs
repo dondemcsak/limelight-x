@@ -81,6 +81,18 @@ impl TestWsClient {
         serde_json::from_str(&text).expect("event frame must be valid JSON")
     }
 
+    /// Reads one WebSocket text frame, parsed as JSON, alongside the
+    /// `Instant` at which the frame finished arriving — for tests asserting
+    /// relative timing/ordering across events (spec/bdd-api.md §4).
+    pub async fn recv_json_timed(&mut self) -> (std::time::Instant, serde_json::Value) {
+        let text = self.recv_text().await;
+        let now = std::time::Instant::now();
+        (
+            now,
+            serde_json::from_str(&text).expect("event frame must be valid JSON"),
+        )
+    }
+
     async fn recv_text(&mut self) -> String {
         loop {
             let mut header = [0u8; 2];

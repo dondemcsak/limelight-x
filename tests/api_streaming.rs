@@ -18,6 +18,13 @@ async fn pipeline_failed_short_circuits_trace_sequence() {
     let started = ws.recv_json().await;
     assert_eq!(started["event_type"], "pipeline_started");
 
+    // Raw AST parsing succeeds ("Summarize it." parses fine) — normalization
+    // is what fails, so raw_ast_generated is still observed before the
+    // sequence short-circuits (spec/api.md §2.1 "Event Emission Timing").
+    let raw = ws.recv_json().await;
+    assert_eq!(raw["event_type"], "raw_ast_generated");
+    assert_eq!(raw["correlation_id"], correlation_id);
+
     let failed = ws.recv_json().await;
     assert_eq!(failed["event_type"], "pipeline_failed");
     assert_eq!(failed["correlation_id"], correlation_id);

@@ -11,49 +11,86 @@ use serde_json::json;
 use limelight_x::error::Error;
 use limelight_x::model::ModelAdapter;
 
-#[tokio::test]
-async fn server_starts_and_responds() {
-    let base_url = common::spawn_test_server("ok").await;
-    let (status, body) = common::post_json(
-        &base_url,
-        "/explain",
-        json!({ "source": "Load the article from \"a.txt\"." }),
-    )
-    .await;
-    assert_eq!(status, 200);
-    assert_eq!(body["accepted"], true);
-    assert!(body["correlation_id"].is_string());
+// `cmd_serve`/`main`/`run` live in the `llx` binary target, not the
+// `limelight_x` library, so these four scenarios spawn the real compiled
+// binary as a subprocess (via `common::spawn_llx_serve` / `Command`
+// directly) rather than calling library functions in-process — that's the
+// only way to observe the actual port-binding, startup-line, and fail-fast
+// behavior `llx serve` exhibits. None of these ever call `/run` or `/trace`
+// against a real `ClaudeModelAdapter` (CLAUDE.md §6) — only `/explain`,
+// which never invokes the model adapter.
+
+#[test]
+fn llx_serve_starts_and_binds_default_port() {
+    let (_child, startup_line) = common::spawn_llx_serve(&[]);
+    assert!(
+        startup_line.contains("127.0.0.1:4747"),
+        "unexpected startup line: {startup_line}"
+    );
+
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .post("http://127.0.0.1:4747/explain")
+        .json(&json!({ "source": "Load the article from \"a.txt\"." }))
+        .send()
+        .expect("request should reach the server");
+    assert_eq!(response.status().as_u16(), 200);
 }
 
-#[tokio::test]
-async fn starting_on_an_occupied_port_fails() {
+#[test]
+fn llx_serve_respects_custom_port() {
+    let (_child, startup_line) = common::spawn_llx_serve(&["--port", "9001"]);
+    assert!(
+        startup_line.contains("127.0.0.1:9001"),
+        "unexpected startup line: {startup_line}"
+    );
+}
+
+#[test]
+fn llx_serve_port_in_use_fails_fast_at_process_level() {
     // Reserve a port with a plain std listener first.
     let occupied = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = occupied.local_addr().unwrap().port();
 
-    let adapter: Arc<dyn ModelAdapter + Send + Sync> =
-        Arc::new(limelight_x::model::mock::MockModelAdapter::new("unused"));
-    let result = limelight_x::api::serve(port, adapter).await;
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_llx"))
+        .args(["serve", "--port", &port.to_string()])
+        .env("ANTHROPIC_API_KEY", "sk-test-dummy-key-not-a-real-key")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .expect("failed to spawn the llx binary");
+
+    drop(occupied);
 
     assert!(
-        result.is_err(),
-        "expected a bind failure on an already-occupied port"
+        !output.status.success(),
+        "llx serve must exit non-zero when the port is already in use"
     );
-    drop(occupied);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&port.to_string()),
+        "expected the error message to name the port {port}, got: {stderr}"
+    );
 }
 
 #[test]
-fn missing_api_key_fails_fast() {
-    // Save/restore so this doesn't leak into other tests in this binary.
-    let previous = std::env::var("ANTHROPIC_API_KEY").ok();
-    std::env::remove_var("ANTHROPIC_API_KEY");
+fn llx_serve_missing_api_key_fails_fast_at_process_level() {
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_llx"));
+    cmd.args(["serve", "--port", "0"])
+        .env_remove("ANTHROPIC_API_KEY")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let output = cmd.output().expect("failed to spawn the llx binary");
 
-    let result = limelight_x::model::claude::ClaudeModelAdapter::new();
-    assert!(matches!(result, Err(Error::MissingApiKey)));
-
-    if let Some(value) = previous {
-        std::env::set_var("ANTHROPIC_API_KEY", value);
-    }
+    assert!(
+        !output.status.success(),
+        "llx serve must exit non-zero when ANTHROPIC_API_KEY is unset"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+    assert!(
+        stderr.contains("missing environment variable: anthropic_api_key"),
+        "unexpected stderr: {stderr}"
+    );
 }
 
 /// Records the wall-clock interval of each `complete()` call, sleeping

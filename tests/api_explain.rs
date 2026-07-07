@@ -45,6 +45,14 @@ async fn explain_streams_normalization_error_without_evaluating() {
     let started = ws.recv_json().await;
     assert_eq!(started["event_type"], "pipeline_started");
 
+    // Raw AST parsing succeeds ("Summarize it." parses fine) — normalization
+    // is what fails, so raw_ast_generated is still observed before the
+    // failure (spec/bdd-api.md §3, "Explain surfaces normalization errors
+    // without evaluating").
+    let raw = ws.recv_json().await;
+    assert_eq!(raw["event_type"], "raw_ast_generated");
+    assert_eq!(raw["correlation_id"], correlation_id);
+
     let failed = ws.recv_json().await;
     assert_eq!(failed["event_type"], "pipeline_failed");
     assert_eq!(failed["correlation_id"], correlation_id);

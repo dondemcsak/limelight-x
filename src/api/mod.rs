@@ -35,7 +35,12 @@ pub type SharedState = Arc<AppState>;
 /// spec/api.md §8.
 pub async fn serve(port: u16, adapter: Arc<dyn ModelAdapter + Send + Sync>) -> Result<(), Error> {
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
+        Error::IoError(std::io::Error::new(
+            e.kind(),
+            format!("failed to bind {addr}: {e}"),
+        ))
+    })?;
     println!("Listening on http://{addr}");
     serve_on(listener, adapter).await
 }
