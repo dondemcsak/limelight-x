@@ -104,56 +104,58 @@ All scenarios assume:
 
 # 4. Inspector Interactions (Incremental Updates)
 
-## 4.1 Raw AST Appears
-**GIVEN** execution is running  
+All six panels are rendered from the moment the tab opens, starting `IsCollapsed == true` (`ui-components.md` §5.1). "Auto-expands" below means `IsCollapsed` transitions to `false`; the panel is never inserted or removed from the layout.
+
+## 4.1 Raw AST Auto-Expands
+**GIVEN** execution is running and RawAstPanel is collapsed  
 **WHEN** `raw_ast_generated` arrives  
-**THEN** RawAstPanel becomes visible  
+**THEN** RawAstPanel auto-expands  
 **SO THAT** the user sees the first pipeline stage  
-**AS MEASURED BY** `RawAstViewModel.AstNodes.Count > 0`
+**AS MEASURED BY** `RawAstViewModel.IsCollapsed == false` and `RawAstViewModel.AstNodes.Count > 0`
 
-## 4.2 Normalized AST Appears
-**GIVEN** raw AST is visible  
+## 4.2 Normalized AST Auto-Expands
+**GIVEN** raw AST is expanded  
 **WHEN** `normalized_ast_generated` arrives  
-**THEN** NormalizedAstPanel becomes visible  
+**THEN** NormalizedAstPanel auto-expands  
 **SO THAT** the user sees normalized structure  
-**AS MEASURED BY** `NormalizedAstViewModel.NormalizedNodes.Count > 0`
+**AS MEASURED BY** `NormalizedAstViewModel.IsCollapsed == false` and `NormalizedAstViewModel.NormalizedNodes.Count > 0`
 
-## 4.3 IR Appears
-**GIVEN** normalized AST is visible  
+## 4.3 IR Auto-Expands
+**GIVEN** normalized AST is expanded  
 **WHEN** `ir_generated` arrives  
-**THEN** IrPanel becomes visible  
+**THEN** IrPanel auto-expands  
 **SO THAT** the user sees compiled IR  
-**AS MEASURED BY** `IrViewModel.Operations.Count > 0`
+**AS MEASURED BY** `IrViewModel.IsCollapsed == false` and `IrViewModel.Operations.Count > 0`
 
-## 4.4 Prompts Appear
-**GIVEN** IR is visible  
+## 4.4 Prompts Auto-Expand
+**GIVEN** IR is expanded  
 **WHEN** the first `prompt_generated` arrives  
-**THEN** PromptPanel becomes visible  
+**THEN** PromptPanel auto-expands  
 **SO THAT** the user sees model prompts  
-**AS MEASURED BY** `PromptViewModel.Prompts.Count > 0`
+**AS MEASURED BY** `PromptViewModel.IsCollapsed == false` and `PromptViewModel.Prompts.Count > 0`
 
-## 4.5 Model Outputs Appear
-**GIVEN** prompts are visible  
+## 4.5 Model Outputs Auto-Expand
+**GIVEN** prompts are expanded  
 **WHEN** the first `model_output_generated` arrives  
-**THEN** ModelOutputPanel becomes visible  
+**THEN** ModelOutputPanel auto-expands  
 **SO THAT** the user sees model responses  
-**AS MEASURED BY** `ModelOutputViewModel.Outputs.Count > 0`
+**AS MEASURED BY** `ModelOutputViewModel.IsCollapsed == false` and `ModelOutputViewModel.Outputs.Count > 0`
 
-## 4.7 Multiple Prompt/Output Pairs Accumulate Across a Multi-Step Trace
+## 4.6 Multiple Prompt/Output Pairs Accumulate Across a Multi-Step Trace
 **GIVEN** execution is running for a program with two model-calling operations (e.g. `Summarize` → `Translate`)  
 **WHEN** both `prompt_generated`/`model_output_generated` pairs arrive in order  
-**THEN** `PromptViewModel.Prompts` and `ModelOutputViewModel.Outputs` each grow by one entry per event, without being cleared or reset between the two pairs  
+**THEN** `PromptViewModel.Prompts` and `ModelOutputViewModel.Outputs` each grow by one entry per event, without being cleared or reset between the two pairs, and neither panel re-collapses or re-expands after the first pair  
 **SO THAT** the user sees every model call in a chained transformation, not just the last one  
-**AS MEASURED BY** `PromptViewModel.Prompts.Count == 1` and `ModelOutputViewModel.Outputs.Count == 1` immediately after the first pair, and `PromptViewModel.Prompts.Count == 2` and `ModelOutputViewModel.Outputs.Count == 2` immediately after the second pair, with the first pair's entries still present and unchanged at both checkpoints
+**AS MEASURED BY** `PromptViewModel.Prompts.Count == 1` and `ModelOutputViewModel.Outputs.Count == 1` immediately after the first pair, and `PromptViewModel.Prompts.Count == 2` and `ModelOutputViewModel.Outputs.Count == 2` immediately after the second pair, with the first pair's entries still present and unchanged at both checkpoints, and `IsCollapsed == false` throughout for both panels
 
-## 4.6 Final Result Appears
+## 4.7 Final Result Auto-Expands
 **GIVEN** execution is running  
 **WHEN** `final_result_ready` arrives  
-**THEN** FinalResultPanel becomes visible  
+**THEN** FinalResultPanel auto-expands  
 **SO THAT** the user sees the final pipeline output  
-**AS MEASURED BY** `FinalResultViewModel.ResultText != null`
+**AS MEASURED BY** `FinalResultViewModel.IsCollapsed == false` and `FinalResultViewModel.ResultText != null`
 
-## 4.7 Re‑Enable Buttons App‑Wide Only After Completion or Error
+## 4.8 Re‑Enable Buttons App‑Wide Only After Completion or Error
 **GIVEN** execution is running in some tab  
 **WHEN** either  
 - `final_result_ready` arrives, **or**  
@@ -162,26 +164,49 @@ All scenarios assume:
 **SO THAT** the user can start a new execution (in any tab) after the current one finishes  
 **AS MEASURED BY** `IExecutionLockService.IsAnyExecutionRunning == false` and `CanExecute == true` for Run and Explain on every tab
 
-## 4.8 Awaiting-Model Indicator Shows After a Prompt Is Sent
+## 4.9 Awaiting-Model Indicator Shows After a Prompt Is Sent
 **GIVEN** a trace is running  
 **WHEN** `prompt_generated` arrives  
 **THEN** the awaiting-model indicator (`ui-components.md` §4.4) becomes visible  
-**SO THAT** the user gets feedback during the wait for a model call, since `ModelOutputPanel` itself stays hidden until its first output arrives  
+**SO THAT** the user gets feedback during the wait for a model call, since `ModelOutputPanel` itself stays collapsed until its first output arrives  
 **AS MEASURED BY** `PipelineExecutionViewModel.IsAwaitingModelOutput == true`
 
-## 4.9 Awaiting-Model Indicator Hides When Output Arrives
+## 4.10 Awaiting-Model Indicator Hides When Output Arrives
 **GIVEN** the awaiting-model indicator is visible  
 **WHEN** `model_output_generated` arrives for that operation  
 **THEN** the indicator hides  
 **SO THAT** the user isn't shown a stale "waiting" state once the output is already on screen  
 **AS MEASURED BY** `PipelineExecutionViewModel.IsAwaitingModelOutput == false`
 
+## 4.11 All Panels Reset to Collapsed on a New Run
+**GIVEN** a tab's panels are expanded from a prior run (e.g. all six expanded after a completed trace)  
+**WHEN** the user clicks Run or Explain again and `pipeline_started` arrives  
+**THEN** all six panels collapse immediately, before any new event re-expands them  
+**SO THAT** every run repeats the same closed→auto-expand reveal, regardless of how the previous run left the panels  
+**AS MEASURED BY** `IsCollapsed == true` on all six inspector ViewModels at the moment `pipeline_started` is processed, before any subsequent event arrives
+
+## 4.12 Prompt Panel Auto-Scrolls to the Newest Entry
+**GIVEN** the Prompt panel is expanded and showing one or more prior prompts  
+**WHEN** a new `prompt_generated` event appends another entry  
+**THEN** the panel's content scrolls to reveal the newly appended entry  
+**SO THAT** the user doesn't have to manually scroll to see the latest prompt in a multi-step trace  
+**AS MEASURED BY** the panel's scroll position placing the newest `PromptViewModel.Prompts` entry within the visible viewport immediately after the append, unconditionally (no dependency on prior scroll position)
+
+## 4.13 Model Output Panel Auto-Scrolls to the Newest Entry
+**GIVEN** the Model Output panel is expanded and showing one or more prior outputs  
+**WHEN** a new `model_output_generated` event appends another entry  
+**THEN** the panel's content scrolls to reveal the newly appended entry  
+**SO THAT** the user doesn't have to manually scroll to see the latest output in a multi-step trace  
+**AS MEASURED BY** the panel's scroll position placing the newest `ModelOutputViewModel.Outputs` entry within the visible viewport immediately after the append, unconditionally (no dependency on prior scroll position)
+
 ---
 
 # 5. Collapse/Expand Interactions
 
+Inspector panels are always present in the layout (`ui-components.md` §5.1); collapse/expand toggles `IsCollapsed`, not the panel's presence.
+
 ## 5.1 Collapse Inspector
-**GIVEN** an inspector panel is visible  
+**GIVEN** an inspector panel is expanded  
 **WHEN** the user clicks collapse  
 **THEN** the panel collapses  
 **SO THAT** the UI reduces vertical space  
@@ -203,16 +228,48 @@ All scenarios assume:
 
 ---
 
-# 6. Workspace Interactions
+# 6. Layout & Resize Interactions
 
-## 6.1 Tab Switching Is Never Blocked By Execution
+## 6.1 Dragging the Editor/Panel Splitter Resizes Both Halves
+**GIVEN** a `.llx` tab is open with the editor and execution panel at their current split  
+**WHEN** the user drags the `SplitterControl` (`ui-components.md` §4.5) between the editor and the execution panel  
+**THEN** the editor's and execution panel's heights update to reflect the new split  
+**SO THAT** the user can allocate more or less space to editing versus inspecting results  
+**AS MEASURED BY** `CnlTabViewModel.EditorPaneRatio` changing to match the drag, with the editor and execution panel heights recomputed from it
+
+## 6.2 Editor Shows a Scrollbar Only When Content Overflows
+**GIVEN** the editor's current split allocation is smaller than its `SourceText` content  
+**WHEN** the tab renders (or the split ratio changes such that this becomes true)  
+**THEN** the editor displays a vertical scrollbar on its right edge  
+**SO THAT** the user can reach content that doesn't fit in the current allocation  
+**AS MEASURED BY** the scrollbar's presence tracking exactly whether rendered content height exceeds the editor's current allocated height; no scrollbar when content fits
+
+## 6.3 Dragging a Panel's Handle Trades Height With Its Immediate Neighbor
+**GIVEN** the execution panel shows several expanded inspector panels  
+**WHEN** the user drags one panel's `SplitterControl` handle (on its lower edge)  
+**THEN** that panel's height changes and only its immediate next-neighbor panel below trades height with it (classic two-panel splitter behavior); panels further down are unaffected in size and simply reposition  
+**SO THAT** the user can devote more space to one panel using a familiar, predictable resize interaction  
+**AS MEASURED BY** the dragged panel's `Height` changing by the drag delta, its immediate neighbor's `Height` changing to compensate, panels beyond that neighbor keeping their own `Height` unchanged, and no change to any panel's `IsCollapsed` or content
+
+## 6.4 Panel Resize Does Not Affect Collapse State or Content
+**GIVEN** a panel is being resized via its handle  
+**WHEN** the drag completes  
+**THEN** the panel's `IsCollapsed` state and its displayed content are unchanged from before the drag  
+**SO THAT** resizing is a purely visual/layout action, not a data or expand/collapse action  
+**AS MEASURED BY** `IsCollapsed` and the panel's bound content collection/text being identical before and after the resize
+
+---
+
+# 7. Workspace Interactions
+
+## 7.1 Tab Switching Is Never Blocked By Execution
 **GIVEN** execution is running in some tab  
 **WHEN** the user switches to a different tab, opens a new tab, or closes a different tab  
 **THEN** the action succeeds immediately  
 **SO THAT** the UI remains fully usable during a long‑running execution  
 **AS MEASURED BY** `WorkspaceViewModel.ActiveTab`/`OpenTabs` change as requested, independent of `IExecutionLockService.IsAnyExecutionRunning`
 
-## 6.2 Settings Blocked, Tabs Unaffected, During Execution
+## 7.2 Settings Blocked, Tabs Unaffected, During Execution
 **GIVEN** execution is running in some tab  
 **WHEN** the user clicks the Settings gear icon  
 **THEN** the Settings modal does not open  
@@ -220,21 +277,21 @@ All scenarios assume:
 **SO THAT** only backend-affecting actions are gated, not workspace navigation  
 **AS MEASURED BY** `WorkspaceViewModel.IsSettingsOpen == false` while `ActiveTab` changes freely
 
-## 6.3 Save and Save As Disabled With No Active Tab
+## 7.3 Save and Save As Disabled With No Active Tab
 **GIVEN** no tabs are open  
 **WHEN** the user views the File menu  
 **THEN** Save and Save As are disabled  
 **SO THAT** the user cannot invoke a save with nothing to save  
 **AS MEASURED BY** `SaveCommand.CanExecute == false` and `SaveAsCommand.CanExecute == false` while `WorkspaceViewModel.ActiveTab == null`
 
-## 6.4 Save All Disabled With No Dirty Tabs
+## 7.4 Save All Disabled With No Dirty Tabs
 **GIVEN** one or more tabs are open, all with `IsDirty == false`  
 **WHEN** the user views the File menu  
 **THEN** Save All is disabled  
 **SO THAT** the user cannot invoke a no‑op save  
 **AS MEASURED BY** `SaveAllCommand.CanExecute == false` while no open tab has `IsDirty == true`
 
-## 6.5 Save All Re-Enables When Any Tab Becomes Dirty
+## 7.5 Save All Re-Enables When Any Tab Becomes Dirty
 **GIVEN** Save All is disabled because no tab is dirty  
 **WHEN** the user edits any open tab, setting its `IsDirty` to `true`  
 **THEN** Save All becomes enabled  
@@ -243,23 +300,23 @@ All scenarios assume:
 
 ---
 
-# 7. Error Interactions
+# 8. Error Interactions
 
-## 7.1 Pipeline Failure
+## 8.1 Pipeline Failure
 **GIVEN** execution is running  
 **WHEN** `pipeline_failed` arrives  
 **THEN** global error banner appears  
 **SO THAT** the user sees the failure immediately  
 **AS MEASURED BY** `ErrorBannerViewModel.IsVisible == true`
 
-## 7.2 Inspector Error
+## 8.2 Inspector Error
 **GIVEN** an inspector fails to render  
 **WHEN** an inspector error occurs  
 **THEN** InspectorErrorPanel appears  
 **SO THAT** the user sees the failure context  
 **AS MEASURED BY** `InspectorErrorViewModel.Message != null`
 
-## 7.3 WebSocket Disconnect
+## 8.3 WebSocket Disconnect
 **GIVEN** execution is running  
 **WHEN** WebSocket disconnects  
 **THEN** global error banner appears  
@@ -268,16 +325,16 @@ All scenarios assume:
 
 ---
 
-# 8. Settings Interactions
+# 9. Settings Interactions
 
-## 8.1 Invalid Settings Block Save
+## 9.1 Invalid Settings Block Save
 **GIVEN** the user enters invalid settings  
 **WHEN** they click Save  
 **THEN** Save is blocked  
 **SO THAT** backend remains stable  
 **AS MEASURED BY** `IsValid == false`
 
-## 8.2 Valid Settings Restart Backend
+## 9.2 Valid Settings Restart Backend
 **GIVEN** settings are valid  
 **WHEN** the user clicks Save  
 **THEN** backend restarts  
@@ -286,37 +343,37 @@ All scenarios assume:
 
 ---
 
-# 9. Logging Persistence
+# 10. Logging Persistence
 
-## 9.1 Default Location Write
+## 10.1 Default Location Write
 **GIVEN** no custom `LogPath` is configured  
 **WHEN** a `UiError` is added to any logged collection (`WorkspaceViewModel.Errors`, a tab's `EditorViewModel.ValidationErrors`, a tab's `PipelineExecutionViewModel.Errors`, `SettingsViewModel.Errors`)  
 **THEN** an entry is appended to `%APPDATA%\LimelightX\Limelight-x-log.txt`  
 **SO THAT** diagnostics are recoverable without a custom setup  
 **AS MEASURED BY** the file's contents after the error occurs
 
-## 9.2 Custom LogPath Write
+## 10.2 Custom LogPath Write
 **GIVEN** the user has configured a custom `LogPath`  
 **WHEN** a `UiError` is logged  
 **THEN** the entry is appended to `<LogPath>\Limelight-x-log.txt` instead of the default location  
 **SO THAT** the user's chosen log directory is honored  
 **AS MEASURED BY** the file's contents at `<LogPath>`, and the absence of any new entry at the default location
 
-## 9.3 Append Across Sessions
+## 10.3 Append Across Sessions
 **GIVEN** the log file already contains entries from a previous session  
 **WHEN** the app restarts and a new error is logged  
 **THEN** both the prior and the new entries are present in the file  
 **SO THAT** diagnostic history survives restarts  
 **AS MEASURED BY** the file never being truncated on startup
 
-## 9.4 Write Failure Does Not Block The Original Error
+## 10.4 Write Failure Does Not Block The Original Error
 **GIVEN** the log directory is unwritable  
 **WHEN** a `UiError` occurs  
 **THEN** the app does not crash and no additional user-facing error is raised for the failed write  
 **SO THAT** a logging problem never masks or blocks the real error  
 **AS MEASURED BY** the original error still appearing through its normal UI surface (banner/inline/inspector)
 
-## 9.5 LogPath Change Redirects Immediately
+## 10.5 LogPath Change Redirects Immediately
 **GIVEN** logging is currently active at the default location  
 **WHEN** the user saves a new `LogPath` in Settings  
 **THEN** subsequent entries are appended to the new location  
@@ -325,25 +382,25 @@ All scenarios assume:
 
 ---
 
-# 10. Correlation‑ID Interactions
+# 11. Correlation‑ID Interactions
 
-## 10.1 Ignore Mismatched Events
+## 11.1 Ignore Mismatched Events
 **GIVEN** active correlation ID = `abc-123`  
 **WHEN** an event arrives with `xyz-999`  
 **THEN** UI ignores the event  
 **SO THAT** no cross‑execution contamination occurs  
 **AS MEASURED BY** unchanged inspector state
 
-## 10.2 Reset on New Execution
-**GIVEN** previous execution completed  
+## 11.2 Reset on New Execution
+**GIVEN** previous execution completed, with some panels left expanded  
 **WHEN** new `pipeline_started` arrives  
-**THEN** all inspector ViewModels clear  
-**SO THAT** the UI begins a fresh execution  
-**AS MEASURED BY** empty inspector panels
+**THEN** all inspector ViewModels clear their content and all six panels collapse  
+**SO THAT** the UI begins a fresh execution with the same closed→auto-expand reveal every time  
+**AS MEASURED BY** empty inspector content and `IsCollapsed == true` on all six inspector ViewModels
 
 ---
 
-# 11. Non‑Goals
+# 12. Non‑Goals
 
 These interactions do **not** cover:
 
@@ -352,10 +409,11 @@ These interactions do **not** cover:
 - cancellation  
 - plugin inspectors  
 - nondeterministic animations  
+- "stick to bottom unless scrolled up" auto-scroll tracking for Prompts/Model Outputs (auto-scroll is always unconditional, see §4.12–§4.13)
 
 ---
 
 # Summary
 
 These BDD scenarios define all deterministic user interactions in the Limelight‑X UI under the streaming API.  
-They ensure predictable execution workflows, incremental inspector updates, strict navigation constraints, and robust error handling — all aligned with the Limelight‑X architecture.
+They ensure predictable execution workflows, incremental inspector updates, deterministic layout resizing, strict navigation constraints, and robust error handling — all aligned with the Limelight‑X architecture.

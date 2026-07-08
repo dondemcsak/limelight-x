@@ -6,10 +6,9 @@
              xmlns:inspectors="using:LimelightX.UI.ViewModels.Inspectors"
              mc:Ignorable="d" d:DesignWidth="800"
              x:Class="LimelightX.UI.Components.PromptPanel"
-             x:DataType="inspectors:PromptViewModel"
-             IsVisible="{Binding HasPrompts}">
+             x:DataType="inspectors:PromptViewModel">
 
-  <components:CollapsiblePanel Title="Prompts" IsCollapsed="{Binding IsCollapsed}">
+  <components:CollapsiblePanel x:Name="Panel" Title="Prompts" IsCollapsed="{Binding IsCollapsed}" PanelHeight="{Binding Height}">
     <components:CollapsiblePanel.PanelContent>
       <StackPanel Spacing="8">
         <components:ValidationOverlay Errors="{Binding Errors}" />

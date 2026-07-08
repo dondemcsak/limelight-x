@@ -18,10 +18,10 @@ public class InspectorViewModelTests
     };
 
     [Fact]
-    public void RawAstViewModel_DefaultsToExpanded()
+    public void RawAstViewModel_DefaultsToCollapsed()
     {
         var viewModel = new RawAstViewModel();
-        Assert.False(viewModel.IsCollapsed);
+        Assert.True(viewModel.IsCollapsed);
     }
 
     [Fact]
@@ -37,13 +37,14 @@ public class InspectorViewModelTests
     }
 
     [Fact]
-    public void RawAstViewModel_Reset_ClearsTreeAndErrors()
+    public void RawAstViewModel_Reset_ClearsTreeAndErrorsAndRecollapses()
     {
         var viewModel = new RawAstViewModel
         {
             Tree = MakeNode(),
             RawText = "some text",
             Metadata = new AstMetadata { NodeCount = 3 },
+            IsCollapsed = false,
         };
         viewModel.Errors.Add(new LimelightX.UI.ViewModels.Errors.UiError
         {
@@ -59,12 +60,37 @@ public class InspectorViewModelTests
         Assert.Equal(string.Empty, viewModel.RawText);
         Assert.Null(viewModel.Metadata);
         Assert.Empty(viewModel.Errors);
+        Assert.True(viewModel.IsCollapsed);
     }
 
     [Fact]
-    public void IrViewModel_Reset_ClearsOperations()
+    public void NormalizedAstViewModel_DefaultsToCollapsed()
+    {
+        var viewModel = new NormalizedAstViewModel();
+        Assert.True(viewModel.IsCollapsed);
+    }
+
+    [Fact]
+    public void NormalizedAstViewModel_Reset_Recollapses()
+    {
+        var viewModel = new NormalizedAstViewModel { IsCollapsed = false };
+
+        viewModel.Reset();
+
+        Assert.True(viewModel.IsCollapsed);
+    }
+
+    [Fact]
+    public void IrViewModel_DefaultsToCollapsed()
     {
         var viewModel = new IrViewModel();
+        Assert.True(viewModel.IsCollapsed);
+    }
+
+    [Fact]
+    public void IrViewModel_Reset_ClearsOperationsAndRecollapses()
+    {
+        var viewModel = new IrViewModel { IsCollapsed = false };
         viewModel.Operations.Add(new IrOperation
         {
             Type = "Load",
@@ -76,12 +102,20 @@ public class InspectorViewModelTests
         viewModel.Reset();
 
         Assert.Empty(viewModel.Operations);
+        Assert.True(viewModel.IsCollapsed);
     }
 
     [Fact]
-    public void PromptViewModel_Reset_ClearsPrompts()
+    public void PromptViewModel_DefaultsToCollapsed()
     {
         var viewModel = new PromptViewModel();
+        Assert.True(viewModel.IsCollapsed);
+    }
+
+    [Fact]
+    public void PromptViewModel_Reset_ClearsPromptsAndRecollapses()
+    {
+        var viewModel = new PromptViewModel { IsCollapsed = false };
         viewModel.Prompts.Add(new PromptBlock
         {
             PromptText = "Summarize this",
@@ -91,6 +125,7 @@ public class InspectorViewModelTests
         viewModel.Reset();
 
         Assert.Empty(viewModel.Prompts);
+        Assert.True(viewModel.IsCollapsed);
     }
 
     [Fact]
@@ -111,9 +146,16 @@ public class InspectorViewModelTests
     }
 
     [Fact]
-    public void ModelOutputViewModel_Reset_ClearsOutputs()
+    public void ModelOutputViewModel_DefaultsToCollapsed()
     {
         var viewModel = new ModelOutputViewModel();
+        Assert.True(viewModel.IsCollapsed);
+    }
+
+    [Fact]
+    public void ModelOutputViewModel_Reset_ClearsOutputsAndRecollapses()
+    {
+        var viewModel = new ModelOutputViewModel { IsCollapsed = false };
         viewModel.Outputs.Add(new ModelOutputBlock
         {
             RawText = "output",
@@ -125,6 +167,7 @@ public class InspectorViewModelTests
         viewModel.Reset();
 
         Assert.Empty(viewModel.Outputs);
+        Assert.True(viewModel.IsCollapsed);
     }
 
     [Fact]
@@ -147,17 +190,26 @@ public class InspectorViewModelTests
     }
 
     [Fact]
-    public void FinalResultViewModel_Reset_ClearsResultAndContentType()
+    public void FinalResultViewModel_DefaultsToCollapsed()
+    {
+        var viewModel = new FinalResultViewModel();
+        Assert.True(viewModel.IsCollapsed);
+    }
+
+    [Fact]
+    public void FinalResultViewModel_Reset_ClearsResultAndContentTypeAndRecollapses()
     {
         var viewModel = new FinalResultViewModel
         {
             ResultText = "the answer",
             ContentType = VmResultContentType.Markdown,
+            IsCollapsed = false,
         };
 
         viewModel.Reset();
 
         Assert.Equal(string.Empty, viewModel.ResultText);
         Assert.Equal(VmResultContentType.PlainText, viewModel.ContentType);
+        Assert.True(viewModel.IsCollapsed);
     }
 }

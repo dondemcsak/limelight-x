@@ -11,7 +11,7 @@
              x:Class="LimelightX.UI.Components.IrPanel"
              x:DataType="inspectors:IrViewModel">
 
-  <components:CollapsiblePanel Title="IR" IsCollapsed="{Binding IsCollapsed}">
+  <components:CollapsiblePanel Title="IR" IsCollapsed="{Binding IsCollapsed}" PanelHeight="{Binding Height}">
     <components:CollapsiblePanel.PanelContent>
       <StackPanel Spacing="8">
         <components:ValidationOverlay Errors="{Binding Errors}" />

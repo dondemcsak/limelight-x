@@ -1,0 +1,25 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    Row-resize splitters used in CnlTabView (ui-components.md §4.5): the
+    editor/execution-panel split, and each inspector panel's resize handle.
+    Scoped to the "rowSplitter" class so the pre-existing column-resize
+    Explorer-pane GridSplitter (MainWindow.axaml) is unaffected.
+  -->
+
+  <Style Selector="GridSplitter.rowSplitter">
+    <Setter Property="Background" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="Cursor" Value="SizeNorthSouth" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.12" />
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <Style Selector="GridSplitter.rowSplitter:pointerover">
+    <Setter Property="Background" Value="{StaticResource AccentPrimaryBrush}" />
+  </Style>
+
+</Styles>

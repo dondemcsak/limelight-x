@@ -6,10 +6,9 @@
              xmlns:inspectors="using:LimelightX.UI.ViewModels.Inspectors"
              mc:Ignorable="d" d:DesignWidth="800"
              x:Class="LimelightX.UI.Components.ModelOutputPanel"
-             x:DataType="inspectors:ModelOutputViewModel"
-             IsVisible="{Binding HasOutputs}">
+             x:DataType="inspectors:ModelOutputViewModel">
 
-  <components:CollapsiblePanel Title="Model Outputs" IsCollapsed="{Binding IsCollapsed}">
+  <components:CollapsiblePanel x:Name="Panel" Title="Model Outputs" IsCollapsed="{Binding IsCollapsed}" PanelHeight="{Binding Height}">
     <components:CollapsiblePanel.PanelContent>
       <StackPanel Spacing="8">
         <components:ValidationOverlay Errors="{Binding Errors}" />

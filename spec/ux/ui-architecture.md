@@ -126,7 +126,7 @@ The UI uses a **folder‑explorer + tab‑strip workspace**, replacing the previ
 3. **Tab Strip + Tab Content Area (right pane)**  
    - One tab per open file  
    - When no folder is open, or no tabs are open, shows a welcome/empty state with an "Open Folder" action (this replaces the old Home Page as a destination)  
-   - `.llx` tab content: CNL editor (top) + execution panel (bottom), with **Run** and **Explain** buttons above the editor  
+   - `.llx` tab content: **Run** and **Explain** buttons above the content; below them, a CNL editor (top half) and an execution panel (bottom half) divided by a draggable `SplitterControl` (`ui-components.md` §4.x) that reallocates vertical space between the two halves. The execution panel always renders all six inspector panels (`ui-components.md` §5), initially collapsed — it is not populated incrementally from empty.  
    - Plain text tab content: generic text editor only, no execution split  
    - Tabs are freely switchable, closable (with an unsaved‑changes confirmation for dirty tabs), and reorderable  
    - Tabs created via File > New LLX File / New TXT File are **untitled** — `IsUntitled = true`, no backing `FilePath`, titled `Untitled-N` (shared counter across both file kinds, e.g. `Untitled-1`, `Untitled-2`) — and are not written to disk until Save or Save As (see `ui-viewmodels.md` §3, §5.1)
@@ -246,7 +246,7 @@ ws://127.0.0.1:<port>/events
 
 # 7. Inspector Panels
 
-Inspector panels appear as **collapsible vertical sections** in the bottom half of a `.llx` tab:
+Inspector panels are **always-rendered, collapsible vertical sections**, stacked in the bottom half of a `.llx` tab from the moment the tab opens — they are never absent from the layout, only collapsed:
 
 ```
 Raw AST
@@ -264,17 +264,31 @@ Final Result
 
 ### Streaming Behavior
 
+- All six panels render immediately when the tab opens, each starting `IsCollapsed = true` (closed).  
 - Panels update **incrementally** as events arrive.  
-- Raw AST panel appears when `raw_ast_generated` arrives.  
-- Normalized AST panel appears when `normalized_ast_generated` arrives.  
-- IR panel appears when `ir_generated` arrives.  
-- Prompt and Model Output panels appear when their events arrive.  
-- Final Result panel appears when `final_result_ready` arrives.
-- Since Run now invokes `/trace`, all six panels are reachable from Run; Explain only ever populates Raw AST and Normalized AST (see `ui-data-contracts.md` §2).
+- Raw AST panel auto-expands (`IsCollapsed → false`) when `raw_ast_generated` arrives.  
+- Normalized AST panel auto-expands when `normalized_ast_generated` arrives.  
+- IR panel auto-expands when `ir_generated` arrives.  
+- Prompt and Model Output panels auto-expand on the *first* `prompt_generated`/`model_output_generated` event each; subsequent events for the same execution append without re-triggering the expand transition (the panel is already expanded).  
+- Final Result panel auto-expands when `final_result_ready` arrives.  
+- On `pipeline_started`, all six panels reset to `IsCollapsed = true` before the new execution's events begin arriving — every run repeats the closed→auto-expand reveal, regardless of how the panels were left after the previous run (see `ui-viewmodels.md` §7).  
+- Since Run now invokes `/trace`, all six panels are reachable from Run; Explain only ever populates Raw AST and Normalized AST (see `ui-data-contracts.md` §2). Panels not reached by a given execution simply remain collapsed.
+
+### Resize Behavior
+
+- Each panel has an implementation-chosen default height when expanded (exact values are left to implementation, not fixed by this spec — same treatment as the Explorer pane width, `ui-styling-theming.md` §4.8).  
+- Each panel exposes a drag handle (`SplitterControl`, `ui-components.md` §4.x) on its lower edge. Dragging it trades height only with its immediate next-neighbor panel below (classic two-panel splitter behavior) — panels further down are unaffected in size and simply reposition as the stack reflows; the bottom half's overall scrollable height can grow or shrink as a result.  
+- Resizing a panel never affects its collapsed state, its content, or any other panel's content.  
+- Each panel's content area scrolls vertically (internal scrollbar) when its content exceeds the panel's current height.
+
+### Auto-Scroll Behavior
+
+- The Prompts and Model Output panels scroll their content to reveal the newest appended entry every time a `prompt_generated`/`model_output_generated` event appends a new item — unconditionally, with no tracking of prior scroll position (see `ui-components.md` §5.5–§5.6).
 
 ### Rules
 
 - Panels must be collapsible.  
+- Panels must always be present in the layout, regardless of collapsed state.  
 - Panels must reflect ViewModel state.  
 - Panels must display structured output exactly as streamed by the backend.
 
@@ -308,6 +322,10 @@ The `.llx` editor (CNL editor) must support:
 - Validation must be deterministic.  
 - No nondeterministic UI behavior.
 
+### 8.5 Layout
+- The editor occupies the top half of the `.llx` tab's content area, sized by the tab's editor/panel split ratio (`ui-viewmodels.md` §12), and is separated from the execution panel below it by a draggable `SplitterControl` (`ui-components.md` §4.x).  
+- The editor scrolls internally (vertical scrollbar on the right edge) when `SourceText` exceeds the available height of its current split allocation; the split ratio itself only changes when the user drags the splitter.
+
 Plain text tabs use a separate, generic text editor with none of the above CNL‑specific behavior (see `ui-components.md` §4).
 
 ---
@@ -318,6 +336,8 @@ UI state must be fully derived from ViewModels.
 
 ### Allowed UI State
 - panel collapse/expand  
+- per‑tab editor/panel split ratio  
+- per‑tab, per‑panel resized height  
 - open tabs and tab order  
 - active tab  
 - expanded/collapsed folder tree nodes  

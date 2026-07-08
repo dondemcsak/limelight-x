@@ -6,7 +6,7 @@ using LimelightX.UI.ViewModels.Errors;
 namespace LimelightX.UI.ViewModels.Inspectors;
 
 /// <summary>ui-viewmodels.md §6.3.</summary>
-public partial class IrViewModel : ObservableObject
+public partial class IrViewModel : ObservableObject, IResizablePanelViewModel
 {
     public ObservableCollection<IrOperation> Operations { get; } = [];
 
@@ -17,7 +17,11 @@ public partial class IrViewModel : ObservableObject
     private IrMetadata? _metadata;
 
     [ObservableProperty]
-    private bool _isCollapsed;
+    private bool _isCollapsed = true;
+
+    /// <summary>This panel's current expanded height (ui-viewmodels.md §11), adjusted via its splitter handle in CnlTabView.</summary>
+    [ObservableProperty]
+    private double _height = InspectorPanelDefaults.DefaultHeight;
 
     public ObservableCollection<UiError> Errors { get; } = [];
 
@@ -35,5 +39,6 @@ public partial class IrViewModel : ObservableObject
         RawText = string.Empty;
         Metadata = null;
         Errors.Clear();
+        IsCollapsed = true;
     }
 }

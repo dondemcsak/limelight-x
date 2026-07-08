@@ -153,6 +153,7 @@ Each ViewModel is deterministic and state‑derived.
 - Owns one `EditorViewModel` instance (§6).
 - Owns one `PipelineExecutionViewModel` instance (§7), which in turn owns the six inspector ViewModels (§11) for this tab only.
 - Instantiated when a `.llx` file is opened, **or** when `NewLlxFileCommand` (§3) creates a new untitled tab; disposed (along with its owned `EditorViewModel`/`PipelineExecutionViewModel`/inspectors) when the tab closes.
+- `EditorPaneRatio : double` — this tab's editor/panel split ratio, adjusted by dragging the `SplitterControl` (`ui-components.md` §4.1, §4.5) between the editor and the execution panel. Tab‑scoped, session‑only state (not persisted to disk); default value is left to implementation (`ui-architecture.md` §9).
 
 ### 5.3 PlainTextTabViewModel : TabViewModel
 - Owns one `PlainTextEditorViewModel` instance.
@@ -222,7 +223,7 @@ There is no `TraceCommand`. The Trace button and its distinct trigger are remove
 ### State
 - `CorrelationId : string`
 - `IsRunning : bool` — this tab's own execution-state flag (see §6 for how it differs from the app‑wide lock). Drives this tab's execution progress indicator (`ui-components.md` §4.4) — shown while `true`, hidden while `false`. This is a per-tab signal, distinct from the app-wide `IExecutionLockService.IsAnyExecutionRunning` that gates `CanExecute` on every tab (§6).
-- `IsAwaitingModelOutput : bool` — true from a `prompt_generated` event until the matching `model_output_generated` arrives. Drives a second `LoadingIndicator` (`ui-components.md` §4.4) positioned between `PromptPanel` and `ModelOutputPanel`, since `ModelOutputPanel` itself stays hidden until its first `model_output_generated` (`ui-components.md` §5.6) and would otherwise leave that wait with no visible feedback. Reset to `false` on `pipeline_started`, `final_result_ready`, and `pipeline_failed`.
+- `IsAwaitingModelOutput : bool` — true from a `prompt_generated` event until the matching `model_output_generated` arrives. Drives a second `LoadingIndicator` (`ui-components.md` §4.4) positioned between `PromptPanel` and `ModelOutputPanel`, since `ModelOutputPanel` itself stays collapsed until its first `model_output_generated` (`ui-components.md` §5.6) and would otherwise leave that wait with no visible feedback. Reset to `false` on `pipeline_started`, `final_result_ready`, and `pipeline_failed`.
 - `HasErrors : bool`
 - Inspector ViewModels (this tab's own instances):
   - `RawAst : RawAstViewModel`
@@ -240,6 +241,7 @@ All updates come from streaming events.
 
 #### `pipeline_started`
 - Clear this tab's inspector ViewModels.
+- Reset all six inspector panels' `IsCollapsed` to `true` (re-collapse), regardless of how the previous run left them — every run repeats the closed→auto-expand reveal (`ui-architecture.md` §7, `ui-components.md` §5.1).
 - Set `IsRunning = true`.
 - Set `IsAwaitingModelOutput = false`.
 - Set `HasErrors = false`.
@@ -247,24 +249,31 @@ All updates come from streaming events.
 
 #### `raw_ast_generated`
 - Update `RawAstViewModel`.
-- Expand Raw AST panel automatically.
+- Expand Raw AST panel automatically (`IsCollapsed = false`).
 
 #### `normalized_ast_generated`
 - Update `NormalizedAstViewModel`.
+- Expand Normalized AST panel automatically (`IsCollapsed = false`).
 
 #### `ir_generated`
 - Update `IrViewModel`.
+- Expand IR panel automatically (`IsCollapsed = false`).
 
 #### `prompt_generated`
 - Append the incoming prompt to `PromptViewModel.Prompts`. This event may fire multiple times per execution — once per model-calling IR operation, in program order — so it must append rather than replace the collection.
+- Expand Prompt panel automatically (`IsCollapsed = false`) on the first occurrence of this event in the execution only; later occurrences leave `IsCollapsed` unchanged (already `false`).
+- Scroll the Prompt panel's content to reveal the newly appended entry, unconditionally, on every occurrence (including the first).
 - Set `IsAwaitingModelOutput = true`.
 
 #### `model_output_generated`
 - Append the incoming output to `ModelOutputViewModel.Outputs`. Like `prompt_generated`, this event may fire multiple times per execution and must append rather than replace.
+- Expand Model Output panel automatically (`IsCollapsed = false`) on the first occurrence of this event in the execution only; later occurrences leave `IsCollapsed` unchanged (already `false`).
+- Scroll the Model Output panel's content to reveal the newly appended entry, unconditionally, on every occurrence (including the first).
 - Set `IsAwaitingModelOutput = false`.
 
 #### `final_result_ready`
 - Update `FinalResultViewModel`.
+- Expand Final Result panel automatically (`IsCollapsed = false`).
 - Set `IsRunning = false`.
 - Set `IsAwaitingModelOutput = false`.
 - Release the app‑wide lock via `IExecutionLockService.Release(this tab)`.
@@ -275,6 +284,7 @@ All updates come from streaming events.
 - Set `IsRunning = false`.
 - Set `IsAwaitingModelOutput = false`.
 - Release the app‑wide lock via `IExecutionLockService.Release(this tab)`.
+- Panels that already auto-expanded earlier in this execution (e.g. Raw AST, Normalized AST) remain expanded; panels never reached before the failure remain collapsed.
 
 ### Rules
 - Must ignore events whose `correlation_id` does not match this tab's active execution.
@@ -363,52 +373,61 @@ Each inspector ViewModel is responsible for:
 
 - deterministic state  
 - collapse/expand state  
+- resized height state  
 - formatted display text  
 - incremental updates from streaming events  
 
-Each is instantiated once per `.llx` tab (owned by that tab's `PipelineExecutionViewModel`, §7), not app‑wide.
+Each is instantiated once per `.llx` tab (owned by that tab's `PipelineExecutionViewModel`, §7), not app‑wide. All six are always rendered (`ui-components.md` §5.1) — `IsCollapsed` controls their expand state, never their presence in the layout.
 
 ### 11.1 RawAstViewModel
 State:
 - `AstNodes : ObservableCollection<AstNode>`
-- `IsCollapsed : bool`
+- `IsCollapsed : bool = true` — default on tab open; reset to `true` on every `pipeline_started` (§7)
+- `Height : double` — this panel's current expanded height, adjusted via its `SplitterControl` (`ui-components.md` §4.5, §5.1); default left to implementation
 - `HasErrors : bool` — set when this inspector's data fails to render; backs `InspectorErrorPanel` (`ui-components.md` §6.2) via an `InspectorErrorViewModel`
 
 ### 11.2 NormalizedAstViewModel
 State:
 - `NormalizedNodes : ObservableCollection<NormalizedAstNode>`
-- `IsCollapsed : bool`
+- `IsCollapsed : bool = true`
+- `Height : double`
 - `HasErrors : bool`
 
 ### 11.3 IrViewModel
 State:
 - `Operations : ObservableCollection<IrOperation>`
-- `IsCollapsed : bool`
+- `IsCollapsed : bool = true`
+- `Height : double`
 - `HasErrors : bool`
 
 ### 11.4 PromptViewModel
 State:
 - `Prompts : ObservableCollection<Prompt>` — grows by one entry per `prompt_generated` event (one event per model-calling IR operation), rather than being set all at once.
-- `IsCollapsed : bool`
+- `IsCollapsed : bool = true`
+- `Height : double`
 - `HasErrors : bool`
 
 ### 11.5 ModelOutputViewModel
 State:
 - `Outputs : ObservableCollection<ModelOutput>` — grows by one entry per `model_output_generated` event (one event per model-calling IR operation), rather than being set all at once.
-- `IsCollapsed : bool`
+- `IsCollapsed : bool = true`
+- `Height : double`
 - `HasErrors : bool`
 
 ### 11.6 FinalResultViewModel
 State:
 - `ResultText : string`
 - `ContentType : string`
-- `IsCollapsed : bool`
+- `IsCollapsed : bool = true`
+- `Height : double`
 
 ### Rules
 - Inspector ViewModels must never perform pipeline logic.
 - They must only reflect streamed event data for their owning tab.
 - They must clear state, including `HasErrors`, when `pipeline_started` arrives for their tab.
 - `HasErrors` is set locally by the inspector when it fails to render its own data (e.g. a malformed node it cannot display) — it is independent of `PipelineExecutionViewModel.HasErrors`, which reflects a `pipeline_failed` event. An inspector can have `HasErrors = true` from a local rendering failure even on an otherwise-successful pipeline run.
+- `IsCollapsed` starts `true` when the tab opens and resets to `true` on every `pipeline_started`; it becomes `false` only via the auto-expand rule tied to that inspector's own event (§7) or an explicit user expand/collapse action — never merely because the panel exists in the layout.
+- `Height` is adjusted only by dragging that panel's `SplitterControl` (`ui-components.md` §4.5), which trades height only with the immediate next-neighbor panel below (classic two-panel splitter behavior, `ui-architecture.md` §7) — it is independent of `IsCollapsed` and of every other panel's `Height` beyond that one immediate neighbor.
 
 ---
 
@@ -416,6 +435,8 @@ State:
 
 ### Allowed State
 - collapse/expand  
+- per‑tab editor/panel split ratio (`CnlTabViewModel.EditorPaneRatio`, §5.2)  
+- per‑tab, per‑panel resized height (`Height` on each inspector ViewModel, §11)  
 - open tabs and tab order  
 - active tab  
 - expanded/collapsed folder tree nodes  

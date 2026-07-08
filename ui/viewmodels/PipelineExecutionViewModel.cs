@@ -174,10 +174,12 @@ public partial class PipelineExecutionViewModel : ObservableObject, IDisposable
 
             case "raw_ast_generated":
                 ApplyRawAst(Deserialize<RawAstEventData>(wsEvent).RawAst);
+                RawAstViewModel.IsCollapsed = false;
                 break;
 
             case "normalized_ast_generated":
                 ApplyNormalizedAst(Deserialize<NormalizedAstEventData>(wsEvent).NormalizedAst);
+                NormalizedAstViewModel.IsCollapsed = false;
                 if (_activeKind == PipelineJobKind.Explain)
                 {
                     // /explain never evaluates - this is its terminal event.
@@ -189,20 +191,35 @@ public partial class PipelineExecutionViewModel : ObservableObject, IDisposable
 
             case "ir_generated":
                 ApplyIr(Deserialize<IrEventData>(wsEvent).Ir);
+                IrViewModel.IsCollapsed = false;
                 break;
 
             case "prompt_generated":
                 PromptViewModel.Prompts.Add(Deserialize<PromptEventData>(wsEvent).Prompt);
+                if (PromptViewModel.Prompts.Count == 1)
+                {
+                    // Auto-expand only on the first prompt of this execution -
+                    // later prompts append/auto-scroll without re-triggering
+                    // the expand transition (ui-viewmodels.md §7).
+                    PromptViewModel.IsCollapsed = false;
+                }
+
                 IsAwaitingModelOutput = true;
                 break;
 
             case "model_output_generated":
                 ModelOutputViewModel.Outputs.Add(Deserialize<ModelOutputEventData>(wsEvent).ModelOutput);
+                if (ModelOutputViewModel.Outputs.Count == 1)
+                {
+                    ModelOutputViewModel.IsCollapsed = false;
+                }
+
                 IsAwaitingModelOutput = false;
                 break;
 
             case "final_result_ready":
                 ApplyFinalResult(Deserialize<RunData>(wsEvent).FinalResult);
+                FinalResultViewModel.IsCollapsed = false;
                 IsRunning = false;
                 IsAwaitingModelOutput = false;
                 _executionLock.Release(this);

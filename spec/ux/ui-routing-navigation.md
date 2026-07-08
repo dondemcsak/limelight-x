@@ -138,15 +138,17 @@ When that tab's `EditorViewModel` begins execution:
 ### 5.2 Streaming Events
 The tab that started the execution remains the only one whose inspectors update. No workspace‑area change occurs during streaming — the user may freely switch to, open, or close other tabs while streaming continues in the background for the executing tab.
 
+All six panels are always rendered in the executing tab's execution panel (`ui-components.md` §5.1); "expands" below means `IsCollapsed` transitions to `false`, not that the panel is inserted into the layout.
+
 | Event Type | Effect |
 |------------|--------|
-| `pipeline_started` | Executing tab's inspectors clear; lock held |
-| `raw_ast_generated` | Executing tab's Raw AST panel updates |
-| `normalized_ast_generated` | Executing tab's Normalized AST panel updates |
-| `ir_generated` | Executing tab's IR panel updates |
-| `prompt_generated` | Executing tab's Prompt panel appends the new prompt (may fire multiple times per execution) |
-| `model_output_generated` | Executing tab's Model Output panel appends the new output (may fire multiple times per execution) |
-| `final_result_ready` | Executing tab's Final Result panel updates; lock released |
+| `pipeline_started` | Executing tab's inspectors clear and all six panels re-collapse; lock held |
+| `raw_ast_generated` | Executing tab's Raw AST panel updates and expands |
+| `normalized_ast_generated` | Executing tab's Normalized AST panel updates and expands |
+| `ir_generated` | Executing tab's IR panel updates and expands |
+| `prompt_generated` | Executing tab's Prompt panel appends the new prompt and scrolls to it (may fire multiple times per execution; expands only on the first occurrence) |
+| `model_output_generated` | Executing tab's Model Output panel appends the new output and scrolls to it (may fire multiple times per execution; expands only on the first occurrence) |
+| `final_result_ready` | Executing tab's Final Result panel updates and expands; lock released |
 | `pipeline_failed` | Executing tab's error banner appears; lock released |
 
 ---

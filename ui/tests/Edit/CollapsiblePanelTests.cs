@@ -27,4 +27,20 @@ public class CollapsiblePanelTests
         panel.ToggleCommand.Execute(null);
         Assert.False(panel.IsCollapsed);
     }
+
+    [AvaloniaFact]
+    public void PanelHeight_DefaultsToNaN_MeaningAutoSize()
+    {
+        var panel = new CollapsiblePanel();
+
+        Assert.True(double.IsNaN(panel.PanelHeight));
+    }
+
+    [AvaloniaFact]
+    public void PanelHeight_IsSettable()
+    {
+        var panel = new CollapsiblePanel { PanelHeight = 220 };
+
+        Assert.Equal(220, panel.PanelHeight);
+    }
 }

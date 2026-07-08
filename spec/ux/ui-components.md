@@ -44,6 +44,7 @@ The UI defines the following components:
 - `TabStrip`
 - `TabContentHost`
 - `CnlTabView`
+- `SplitterControl`
 - `Editor`
 - `PlainTextEditor`
 - `LoadingIndicator`
@@ -189,20 +190,28 @@ File                          Help
 ```
 [ Run ] [ Explain ]
 --------------------
-Editor (CnlEditor)
---------------------
-LoadingIndicator (§4.4)
---------------------
-Execution Panel (Inspector Panels, §5)
+Editor (CnlEditor)            ┐
+                               ├ top half, editor/panel split ratio
+--------------------          ┘
+SplitterControl (§4.5)   ← draggable, resizes top/bottom halves
+--------------------          ┐
+LoadingIndicator (§4.4)       │
+--------------------          ├ bottom half
+Execution Panel                │
+  (all six Inspector Panels,  │
+   §5, always rendered,       │
+   initially collapsed)       ┘
 ```
 
 ### Bindings
 - `CnlTabViewModel.Editor` (§4.2)
 - `CnlTabViewModel.PipelineExecution` (drives §4.4 and §5 below, scoped to this tab)
+- `CnlTabViewModel.EditorPaneRatio` (§4.5 `SplitterControl`, `ui-viewmodels.md` §12)
 
 ### Streaming Rules
 - Both halves belong to the same tab and share its `PipelineExecutionViewModel` instance — there is no separate "Execution Page" to navigate to.
 - The `LoadingIndicator` (§4.4) between the editor and the execution panel shows while `PipelineExecution.IsRunning` is `true` (from `pipeline_started` until this tab's terminal event) and is hidden otherwise. It is scoped to this tab only — it does not appear in other open tabs even though their Run/Explain buttons are also disabled by the app-wide lock during this time (see `ui-viewmodels.md` §7, `bdd-ui-navigation.md` §7.6).
+- The execution panel always renders all six inspector panels (§5), each starting collapsed — it is never empty or absent, unlike the editor/`SplitterControl`/`LoadingIndicator` which are structurally fixed but the panels' *content* is incremental.
 
 ---
 
@@ -223,6 +232,10 @@ Execution Panel (Inspector Panels, §5)
 ### Streaming Rules
 - There is no `TraceCommand` binding; the Trace trigger is removed entirely.
 - Inline errors come from `/explain`'s streamed event sequence (`pipeline_started` → `raw_ast_generated` → `normalized_ast_generated`), the same as any other execution — see `ui-viewmodels.md` §6 Live Validation.
+
+### Layout Rules
+- Occupies the top half of the tab's content area (below the Run/Explain buttons), sized by `CnlTabViewModel.EditorPaneRatio` (§4.1, §4.5).
+- Displays a vertical scrollbar on the right edge when `SourceText` exceeds the available height of its current split allocation.
 
 ---
 
@@ -255,32 +268,59 @@ Execution Panel (Inspector Panels, §5)
 ### Usages
 - In `CnlTabView` (§4.1): bound to `PipelineExecutionViewModel.IsRunning`, `Text="Running..."`, positioned between the CNL editor and the execution panel.
 - In the Settings modal (`ui-routing-navigation.md` §2, §8; see also `ui-components.md` §7.1): bound to `SettingsViewModel.IsApplying`, `Text="Applying settings..."`.
-- In `CnlTabView` (§4.1), a second instance: bound to `PipelineExecutionViewModel.IsAwaitingModelOutput`, `Text="Waiting for model response..."`, positioned between `PromptPanel` (§5.5) and `ModelOutputPanel` (§5.6) — gives visible feedback while waiting for a model call's output, since `ModelOutputPanel` itself stays hidden until its first `model_output_generated` event.
+- In `CnlTabView` (§4.1), a second instance: bound to `PipelineExecutionViewModel.IsAwaitingModelOutput`, `Text="Waiting for model response..."`, positioned between `PromptPanel` (§5.5) and `ModelOutputPanel` (§5.6) — gives visible feedback while waiting for a model call's output, since `ModelOutputPanel` itself stays collapsed until its first `model_output_generated` event (§5.6).
 
 ### Streaming Rules
 - Purely a display of its bound `IsLoading` flag — has no streaming logic of its own; each caller is responsible for deriving `IsLoading` from its own state (this tab's `IsRunning` for `CnlTabView`, `IsApplying` for the Settings modal, `IsAwaitingModelOutput` for the second `CnlTabView` instance).
 
 ---
 
+## 4.5 SplitterControl
+
+### Responsibilities
+- A reusable draggable resize handle placed between two adjacent regions.
+- Used in two places: (a) between the Editor and the execution panel in `CnlTabView` (§4.1), reallocating the tab's top/bottom split; (b) on the lower edge of each inspector panel (§5.1), reallocating that panel's height against the panel(s) below it.
+
+### Bindings
+- `Orientation` (horizontal divider for a vertical split, as used in both usages here)
+- Adjacent-region size properties: `CnlTabViewModel.EditorPaneRatio` for usage (a); the relevant `InspectorPanelViewModel.Height` pair for usage (b) — see `ui-viewmodels.md` §12
+
+### Streaming Rules
+- None — purely a layout control, never gated by execution state and never itself a source or consumer of streaming events.
+
+### Rules
+- Dragging never changes collapsed state or content of the regions it resizes.
+- Resizing usage (b) trades height only with the immediate next-neighbor panel below (classic two-panel splitter behavior) — panels further down are unaffected in size and simply reposition; the overall bottom half's scrollable height can grow or shrink as a result.
+
+---
+
 # 5. Inspector Components
 
-Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appears when its event arrives.
+Each inspector is a collapsible panel, scoped to a single `.llx` tab, always rendered from the moment the tab opens (starting `IsCollapsed = true`), that auto-expands when its first relevant event arrives.
 
 ## 5.1 InspectorPanel (Base Component)
 
 ### Responsibilities
 - Provides shared structure for all inspectors.
 - Handles collapse/expand behavior.
+- Handles resize behavior (this panel's height) and internal content scrolling.
 
 ### Bindings
-- `IsCollapsed`  
+- `IsCollapsed` (default `true` — panel starts closed when the tab opens, see `ui-viewmodels.md` §11)
 - `Title`  
 - `HasErrors`  
 - `ErrorMessage`  
+- `Height` (this panel's current expanded height, adjusted via its `SplitterControl` handle, §4.5)
+
+### Layout Rules
+- Always rendered in the bottom half of the tab, from the moment the tab opens — never inserted or removed from the layout, regardless of `IsCollapsed`.
+- Has an implementation-chosen default `Height` when expanded (exact value left to implementation, not fixed by this spec — see `ui-architecture.md` §7 Resize Behavior).
+- Exposes a `SplitterControl` (§4.5) on its lower edge; dragging it trades height only with its immediate next-neighbor panel below (classic two-panel splitter behavior) — other panels are unaffected in size and simply reposition as the stack reflows.
+- Its content area scrolls vertically (scrollbar on the right edge) when content exceeds the panel's current `Height`.
 
 ### Streaming Rules
-- Inspector appears only when its ViewModel receives data.  
-- Inspector clears on `pipeline_started` (for this tab).
+- Inspector auto-expands (`IsCollapsed` → `false`) only when its ViewModel receives its first relevant data for the current execution.  
+- Inspector clears its content and resets `IsCollapsed` to `true` on `pipeline_started` (for this tab) — see `ui-viewmodels.md` §7.
 
 ---
 
@@ -294,7 +334,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 - `IsCollapsed`
 
 ### Streaming Rules
-- Appears on `raw_ast_generated`.
+- Auto-expands (`IsCollapsed` → `false`) on `raw_ast_generated`. The panel itself is always rendered, starting collapsed (§5.1).
 
 ---
 
@@ -308,7 +348,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 - `IsCollapsed`
 
 ### Streaming Rules
-- Appears on `normalized_ast_generated`.
+- Auto-expands (`IsCollapsed` → `false`) on `normalized_ast_generated`. The panel itself is always rendered, starting collapsed (§5.1).
 
 ---
 
@@ -322,7 +362,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 - `IsCollapsed`
 
 ### Streaming Rules
-- Appears on `ir_generated`. Reachable only via Run (`/trace`); Explain (`/explain`) never populates this panel.
+- Auto-expands (`IsCollapsed` → `false`) on `ir_generated`. The panel itself is always rendered, starting collapsed (§5.1). Reachable only via Run (`/trace`); Explain (`/explain`) never populates this panel, which simply remains collapsed for an Explain execution.
 
 ---
 
@@ -336,7 +376,8 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 - `IsCollapsed`
 
 ### Streaming Rules
-- Appears on the first `prompt_generated` event; subsequent `prompt_generated` events append to `PromptViewModel.Prompts` without hiding or re-showing the panel. Never appears if the trace has zero model-calling operations. Reachable only via Run.
+- Auto-expands (`IsCollapsed` → `false`) on the first `prompt_generated` event; subsequent `prompt_generated` events append to `PromptViewModel.Prompts` without re-collapsing or re-expanding the panel. The panel itself is always rendered, starting collapsed (§5.1), and simply stays collapsed if the trace has zero model-calling operations. Reachable only via Run.
+- On every appended entry (including the one that triggers the first auto-expand), the panel scrolls its content to reveal the newest entry, unconditionally — no scroll-position tracking (see `ui-architecture.md` §7 Auto-Scroll Behavior).
 
 ---
 
@@ -351,7 +392,8 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 - `IsCollapsed`
 
 ### Streaming Rules
-- Appears on the first `model_output_generated` event; subsequent `model_output_generated` events append to `ModelOutputViewModel.Outputs` without hiding or re-showing the panel. Never appears if the trace has zero model-calling operations. Reachable only via Run.
+- Auto-expands (`IsCollapsed` → `false`) on the first `model_output_generated` event; subsequent `model_output_generated` events append to `ModelOutputViewModel.Outputs` without re-collapsing or re-expanding the panel. The panel itself is always rendered, starting collapsed (§5.1), and simply stays collapsed if the trace has zero model-calling operations. Reachable only via Run.
+- On every appended entry (including the one that triggers the first auto-expand), the panel scrolls its content to reveal the newest entry, unconditionally — no scroll-position tracking (see `ui-architecture.md` §7 Auto-Scroll Behavior).
 
 ---
 
@@ -366,7 +408,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 - `IsCollapsed`
 
 ### Streaming Rules
-- Appears on `final_result_ready`. Reachable only via Run.
+- Auto-expands (`IsCollapsed` → `false`) on `final_result_ready`. The panel itself is always rendered, starting collapsed (§5.1). Reachable only via Run.
 
 ---
 
@@ -455,6 +497,8 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, that appea
 - deterministic rendering  
 - incremental updates  
 - stable ordering  
+- panel/pane resizing via `SplitterControl` (§4.5)  
+- deterministic auto-scroll to the newest entry (PromptPanel, ModelOutputPanel; §5.5–§5.6)  
 
 ### Forbidden Behavior
 - nondeterministic animations  
@@ -476,7 +520,11 @@ Each component must be tested for:
 - correct error rendering  
 - correct execution lock behavior (app‑wide disable/enable, scoped per‑tab results)  
 - correct MenuBar bindings and item enablement (New/Open always enabled, Save/Save As require an active tab, Save All requires a dirty tab, Settings gated by execution lock, About never gated)  
-- correct About modal rendering (app name, description, version, GitHub link)
+- correct About modal rendering (app name, description, version, GitHub link)  
+- correct editor/panel split resize via `SplitterControl` (§4.5), including the editor's internal scrollbar appearing only when content overflows its current allocation  
+- correct panel accordion resize (dragging one panel's `SplitterControl` trades height only with its immediate next-neighbor panel below; other panels reposition without resizing)  
+- correct auto-expand-on-first-event behavior for all six inspector panels, and correct re-collapse of all six on `pipeline_started`  
+- correct auto-scroll-to-newest-entry behavior for PromptPanel and ModelOutputPanel on every appended entry
 
 ---
 

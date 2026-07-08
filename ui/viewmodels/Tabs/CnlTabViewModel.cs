@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using LimelightX.UI.Services;
 
 namespace LimelightX.UI.ViewModels.Tabs;
@@ -11,7 +12,7 @@ namespace LimelightX.UI.ViewModels.Tabs;
 /// PipelineExecution is simpler than the old app-wide Func-wiring done in
 /// App.axaml.cs, since it's naturally 1:1 per tab now.
 /// </summary>
-public sealed class CnlTabViewModel : TabViewModel
+public sealed partial class CnlTabViewModel : TabViewModel
 {
     public CnlTabViewModel(
         string filePath,
@@ -52,6 +53,14 @@ public sealed class CnlTabViewModel : TabViewModel
     public EditorViewModel Editor { get; }
 
     public PipelineExecutionViewModel PipelineExecution { get; }
+
+    /// <summary>
+    /// This tab's editor/execution-panel split ratio (ui-viewmodels.md §5.2),
+    /// adjusted by dragging the splitter in CnlTabView. Tab-scoped,
+    /// session-only state - not persisted to disk.
+    /// </summary>
+    [ObservableProperty]
+    private double _editorPaneRatio = 0.5;
 
     private void OnEditorPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {

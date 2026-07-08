@@ -45,10 +45,11 @@ The UI requires the following test suites:
 3. **Streaming Tests**
 4. **Inspector Tests**
 5. **Tab & Workspace Tests**
-6. **Error‑Handling Tests**
-7. **Settings Tests**
-8. **Execution Workflow Tests**
-9. **Logging Tests**
+6. **Layout & Resize Tests**
+7. **Error‑Handling Tests**
+8. **Settings Tests**
+9. **Execution Workflow Tests**
+10. **Logging Tests**
 
 Each suite is described below.
 
@@ -170,23 +171,37 @@ Simulate disconnect mid‑pipeline:
 
 # 6. Inspector Tests
 
+All six inspector panels are always rendered from tab-open, starting `IsCollapsed == true`; "auto-expands" below means `IsCollapsed` transitions to `false`, not that the panel is inserted into the layout.
+
 Each inspector must be tested for:
 
 ### 6.1 Incremental Updates
-- Raw AST appears only after `raw_ast_generated`.  
-- Normalized AST appears only after `normalized_ast_generated`.  
-- IR appears only after `ir_generated`.  
-- Prompts appear after the first `prompt_generated`; the collection's count increments with each subsequent `prompt_generated` rather than being fixed after the first.  
-- Model outputs appear after the first `model_output_generated`; the collection's count increments with each subsequent `model_output_generated` rather than being fixed after the first.  
-- Final result appears only after `final_result_ready`.
+- Raw AST panel auto-expands only after `raw_ast_generated`.  
+- Normalized AST panel auto-expands only after `normalized_ast_generated`.  
+- IR panel auto-expands only after `ir_generated`.  
+- Prompt panel auto-expands after the first `prompt_generated`; the collection's count increments with each subsequent `prompt_generated` rather than being fixed after the first, and the panel does not re-collapse or re-expand on subsequent events.  
+- Model Output panel auto-expands after the first `model_output_generated`; the collection's count increments with each subsequent `model_output_generated` rather than being fixed after the first, and the panel does not re-collapse or re-expand on subsequent events.  
+- Final Result panel auto-expands only after `final_result_ready`.
 
 ### 6.2 Collapse/Expand Behavior
 - Collapsed state must not affect updates.  
-- Expanded state must show updated content immediately.
+- Expanded state must show updated content immediately.  
+- All six panels reset to `IsCollapsed == true` on `pipeline_started`, regardless of how the previous run left them.  
+- A panel not reached by the current execution (e.g. all six on a failed Explain before `normalized_ast_generated`, or Prompts/Model Outputs/IR on an Explain execution) remains collapsed and present in the layout.
 
 ### 6.3 Error Rendering
 - Inspector must show inline error panel if its event fails.  
 - Inspector must remain visible.
+
+### 6.4 Resize Behavior
+- Dragging a panel's `SplitterControl` handle changes that panel's `Height` and trades height only with its immediate next-neighbor panel below (classic two-panel splitter behavior); panels further down keep their own `Height` unchanged and simply reposition.  
+- Resizing a panel does not change its `IsCollapsed` state or its content.  
+- A panel's content area shows a scrollbar only when its content exceeds its current `Height`; no scrollbar when content fits.
+
+### 6.5 Auto-Scroll Behavior
+- Each `prompt_generated` event scrolls the Prompt panel to reveal the newly appended entry, unconditionally (including the entry that triggers the first auto-expand).  
+- Each `model_output_generated` event scrolls the Model Output panel to reveal the newly appended entry, unconditionally.  
+- Auto-scroll behavior does not depend on, or track, the panel's prior scroll position.
 
 ---
 
@@ -219,28 +234,46 @@ After `final_result_ready` or `pipeline_failed`:
 
 ---
 
-# 8. Error‑Handling Tests
+# 8. Layout & Resize Tests
 
-### 8.1 Pipeline Error Tests
+### 8.1 Editor/Panel Splitter Tests
+- Dragging the `SplitterControl` between the editor and the execution panel updates `CnlTabViewModel.EditorPaneRatio` and both regions' rendered heights to match.  
+- The editor shows a vertical scrollbar exactly when its rendered content height exceeds its current allocated height, and no scrollbar otherwise.
+
+### 8.2 Panel Accordion Resize Tests
+- Dragging one inspector panel's `SplitterControl` handle changes that panel's `Height` and trades height only with its immediate next-neighbor panel below (classic two-panel splitter behavior); panels further down keep their own `Height` unchanged and simply reposition.  
+- Resizing a panel does not change its `IsCollapsed` state or its content.  
+- A panel's content area shows a scrollbar exactly when its content exceeds its current `Height`.
+
+### 8.3 Auto-Scroll Tests
+- Each `prompt_generated` event scrolls the Prompt panel to reveal the newly appended entry, unconditionally.  
+- Each `model_output_generated` event scrolls the Model Output panel to reveal the newly appended entry, unconditionally.  
+- Auto-scroll behavior is independent of the panel's prior scroll position (no "stick to bottom unless scrolled up" tracking).
+
+---
+
+# 9. Error‑Handling Tests
+
+### 9.1 Pipeline Error Tests
 Simulate `pipeline_failed`:
 - The owning tab's error banner appears  
 - That tab's inspectors remain visible  
 - Execution buttons re‑enable app‑wide  
 - No tab switch is forced
 
-### 8.2 Fatal Error Tests
+### 9.2 Fatal Error Tests
 Simulate evaluator/model adapter fatal error:
 - Fatal styling appears on the owning tab  
 - Streaming stops for that tab  
 - Execution buttons re‑enable app‑wide  
 
-### 8.3 Inline Editor Error Tests
+### 9.3 Inline Editor Error Tests
 Simulate `/explain` validation errors:
 - Editor highlights error  
 - Margin markers appear  
 - Error list updates deterministically  
 
-### 8.4 Transport Error Tests
+### 9.4 Transport Error Tests
 Simulate:
 - malformed event  
 - invalid JSON  
@@ -253,68 +286,68 @@ UI must:
 
 ---
 
-# 9. Settings Tests
+# 10. Settings Tests
 
-### 9.1 Validation Tests
+### 10.1 Validation Tests
 - Invalid port blocks Save  
 - Missing API key blocks Save  
 - Invalid log path blocks Save  
 
-### 9.2 Backend Restart Tests
+### 10.2 Backend Restart Tests
 - Save triggers backend restart  
 - Errors surface deterministically inside the Settings modal  
 - UI remains stable during restart  
 
-### 9.3 Gate Tests
+### 10.3 Gate Tests
 - The Settings gear icon is disabled while `IExecutionLockService.IsAnyExecutionRunning == true`  
 - The gear re‑enables once the in‑flight execution reaches a terminal state
 
 ---
 
-# 10. Execution Workflow Tests
+# 11. Execution Workflow Tests
 
-### 10.1 Run Workflow
+### 11.1 Run Workflow
 - Run invokes `/trace`.  
-- All six inspector panels (Raw AST, Normalized AST, IR, Prompts, Model Outputs, Final Result) appear in order.  
-- Final result appears last.
+- All six inspector panels (Raw AST, Normalized AST, IR, Prompts, Model Outputs, Final Result) are present from tab-open and auto-expand in order.  
+- Final Result panel auto-expands last.
 
-### 10.2 Explain Workflow
-- Raw AST appears  
-- Normalized AST appears  
-- No final result, prompts, or model outputs appear  
+### 11.2 Explain Workflow
+- Raw AST panel auto-expands  
+- Normalized AST panel auto-expands  
+- IR, Prompts, and Model Output panels remain collapsed (`/explain` never invokes the evaluator)  
 
 ---
 
-# 11. Logging Tests
+# 12. Logging Tests
 
-### 11.1 Default Location
+### 12.1 Default Location
 - No custom `LogPath` configured  
 - An error is added to any of the four logged collections (`WorkspaceViewModel.Errors`, a tab's `EditorViewModel.ValidationErrors`, a tab's `PipelineExecutionViewModel.Errors`, `SettingsViewModel.Errors`)  
 - Entry is appended to `%APPDATA%\LimelightX\Limelight-x-log.txt`
 
-### 11.2 Custom LogPath
+### 12.2 Custom LogPath
 - `LogPath` set to a custom absolute directory  
 - An error is added to any of the four logged collections  
 - Entry is appended to `<LogPath>\Limelight-x-log.txt` instead of the default location
 
-### 11.3 Append Across Sessions
+### 12.3 Append Across Sessions
 - Log file already contains entries from a prior session  
 - App restarts and a new error occurs  
 - Both prior and new entries are present in the file (never truncated)
 
-### 11.4 Line Format And Severity Mapping
+### 12.4 Line Format And Severity Mapping
 - An error with a given `Severity`/`Code`/`Message`/`Location` is logged  
 - The written line matches `[<UTC ISO-8601 timestamp>] [<LogLevel>] <Code>: <Message>` (plus location suffix when present)  
 - `Severity` maps to `LogLevel` exactly as: `Info`→`Information`, `Warning`→`Warning`, `Error`→`Error`, `Fatal`→`Critical`
 
-### 11.5 Write Failure Is Non‑Fatal
+### 12.5 Write Failure Is Non‑Fatal
 - Log directory is unwritable (e.g. permissions)  
 - An error occurs  
 - The app does not crash, no new user-facing error is raised for the write failure itself, and the original error still appears through its normal UI surface (banner/inline/inspector)
 
 ---
 
-# 12. Non‑Goals
+# 13. Non‑Goals
 
 UI testing does **not** include:
 
@@ -327,7 +360,7 @@ UI testing does **not** include:
 
 ---
 
-# 13. Future Extensions
+# 14. Future Extensions
 
 Potential enhancements:
 
@@ -342,4 +375,4 @@ Potential enhancements:
 # Summary
 
 Limelight‑X UI testing validates deterministic MVVM behavior, app‑wide single‑execution mode, and real‑time streaming updates.  
-All tests simulate WebSocket event streams, verify incremental inspector updates scoped to the correct tab, enforce the cross‑tab execution lock and free tab/workspace navigation, and ensure robust error handling across the entire workflow.
+All tests simulate WebSocket event streams, verify incremental inspector updates scoped to the correct tab, verify deterministic editor/panel and accordion resize behavior with unconditional auto-scroll for Prompts/Model Outputs, enforce the cross‑tab execution lock and free tab/workspace navigation, and ensure robust error handling across the entire workflow.

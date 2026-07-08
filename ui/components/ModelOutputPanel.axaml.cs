@@ -1,8 +1,11 @@
+using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Media;
+using Avalonia.Threading;
 using LimelightX.UI.Services.Dto;
+using LimelightX.UI.ViewModels.Inspectors;
 
 namespace LimelightX.UI.Components;
 
@@ -13,6 +16,8 @@ namespace LimelightX.UI.Components;
 /// </summary>
 public partial class ModelOutputPanel : UserControl
 {
+    private ModelOutputViewModel? _subscribedViewModel;
+
     public ModelOutputPanel()
     {
         InitializeComponent();
@@ -46,6 +51,36 @@ public partial class ModelOutputPanel : UserControl
             card.Child = content;
             return card;
         });
+
+        DataContextChanged += (_, _) => AttachViewModel();
+    }
+
+    private void AttachViewModel()
+    {
+        if (_subscribedViewModel is not null)
+        {
+            _subscribedViewModel.Outputs.CollectionChanged -= OnOutputsChanged;
+        }
+
+        if (DataContext is ModelOutputViewModel viewModel)
+        {
+            viewModel.Outputs.CollectionChanged += OnOutputsChanged;
+            _subscribedViewModel = viewModel;
+        }
+    }
+
+    /// <summary>
+    /// Scrolls to the newest entry on every append, unconditionally - no
+    /// scroll-position tracking (ui-components.md §5.6). Posted at Loaded
+    /// priority so the newly added item has been measured/arranged before
+    /// ScrollToEnd runs against it.
+    /// </summary>
+    private void OnOutputsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action == NotifyCollectionChangedAction.Add)
+        {
+            Dispatcher.UIThread.Post(() => Panel.ScrollContentToEnd(), DispatcherPriority.Loaded);
+        }
     }
 
     private static ViewModels.Inspectors.ResultContentType MapContentType(Services.Dto.ResultContentType wireType) => wireType switch

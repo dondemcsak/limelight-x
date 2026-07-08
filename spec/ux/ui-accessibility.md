@@ -6,14 +6,14 @@ It specifies standards, keyboard navigation rules, focus management, screen read
 This specification is authoritative.  
 All implementation must follow these accessibility rules exactly.
 
-Limelight‑X targets WCAG 2.2 AA — implementation must follow this spec directly, but conformance is **not independently verified for v0.1** (see §16) — and provides full keyboard navigation, exposes complete screen reader semantics, ensures deterministic focus behavior, and maintains high‑contrast visual indicators.  
+Limelight‑X targets WCAG 2.2 AA — implementation must follow this spec directly, but conformance is **not independently verified for v0.1** (see §17) — and provides full keyboard navigation, exposes complete screen reader semantics, ensures deterministic focus behavior, and maintains high‑contrast visual indicators.  
 Animations remain enabled, and basic keyboard shortcuts support core workflow actions.
 
 ---
 
 # 1. Accessibility Standard Baseline
 
-Limelight‑X targets **WCAG 2.2 AA** as its design baseline (see §16 on verification scope).
+Limelight‑X targets **WCAG 2.2 AA** as its design baseline (see §17 on verification scope).
 
 ### Requirements
 - All text must meet AA contrast requirements.  
@@ -243,10 +243,26 @@ Inspector collapsible sections use **ARIA details/summary semantics**.
 - Expanded/collapsed state must be exposed via `aria-expanded`.  
 - Summary text must be accessible.  
 - Tree content must be accessible when expanded.
+- All six inspector panels (`ui-components.md` §5) are always present in the accessibility tree from the moment the tab opens — `aria-expanded` toggles between `false`/`true` as panels auto-expand or are manually collapsed/expanded; panels are never inserted into or removed from the tree.
 
 ---
 
-# 15. Focus Indicators
+# 15. SplitterControl Accessibility
+
+The `SplitterControl` (`ui-components.md` §4.5) — used for the editor/panel split and each panel's resize handle — exposes:
+
+- role="separator", with `aria-orientation="horizontal"` (both usages divide vertically stacked regions).
+- `aria-valuenow`/`aria-valuemin`/`aria-valuemax` reflecting the current split position (`EditorPaneRatio` for the editor/panel splitter, or the panel's `Height` within its allowed range for a panel handle).
+- Keyboard resizability: when focused, `ArrowUp`/`ArrowDown` adjust the split by a fixed step, matching the same resize effect as a mouse drag.
+- An accessible name identifying what it resizes (e.g. "Resize editor and results panel", "Resize Raw AST panel").
+
+### Requirements
+- The `SplitterControl` must be reachable via `Tab`/`Shift+Tab`, consistent with §2 Keyboard Navigation.  
+- Resizing via keyboard must be deterministic and produce the same end state as an equivalent mouse drag.
+
+---
+
+# 16. Focus Indicators
 
 Focus indicators use a **high‑contrast white outline**.
 
@@ -258,7 +274,7 @@ Focus indicators use a **high‑contrast white outline**.
 
 ---
 
-# 16. Accessibility Testing
+# 17. Accessibility Testing
 
 Limelight‑X does **not** require automated or manual accessibility testing for v0.1.
 
@@ -271,7 +287,7 @@ Limelight‑X does **not** require automated or manual accessibility testing for
 
 # Summary
 
-Limelight‑X targets WCAG 2.2 AA as a design baseline (unverified for v0.1, see §16), and provides full keyboard navigation, deterministic focus management, complete screen reader semantics, and high‑contrast visual indicators.  
+Limelight‑X targets WCAG 2.2 AA as a design baseline (unverified for v0.1, see §17), and provides full keyboard navigation, deterministic focus management, complete screen reader semantics, and high‑contrast visual indicators.  
 Inspector panels expose full semantic tree structures, error surfaces use ARIA alerts for modals, and the editor exposes full ARIA textfield semantics.  
 The MenuBar and About modal follow the same keyboard, ARIA, and focus‑management patterns as the rest of the workspace.  
 Animations remain enabled, and basic keyboard shortcuts support core workflow actions.  

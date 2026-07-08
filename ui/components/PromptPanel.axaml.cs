@@ -1,9 +1,12 @@
+using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using LimelightX.UI.Services.Dto;
+using LimelightX.UI.ViewModels.Inspectors;
 
 namespace LimelightX.UI.Components;
 
@@ -15,6 +18,8 @@ namespace LimelightX.UI.Components;
 /// </summary>
 public partial class PromptPanel : UserControl
 {
+    private PromptViewModel? _subscribedViewModel;
+
     public PromptPanel()
     {
         InitializeComponent();
@@ -41,5 +46,35 @@ public partial class PromptPanel : UserControl
             card.Child = content;
             return card;
         });
+
+        DataContextChanged += (_, _) => AttachViewModel();
+    }
+
+    private void AttachViewModel()
+    {
+        if (_subscribedViewModel is not null)
+        {
+            _subscribedViewModel.Prompts.CollectionChanged -= OnPromptsChanged;
+        }
+
+        if (DataContext is PromptViewModel viewModel)
+        {
+            viewModel.Prompts.CollectionChanged += OnPromptsChanged;
+            _subscribedViewModel = viewModel;
+        }
+    }
+
+    /// <summary>
+    /// Scrolls to the newest entry on every append, unconditionally - no
+    /// scroll-position tracking (ui-components.md §5.5). Posted at Loaded
+    /// priority so the newly added item has been measured/arranged before
+    /// ScrollToEnd runs against it.
+    /// </summary>
+    private void OnPromptsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action == NotifyCollectionChangedAction.Add)
+        {
+            Dispatcher.UIThread.Post(() => Panel.ScrollContentToEnd(), DispatcherPriority.Loaded);
+        }
     }
 }

@@ -27,9 +27,13 @@
         </Grid>
       </Button>
 
-      <ContentPresenter IsVisible="{Binding !IsCollapsed, ElementName=Root}"
-                         Content="{Binding PanelContent, ElementName=Root}"
-                         Margin="{StaticResource PaddingMediumThickness}" />
+      <ScrollViewer x:Name="ContentScrollViewer"
+                    IsVisible="{Binding !IsCollapsed, ElementName=Root}"
+                    Height="{Binding PanelHeight, ElementName=Root}"
+                    VerticalScrollBarVisibility="Auto">
+        <ContentPresenter Content="{Binding PanelContent, ElementName=Root}"
+                           Margin="{StaticResource PaddingMediumThickness}" />
+      </ScrollViewer>
     </StackPanel>
   </Border>
 

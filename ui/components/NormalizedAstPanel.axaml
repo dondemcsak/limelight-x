@@ -8,7 +8,7 @@
              x:Class="LimelightX.UI.Components.NormalizedAstPanel"
              x:DataType="inspectors:NormalizedAstViewModel">
 
-  <components:CollapsiblePanel Title="Normalized AST" IsCollapsed="{Binding IsCollapsed}">
+  <components:CollapsiblePanel Title="Normalized AST" IsCollapsed="{Binding IsCollapsed}" PanelHeight="{Binding Height}">
     <components:CollapsiblePanel.PanelContent>
       <StackPanel Spacing="8">
         <components:ValidationOverlay Errors="{Binding Errors}" />

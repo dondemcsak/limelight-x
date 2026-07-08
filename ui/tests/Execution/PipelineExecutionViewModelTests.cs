@@ -303,6 +303,125 @@ public class PipelineExecutionViewModelTests
     }
 
     [Fact]
+    public async Task RunPipeline_EachEventAutoExpandsItsOwnPanel()
+    {
+        var eventStream = new FakeEventStreamService();
+        var pipeline = new FakePipelineService { TraceResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-run" } };
+        var viewModel = new PipelineExecutionViewModel(pipeline, eventStream, new ExecutionLockService());
+
+        await viewModel.RunPipelineAsync("Load the article from \"a.txt\".\nSummarize it.");
+        eventStream.Raise(FakeEventStreamService.MakeEvent("pipeline_started", "corr-run"));
+        Assert.True(viewModel.RawAstViewModel.IsCollapsed);
+        Assert.True(viewModel.NormalizedAstViewModel.IsCollapsed);
+        Assert.True(viewModel.IrViewModel.IsCollapsed);
+        Assert.True(viewModel.PromptViewModel.IsCollapsed);
+        Assert.True(viewModel.ModelOutputViewModel.IsCollapsed);
+        Assert.True(viewModel.FinalResultViewModel.IsCollapsed);
+
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "raw_ast_generated", "corr-run",
+            new RawAstEventData { RawAst = new RawAstResponse { Root = MakeRoot(), RawText = "raw", Metadata = new AstMetadata() } }));
+        Assert.False(viewModel.RawAstViewModel.IsCollapsed);
+
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "normalized_ast_generated", "corr-run",
+            new NormalizedAstEventData { NormalizedAst = new NormalizedAstResponse { Root = MakeRoot(), RawText = "norm", Metadata = new NormalizedAstMetadata() } }));
+        Assert.False(viewModel.NormalizedAstViewModel.IsCollapsed);
+
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "ir_generated", "corr-run",
+            new IrEventData { Ir = new IrResponse { RawText = "ir", Metadata = new IrMetadata() } }));
+        Assert.False(viewModel.IrViewModel.IsCollapsed);
+
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "prompt_generated", "corr-run",
+            new PromptEventData { Prompt = new PromptBlock { OperationIndex = 0, PromptText = "Summarize this", Metadata = new PromptBlockMetadata() } }));
+        Assert.False(viewModel.PromptViewModel.IsCollapsed);
+
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "model_output_generated", "corr-run",
+            new ModelOutputEventData { ModelOutput = new ModelOutputBlock { OperationIndex = 0, RawText = "output", ContentType = ResultContentType.Plain, Parsed = new ParsedContent(), Metadata = new ModelOutputMetadata() } }));
+        Assert.False(viewModel.ModelOutputViewModel.IsCollapsed);
+
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "final_result_ready", "corr-run",
+            new RunData { FinalResult = new FinalResult { Text = "final", ContentType = ResultContentType.Plain } }));
+        Assert.False(viewModel.FinalResultViewModel.IsCollapsed);
+    }
+
+    [Fact]
+    public async Task PromptAndModelOutput_OnlyAutoExpandOnFirstOccurrencePerExecution()
+    {
+        var eventStream = new FakeEventStreamService();
+        var pipeline = new FakePipelineService { TraceResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-run" } };
+        var viewModel = new PipelineExecutionViewModel(pipeline, eventStream, new ExecutionLockService());
+
+        await viewModel.RunPipelineAsync("Load the article from \"a.txt\".\nSummarize it.\nTranslate it.");
+        eventStream.Raise(FakeEventStreamService.MakeEvent("pipeline_started", "corr-run"));
+
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "prompt_generated", "corr-run",
+            new PromptEventData { Prompt = new PromptBlock { OperationIndex = 0, PromptText = "first", Metadata = new PromptBlockMetadata() } }));
+        Assert.False(viewModel.PromptViewModel.IsCollapsed);
+
+        // User manually re-collapses after the first auto-expand.
+        viewModel.PromptViewModel.IsCollapsed = true;
+
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "prompt_generated", "corr-run",
+            new PromptEventData { Prompt = new PromptBlock { OperationIndex = 1, PromptText = "second", Metadata = new PromptBlockMetadata() } }));
+
+        // The second prompt_generated in this execution must not re-trigger
+        // the auto-expand transition - only the first occurrence does.
+        Assert.True(viewModel.PromptViewModel.IsCollapsed);
+        Assert.Equal(2, viewModel.PromptViewModel.Prompts.Count);
+
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "model_output_generated", "corr-run",
+            new ModelOutputEventData { ModelOutput = new ModelOutputBlock { OperationIndex = 0, RawText = "first out", ContentType = ResultContentType.Plain, Parsed = new ParsedContent(), Metadata = new ModelOutputMetadata() } }));
+        Assert.False(viewModel.ModelOutputViewModel.IsCollapsed);
+
+        viewModel.ModelOutputViewModel.IsCollapsed = true;
+
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "model_output_generated", "corr-run",
+            new ModelOutputEventData { ModelOutput = new ModelOutputBlock { OperationIndex = 1, RawText = "second out", ContentType = ResultContentType.Plain, Parsed = new ParsedContent(), Metadata = new ModelOutputMetadata() } }));
+
+        Assert.True(viewModel.ModelOutputViewModel.IsCollapsed);
+        Assert.Equal(2, viewModel.ModelOutputViewModel.Outputs.Count);
+    }
+
+    [Fact]
+    public async Task NewPipelineStarted_RecollapsesAllSixPanelsEvenIfPreviouslyExpanded()
+    {
+        var eventStream = new FakeEventStreamService();
+        var pipeline = new FakePipelineService { TraceResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-run-1" } };
+        var viewModel = new PipelineExecutionViewModel(pipeline, eventStream, new ExecutionLockService());
+
+        await viewModel.RunPipelineAsync("Load the article from \"a.txt\".");
+        eventStream.Raise(FakeEventStreamService.MakeEvent("pipeline_started", "corr-run-1"));
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "raw_ast_generated", "corr-run-1",
+            new RawAstEventData { RawAst = new RawAstResponse { Root = MakeRoot(), RawText = "raw", Metadata = new AstMetadata() } }));
+        eventStream.Raise(FakeEventStreamService.MakeEvent(
+            "final_result_ready", "corr-run-1",
+            new RunData { FinalResult = new FinalResult { Text = "first run", ContentType = ResultContentType.Plain } }));
+        Assert.False(viewModel.RawAstViewModel.IsCollapsed);
+        Assert.False(viewModel.FinalResultViewModel.IsCollapsed);
+
+        pipeline.TraceResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-run-2" };
+        await viewModel.RunPipelineAsync("Load the article from \"a.txt\".");
+        eventStream.Raise(FakeEventStreamService.MakeEvent("pipeline_started", "corr-run-2"));
+
+        Assert.True(viewModel.RawAstViewModel.IsCollapsed);
+        Assert.True(viewModel.NormalizedAstViewModel.IsCollapsed);
+        Assert.True(viewModel.IrViewModel.IsCollapsed);
+        Assert.True(viewModel.PromptViewModel.IsCollapsed);
+        Assert.True(viewModel.ModelOutputViewModel.IsCollapsed);
+        Assert.True(viewModel.FinalResultViewModel.IsCollapsed);
+    }
+
+    [Fact]
     public async Task Dispose_WhileRunning_StopsReactingToLateEvents()
     {
         var executionLock = new ExecutionLockService();

@@ -264,6 +264,20 @@ GitHub Link Text: AccentPrimary
 
 ---
 
+## 4.10 SplitterControl
+The `SplitterControl` (`ui-components.md` §4.5) — used both between the editor and execution panel, and on each inspector panel's resize handle — introduces **no new tokens**, reusing existing ones:
+
+```
+Handle Idle: TextPrimary (off-white, deliberately higher-contrast than Border so the handle reads as discoverable/draggable rather than blending into the surrounding card borders)
+Handle Hover: AccentPrimary
+Cursor: row-resize (both usages are horizontal dividers for a vertical split)
+```
+
+- Exact default height/ratio and minimum sizes are left to implementation, not fixed by this spec — the same treatment already given to the Explorer pane's resizable width (§4.8).  
+- No new shadow or animation timing; the idle→hover color transition follows the existing 100–150ms linear/ease‑out rule (§7).
+
+---
+
 # 5. Syntax Highlighting
 
 Limelight‑X uses **VS Code Dark+** as the base theme.
@@ -352,7 +366,8 @@ EditorLineHeight: 1.35
 ### Rules
 - No excessive whitespace  
 - Panels must be tightly stacked  
-- Editor must feel like a code tool, not an enterprise dashboard
+- Editor must feel like a code tool, not an enterprise dashboard  
+- The `.llx` tab's editor/panel split default ratio, and each inspector panel's default expanded height, are implementation‑chosen — not fixed values in this spec, consistent with `PanelSpacing` and the other density tokens above being about spacing rules rather than exact pixel allocations.
 
 ---
 

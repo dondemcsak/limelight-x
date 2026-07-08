@@ -10,7 +10,7 @@ namespace LimelightX.UI.ViewModels.Inspectors;
 /// TraceData.ModelOutputs, since /trace has no final_result field
 /// (confirmed against tests/api_trace.rs - see PipelineExecutionViewModel).
 /// </summary>
-public partial class FinalResultViewModel : ObservableObject
+public partial class FinalResultViewModel : ObservableObject, IResizablePanelViewModel
 {
     [ObservableProperty]
     private string _resultText = string.Empty;
@@ -22,7 +22,11 @@ public partial class FinalResultViewModel : ObservableObject
     private string _rawText = string.Empty;
 
     [ObservableProperty]
-    private bool _isCollapsed;
+    private bool _isCollapsed = true;
+
+    /// <summary>This panel's current expanded height (ui-viewmodels.md §11), adjusted via its splitter handle in CnlTabView.</summary>
+    [ObservableProperty]
+    private double _height = InspectorPanelDefaults.DefaultHeight;
 
     public ObservableCollection<UiError> Errors { get; } = [];
 
@@ -32,5 +36,6 @@ public partial class FinalResultViewModel : ObservableObject
         ContentType = ResultContentType.PlainText;
         RawText = string.Empty;
         Errors.Clear();
+        IsCollapsed = true;
     }
 }

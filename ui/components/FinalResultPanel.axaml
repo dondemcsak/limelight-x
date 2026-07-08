@@ -9,7 +9,7 @@
              x:DataType="inspectors:FinalResultViewModel"
              x:Name="Root">
 
-  <components:CollapsiblePanel Title="Final Result" IsCollapsed="{Binding IsCollapsed}">
+  <components:CollapsiblePanel Title="Final Result" IsCollapsed="{Binding IsCollapsed}" PanelHeight="{Binding Height}">
     <components:CollapsiblePanel.PanelContent>
       <StackPanel Spacing="8">
         <components:ValidationOverlay Errors="{Binding Errors}" />
