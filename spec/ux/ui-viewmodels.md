@@ -182,6 +182,9 @@ Each ViewModel is deterministic and state‑derived.
 - `SourceText : string`
 - `SyntaxErrors : ObservableCollection<EditorError>`
 - `CanExecute : bool` (derived: `!IExecutionLockService.IsAnyExecutionRunning && SourceText not empty`)
+- `CompletionItems : ObservableCollection<CompletionItem>` — populated by `CompletionService` (`ui/intellisense/CompletionService.cs`, `spec/ux/ui-editor-services-guide.md` §3.3)
+- `HoverInfo : HoverInfo?` — populated by `HoverService`; `null` means no hover content for the current cursor position
+- `QuickFixes : ObservableCollection<QuickFixItem>` — currently always empty: `DiagnosticService` produces read-only, advisory diagnostics only, not actionable fixes; no document in `spec/parsing/` or `spec/ux/ui-intellisense-*.md` defines an actual corrective action for any diagnostic. Populating this is future work requiring its own explicit instruction, not part of this IntelliSense integration.
 
 `EditorViewModel` has no `IsExecuting` property of its own. Two distinct flags matter here and must not be confused:
 - `PipelineExecutionViewModel.IsRunning` (§7) — is *this tab's* execution currently running (drives this tab's own spinner/inspector state).
@@ -190,6 +193,8 @@ Each ViewModel is deterministic and state‑derived.
 ### Commands
 - `RunCommand` — invokes `POST /trace`.
 - `ExplainCommand` — invokes `POST /explain`.
+- `SelectCompletionItemCommand(CompletionItem)` — inserts the selected item's `Text` at the current cursor position; local-only, no backend call.
+- `ApplyQuickFixCommand(QuickFixItem)` — reserved for future use; `QuickFixes` is always empty today (see State above), so this command is never enabled/invoked yet.
 
 There is no `TraceCommand`. The Trace button and its distinct trigger are removed entirely; Run now performs what Trace previously did.
 
@@ -208,6 +213,13 @@ There is no `TraceCommand`. The Trace button and its distinct trigger are remove
 - Live validation is **exempt from `IExecutionLockService`** — it does not acquire the app‑wide lock and is not blocked by another tab's in‑flight Run/Explain, matching today's behavior where validation is a wholly separate correlation‑id track from the toolbar commands.
 - Does **not** render in this tab's execution panel: this is the one case where a `/explain` execution's events update `SyntaxErrors` in place on the editor instead of driving `PipelineExecutionViewModel`'s inspectors.
 - Updates `SyntaxErrors` as the sequence completes (at `normalized_ast_generated`, or on `pipeline_failed`).
+
+### IntelliSense (Tree‑sitter)
+- Client‑side only: computed entirely in-process from `SourceText` via `ui/intellisense`'s `ParserHost`/`CompletionService`/`HoverService`/`FoldingService`/`DiagnosticService` (`spec/ux/ui-editor-services-guide.md`, `spec/cnl-editor-architecture.md` §5). Never calls `/src/api`, never blocked by it.
+- Trigger points: `CompletionItems` recomputes on text change and on explicit completion invocation; `HoverInfo` recomputes on cursor move; folding recomputes on text change.
+- **Exempt from `IExecutionLockService`**, same reasoning as Live Validation above — this is local computation, not a backend call, so there is nothing to serialize against other tabs' executions.
+- Local diagnostics (Tree‑sitter `ERROR` nodes, surfaced as advisory squiggles distinct from `SyntaxErrors`) never write to `SyntaxErrors` and never substitute for a Live Validation cycle — see `cnl-editor-architecture.md` §5's "Tree‑sitter's view of 'valid' can disagree with Rust's."
+- `CompletionItems`/`HoverInfo` content that references prior bindings or pronoun targets (`ui-intellisense-engine-spec.md` §5.1, §7.1–§7.2) is a syntactic, CST-only, best-effort local echo — never authoritative, always superseded by `/explain`'s response (`cnl-editor-architecture.md` §1.1.3).
 
 ---
 

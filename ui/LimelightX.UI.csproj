@@ -41,6 +41,20 @@
     <AvaloniaResource Include="styles\Fonts\**" />
   </ItemGroup>
 
+  <!-- Tree-sitter runtime artifacts (tier 3 of cnl-editor-architecture.md §3.1's
+       three-tier file model). tree-sitter-limelightx.dll is currently built
+       ARM64-only (tree-sitter-build-guide.md §0; CLAUDE.md §3.5) - this copies
+       it unconditionally today because no code P/Invokes it yet and the dev
+       machine is ARM64 (see the RuntimeIdentifiers comment above for the prior
+       incident pinning win-x64 caused here). Once a win-x64 build exists
+       (tree-sitter-build-guide.md §9), this must become RID-conditional
+       (e.g. two Include items guarded by $(RuntimeIdentifier)) so a win-x64
+       publish never ships the ARM64 binary. -->
+  <ItemGroup>
+    <None Include="native\tree-sitter-limelightx.dll" CopyToOutputDirectory="Always" />
+    <None Include="queries\*.scm" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+
   <!-- tests/ is its own project (LimelightX.UI.Tests.csproj) - exclude it from
        this project's default **/*.cs and **/*.axaml globs. -->
   <ItemGroup>

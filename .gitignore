@@ -31,3 +31,6 @@ ui/tests/obj/
 # not source - AppxManifest.xml, assets/, and build-msix.ps1 ARE committed)
 ui/packaging/layout/
 ui/packaging/out/
+tree-sitter/.editorconfig
+tree-sitter/.gitattributes
+tree-sitter/.gitignore

@@ -29,6 +29,9 @@ Claude must assume the following directory layout:
     /components
     /styles
     /routing
+    /intellisense
+    /native
+    /queries
 /spec
     architecture.md
     cnl-grammar.md
@@ -41,6 +44,15 @@ Claude must assume the following directory layout:
     bdd.md
     bdd-api.md
     spec-template.md
+    cnl-editor-architecture.md
+    /parsing
+        peg-grammar.md
+        grammer-js.md
+        highlights-scm.md
+        folds-scm.md
+        injections-scm.md
+        tree-sitter-integration.md
+        tree-sitter-build-guide.md
     /ux
         ui-architecture.md
         ui-components.md
@@ -53,6 +65,10 @@ Claude must assume the following directory layout:
         ui-build-pipeline.md
         ui-testing.md
         ui-deployment.md
+        ui-editor-services-guide.md
+        ui-intellisense-architecture.md
+        ui-intellisense-engine-spec.md
+        ui-intellisense-implementation-guide.md
         bdd-ui-interactions.md
         bdd-ui-navigation.md
         bdd-ui-error-cases.md
@@ -68,6 +84,8 @@ Claude must assume the following directory layout:
   The evaluator calls the model adapter directly.
 
 - `/src/api` is the sole exception to the "no new modules" rule: it wraps the existing `run`/`explain`/`trace` pipeline logic behind a local HTTP interface, as defined in `spec/api.md`. It does not reimplement or bypass any pipeline stage.
+
+- `/ui/intellisense` holds the Tree‑sitter‑backed editor services (`ParserHost`, `QueryRunner`, `CompletionService`, `DiagnosticService`, `HoverService`, `FoldingService`, `OutlineService`) defined in `spec/ux/ui-editor-services-guide.md` and `spec/ux/ui-intellisense-*.md`. `/ui/native` and `/ui/queries` are asset‑only companions (no code) holding, respectively, the compiled `tree-sitter-limelightx.dll` and its `.scm` query files — see `spec/cnl-editor-architecture.md` and `spec/parsing/tree-sitter-integration.md`.
 
 - Claude must never invent new directories or modules beyond what is listed here without explicit instruction.
 
@@ -182,6 +200,8 @@ Unless explicitly approved.
 **Explicitly approved for `/src/api`:** an HTTP server crate (e.g. `axum` or `actix-web`) sufficient to implement `spec/api.md`. No other new Rust crates are approved.
 
 **Explicitly approved for `/ui`:** Avalonia, Avalonia Community Toolkit, a Fluent UI icon set, Inter and JetBrains Mono fonts, MSIX packaging tooling, and — for persistent diagnostic logging — `Microsoft.Extensions.Logging` plus Serilog (`Serilog.Extensions.Logging`, `Serilog.Sinks.File`), per `spec/ux/*.md`. These apply only to `/ui` and do not license any further additions without explicit approval.
+
+**Also explicitly approved for `/ui`:** a native Tree‑sitter grammar library, `tree-sitter-limelightx.dll` (built from `tree-sitter/grammar.js` per `spec/parsing/tree-sitter-build-guide.md`), loaded via hand‑written, raw `[DllImport]` P/Invoke bindings only — **no third‑party Tree‑sitter binding NuGet package (e.g. TreeSitterSharp) is approved.** The DLL is currently built for **ARM64 only**; a `win-x64` build (matching `ui-build-pipeline.md` §7.1's pinned `RuntimeIdentifier`) is explicitly deferred future work. Until the `win-x64` build exists, any test or code path that loads this DLL must be skippable/gated on the `windows-latest` (x64) CI runner. This entry governs `/ui/native`, `/ui/queries`, and `/ui/intellisense` (see §1) and does not license any further native/interop additions without explicit approval.
 
 ---
 

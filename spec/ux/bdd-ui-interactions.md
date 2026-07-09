@@ -63,6 +63,91 @@ All scenarios assume:
 
 ---
 
+## 2.5–2.15 Tree‑sitter Editor Decoration (Draft — pending review)
+
+> **Status: DRAFT.** These scenarios are newly authored to close the gap identified when reviewing `spec/cnl-editor-architecture.md`: no BDD source existed anywhere for syntax highlighting migration, folding, hover, or completion before this addition. They have not yet been implemented against and should be treated as proposed acceptance criteria, not yet as settled fact, until confirmed. Cross-checked against `ui-viewmodels.md` §6 and `ui-components.md` §4.2 after those were extended with matching `CompletionItems`/`HoverInfo`/`QuickFixes` state — no drift found; `HoverInfo` is confirmed nullable (`null` = no hover) and `CompletionItems` is confirmed to be the same `ObservableCollection<CompletionItem>` type these scenarios already assume.
+>
+> Scope premise (per `cnl-editor-architecture.md` §1, §5, as clarified): Tree‑sitter is client‑side‑only editor decoration. It never calls, and is never called by, `/src/api` or Rust. It does not participate in validation (`SyntaxErrors`) or execution. Everything below is local computation, keyed off the CST that `spec/parsing/grammer-js.md` produces from `SourceText`.
+
+## 2.5 Tree‑sitter Highlighting Replaces the Hand‑Coded Tokenizer
+**GIVEN** a `.llx` tab is open  
+**WHEN** the user types text matching a CNL keyword, pronoun, resource, string, or expression‑hole token  
+**THEN** the token is colored using Tree‑sitter's highlight query (`spec/parsing/highlights-scm.md`) against the CST, in place of `SyntaxHighlighter.Tokenize`  
+**SO THAT** highlighting becomes grammar‑derived instead of hand‑coded, with no user‑visible change in token classes or colors  
+**AS MEASURED BY** each span's color still matching the existing `TokenKind` → brush mapping (`SyntaxColors.axaml`), with span boundaries now taken from Tree‑sitter node boundaries instead of `SyntaxHighlighter`'s
+
+## 2.6 Expression Hole Content Renders via Injection
+**GIVEN** a sentence contains `{{ prompt: "..." }}`  
+**WHEN** the editor renders it  
+**THEN** the quoted string inside the hole is decorated via `spec/parsing/injections-scm.md`'s plain‑text injection, distinct from the surrounding `{{`, `prompt:`, `}}` glyphs  
+**SO THAT** the literal prompt text reads as plain content rather than further CNL grammar — matching `SyntaxHighlighter.TokenizeExpressionHole`'s existing split byte‑for‑byte  
+**AS MEASURED BY** the injected `(string)` node receiving `String` styling while the hole's structural glyphs receive `ExpressionHole` styling
+
+## 2.7 Highlighting Degrades Gracefully on Invalid or Incomplete Text
+**GIVEN** the user is mid‑edit and the current sentence is incomplete (e.g. `Load the article from`)  
+**WHEN** Tree‑sitter reparses  
+**THEN** Tree‑sitter produces an `ERROR`/`MISSING` node scoped to the incomplete region only, and every token it can still classify outside that region keeps its normal highlight color  
+**SO THAT** one incomplete sentence never blanks out highlighting for the rest of the document  
+**AS MEASURED BY** tokens before/after the error region retaining their `TokenKind` color; the error region itself rendered with the local error‑node style (§2.8), not a validation‑error style
+
+## 2.8 Local Error Squiggles Never Replace `/explain` Validation
+**GIVEN** the user types invalid CNL text  
+**WHEN** Tree‑sitter's next in‑process reparse produces an `ERROR` node, arriving before the debounced `/explain` call returns  
+**THEN** a local, advisory squiggle appears immediately at the `ERROR` node's span, but `EditorViewModel.SyntaxErrors` is unchanged by it  
+**SO THAT** the user gets fast visual feedback without Tree‑sitter becoming a second, possibly‑conflicting source of truth for validation state  
+**AS MEASURED BY** `SyntaxErrors` changing only in response to `/explain`'s streamed events (§2.2), never in response to a Tree‑sitter reparse alone — confirmed by a case where Tree‑sitter shows no error node but `/explain` still returns one (and vice versa), with `SyntaxErrors` reflecting only `/explain`'s answer in both cases
+
+## 2.9 Folding: One Region Per Sentence
+**GIVEN** a `.llx` tab contains two or more CNL sentences  
+**WHEN** the editor renders  
+**THEN** a fold control appears at the start of each sentence, per `spec/parsing/folds-scm.md`'s `(sentence) @fold` query  
+**SO THAT** the user can collapse individual sentences in a long CNL program  
+**AS MEASURED BY** exactly one collapsible region per top‑level `sentence` CST node, collapsing to a single summary line when toggled closed, with sentences outside it unaffected
+
+## 2.10 Structural Selection Expands to the Enclosing Grammar Node
+**GIVEN** the cursor is positioned inside a token within a sentence (e.g. inside a quoted string)  
+**WHEN** the user invokes "expand selection" repeatedly  
+**THEN** the selection grows to the smallest enclosing CST node, then that node's parent, and so on, up to the enclosing `sentence`  
+**SO THAT** the user can select structurally meaningful units without manual click‑dragging  
+**AS MEASURED BY** `SelectionRange` matching the `[start, end)` byte offsets of the enclosing CST node at each expansion step, in strict child‑to‑parent order, never skipping or repeating a node
+
+## 2.11 Hover Shows Grammar Node Info
+**GIVEN** the user hovers the pointer over a non‑whitespace token  
+**WHEN** the token resolves to a CST node  
+**THEN** a tooltip appears showing that node's grammar role (e.g. "keyword", "pronoun", "resource", "expression hole")  
+**SO THAT** the user can learn CNL's grammar without leaving the editor  
+**AS MEASURED BY** `EditorViewModel.HoverInfo.Text`/`Position` reflecting the hovered node's kind and span; `HoverInfo == null` when hovering whitespace between tokens
+
+## 2.12 Completions Suggest Valid Next Tokens by Position
+**GIVEN** the cursor is at a position where the grammar allows only a closed set of next tokens (e.g. immediately after `Load the article `, where `LoadStmt` allows only `from` next)  
+**WHEN** the user triggers completion  
+**THEN** `EditorViewModel.CompletionItems` is populated with exactly the grammar‑valid keyword(s)/pronoun(s) for that position  
+**SO THAT** the user is guided through valid CNL sentence shapes without memorizing them  
+**AS MEASURED BY** `CompletionItems` containing only tokens that `peg-grammar.md`'s rules allow at that cursor position, and none whose insertion would produce a new Tree‑sitter `ERROR` node
+
+## 2.13 Completions Are Empty Inside Free‑Text Positions
+**GIVEN** the cursor is positioned inside a `resource`/`target`/`format_target`/`language` span (free‑text noun phrase)  
+**WHEN** the user triggers completion  
+**THEN** `CompletionItems` remains empty  
+**SO THAT** the editor never fabricates suggestions for content the grammar deliberately leaves unconstrained (`cnl-editor-architecture.md` §1.1.3) — this also holds for anything requiring the AST Normalizer (e.g. suggesting a specific bound variable name or a pronoun's resolved target), since Tree‑sitter has no access to normalization  
+**AS MEASURED BY** `CompletionItems.Count == 0` while the cursor resolves inside one of those four free‑text node kinds
+
+## 2.14 Editor Decoration Is Never Blocked by the Execution Lock
+**GIVEN** a pipeline execution is running in some tab (`IExecutionLockService.IsAnyExecutionRunning == true`)  
+**WHEN** the user types in any tab's editor, triggering highlighting, folding, hover, or completion  
+**THEN** all four continue to update normally  
+**SO THAT** purely local editor decoration is never gated by a lock that exists solely to serialize backend calls  
+**AS MEASURED BY** highlight spans, fold regions, `HoverInfo`, and `CompletionItems` all updating on keystroke regardless of `IExecutionLockService.IsAnyExecutionRunning`'s value
+
+## 2.15 Deterministic Reparse
+**GIVEN** identical CNL source text  
+**WHEN** Tree‑sitter parses it twice (e.g. on initial load, and again after an undo that restores the exact same text)  
+**THEN** the resulting CST, highlight spans, fold regions, and completion/hover results are identical both times  
+**SO THAT** editor decoration never flickers or varies for unchanged input, consistent with `CLAUDE.md` §3.3 and the determinism guarantee the hand‑coded `SyntaxHighlighter` it replaces already provided  
+**AS MEASURED BY** byte‑for‑byte identical token spans/kinds and fold region boundaries across both parses of the same text
+
+---
+
 # 3. Execution Interactions (Streaming)
 
 ## 3.1 Starting Execution
@@ -409,7 +494,10 @@ These interactions do **not** cover:
 - cancellation  
 - plugin inspectors  
 - nondeterministic animations  
-- "stick to bottom unless scrolled up" auto-scroll tracking for Prompts/Model Outputs (auto-scroll is always unconditional, see §4.12–§4.13)
+- "stick to bottom unless scrolled up" auto-scroll tracking for Prompts/Model Outputs (auto-scroll is always unconditional, see §4.12–§4.13)  
+- Tree‑sitter (or any client‑side parser) participating in validation or execution — it is advisory/decoration‑only, `/explain`/`/trace` remain the sole source of truth (§2.5–§2.15, `cnl-editor-architecture.md` §1, §5)  
+- semantic (cross‑reference / normalization‑aware) completions or hover — both are syntactic only (§2.11, §2.13)  
+- sending a Tree‑sitter CST, or anything derived from it, to `/src/api` or Rust by any channel
 
 ---
 

@@ -220,18 +220,22 @@ Execution Panel                │
 ### Responsibilities
 - Displays CNL text for the owning `.llx` tab.
 - Shows inline validation errors.
+- Shows Tree‑sitter‑driven syntax highlighting, folding, a completion list, and hover tooltips (`spec/cnl-editor-architecture.md`, `spec/ux/ui-editor-services-guide.md`).
 - Provides Run/Explain buttons (rendered by `CnlTabView`, §4.1, bound to this ViewModel's commands).
 
 ### Bindings
 - `SourceText`  
-- `SyntaxErrors`  
+- `SyntaxErrors` — authoritative validation state, from `/explain` only  
+- `CompletionItems`, `SelectCompletionItemCommand` — completion list popup, positioned at the cursor  
+- `HoverInfo` — hover tooltip; not shown when `null`  
 - `RunCommand` (invokes `/trace`)
 - `ExplainCommand` (invokes `/explain`)
-- `IExecutionLockService.IsAnyExecutionRunning` → disable both buttons
+- `IExecutionLockService.IsAnyExecutionRunning` → disable both buttons (does **not** disable completion/hover/highlighting/folding — those are local, per Streaming Rules below)
 
 ### Streaming Rules
 - There is no `TraceCommand` binding; the Trace trigger is removed entirely.
 - Inline errors come from `/explain`'s streamed event sequence (`pipeline_started` → `raw_ast_generated` → `normalized_ast_generated`), the same as any other execution — see `ui-viewmodels.md` §6 Live Validation.
+- Syntax highlighting, folding, completions, and hover are computed entirely client-side by Tree‑sitter and are **not** streaming-driven and **not** gated by `IExecutionLockService` — see `ui-viewmodels.md` §6 "IntelliSense (Tree‑sitter)". Local Tree‑sitter error nodes may render an advisory squiggle distinct from `SyntaxErrors`'s inline validation styling; they never replace or delay it.
 
 ### Layout Rules
 - Occupies the top half of the tab's content area (below the Run/Explain buttons), sized by `CnlTabViewModel.EditorPaneRatio` (§4.1, §4.5).

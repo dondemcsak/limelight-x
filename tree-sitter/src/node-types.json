@@ -1,0 +1,415 @@
+[
+  {
+    "type": "bind_stmt",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        },
+        {
+          "type": "name",
+          "named": true
+        },
+        {
+          "type": "resource_from",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "name",
+          "named": true
+        },
+        {
+          "type": "pronoun",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "extract_stmt",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "input",
+          "named": true
+        },
+        {
+          "type": "target",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "format_stmt",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "format_target",
+          "named": true
+        },
+        {
+          "type": "input",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "format_target",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "input",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "name",
+          "named": true
+        },
+        {
+          "type": "pronoun",
+          "named": true
+        },
+        {
+          "type": "resource",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "language",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "load_stmt",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "resource",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "program",
+    "named": true,
+    "root": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "sentence",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "prompt_hole",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "pronoun",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "resource",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "resource_from",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "resource",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "rewrite_stmt",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "input",
+          "named": true
+        },
+        {
+          "type": "using_prompt",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "sentence",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "bind_stmt",
+          "named": true
+        },
+        {
+          "type": "extract_stmt",
+          "named": true
+        },
+        {
+          "type": "format_stmt",
+          "named": true
+        },
+        {
+          "type": "load_stmt",
+          "named": true
+        },
+        {
+          "type": "rewrite_stmt",
+          "named": true
+        },
+        {
+          "type": "summarize_stmt",
+          "named": true
+        },
+        {
+          "type": "translate_stmt",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "string",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "summarize_stmt",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "input",
+          "named": true
+        },
+        {
+          "type": "using_prompt",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "target",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "translate_stmt",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "input",
+          "named": true
+        },
+        {
+          "type": "language",
+          "named": true
+        },
+        {
+          "type": "using_prompt",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "using_prompt",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "prompt_hole",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "\"",
+    "named": false
+  },
+  {
+    "type": ".",
+    "named": false
+  },
+  {
+    "type": "Extract the",
+    "named": false
+  },
+  {
+    "type": "Format",
+    "named": false
+  },
+  {
+    "type": "Let",
+    "named": false
+  },
+  {
+    "type": "Load the",
+    "named": false
+  },
+  {
+    "type": "Rewrite",
+    "named": false
+  },
+  {
+    "type": "Summarize",
+    "named": false
+  },
+  {
+    "type": "Translate",
+    "named": false
+  },
+  {
+    "type": "as",
+    "named": false
+  },
+  {
+    "type": "be",
+    "named": false
+  },
+  {
+    "type": "from",
+    "named": false
+  },
+  {
+    "type": "it",
+    "named": false
+  },
+  {
+    "type": "name",
+    "named": true
+  },
+  {
+    "type": "prompt:",
+    "named": false
+  },
+  {
+    "type": "that",
+    "named": false
+  },
+  {
+    "type": "the output",
+    "named": false
+  },
+  {
+    "type": "the result",
+    "named": false
+  },
+  {
+    "type": "them",
+    "named": false
+  },
+  {
+    "type": "this",
+    "named": false
+  },
+  {
+    "type": "to",
+    "named": false
+  },
+  {
+    "type": "using",
+    "named": false
+  },
+  {
+    "type": "{{",
+    "named": false
+  },
+  {
+    "type": "}}",
+    "named": false
+  }
+]
