@@ -14,27 +14,42 @@
   Steps:
     - cargo build (Debug by default; -Configuration Release for a release
       build) for /src, producing llx.exe
-    - dotnet publish ui/LimelightX.UI.csproj -r win-x64 --self-contained false
+    - dotnet publish ui/LimelightX.UI.csproj -r <rid> --self-contained false
       (same configuration) for /ui, producing LimelightX.UI.exe plus all
-      managed dependencies (DLLs, .deps.json, .runtimeconfig.json)
+      managed dependencies (DLLs, .deps.json, .runtimeconfig.json). <rid>
+      defaults to the host's own architecture (win-arm64 on an ARM64 dev
+      machine, win-x64 elsewhere) rather than being hardcoded, since this
+      repo's native Tree-sitter DLLs (ui/native/*.dll) are currently
+      ARM64-only (CLAUDE.md §3.5) - publishing win-x64 on an ARM64 dev
+      machine would ship an architecture mismatch that throws the moment any
+      Tree-sitter-backed editor feature runs. Override with -Rid if needed.
     - Both are staged together into target/manual-testing/ so the app can be
       run from a single folder
 
 .PARAMETER Configuration
   Build configuration to use for both components: "Debug" (default) or
   "Release".
+
+.PARAMETER Rid
+  .NET RuntimeIdentifier to publish /ui for: "win-x64" or "win-arm64".
+  Defaults to the host machine's own architecture.
 #>
 param(
     [string]$RepoRoot = (Resolve-Path "$PSScriptRoot/..").Path,
     [ValidateSet("Debug", "Release")]
-    [string]$Configuration = "Debug"
+    [string]$Configuration = "Debug",
+    [ValidateSet("win-x64", "win-arm64")]
+    [string]$Rid = $(
+        if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) { "win-arm64" }
+        else { "win-x64" }
+    )
 )
 
 $ErrorActionPreference = "Stop"
 
 $outDir = "$RepoRoot/target/manual-testing"
 
-Write-Host "== Manual testing build ($Configuration) =="
+Write-Host "== Manual testing build ($Configuration, $Rid) =="
 
 # --- /src (Rust) ---
 Write-Host "Building /src (cargo build, $Configuration)..."
@@ -67,7 +82,7 @@ if (Test-Path $outDir) {
 }
 New-Item -ItemType Directory -Path $outDir | Out-Null
 
-dotnet publish "$RepoRoot/ui/LimelightX.UI.csproj" -c $Configuration -r win-x64 --self-contained false -o $outDir
+dotnet publish "$RepoRoot/ui/LimelightX.UI.csproj" -c $Configuration -r $Rid --self-contained false -o $outDir
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE." }
 
 # dotnet publish already staged LimelightX.UI.exe plus every managed

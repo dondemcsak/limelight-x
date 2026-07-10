@@ -78,6 +78,15 @@ Pronoun        <- "it"
 # ------------------------------------------------------------
 
 # Multi-word noun phrase: greedy until a keyword boundary
+#
+# tree-sitter/grammar.js's Resource/Target/FormatTarget/Language rules used
+# to not implement the !KeywordWord guard below (plain repeat1(/[^.\n]+/),
+# unbounded except by "." / newline) - a tracked, now-fixed Tree-sitter-only
+# (client-side editor decoration) defect that never affected /src/parser's
+# actual implementation of this rule. See spec/cnl-editor-architecture.md §5
+# "Known Current Divergence" for the canonical pointer and
+# spec/parsing/tree-sitter-runtime-build-guide.md §6 for the full empirical
+# write-up, including the fix and its verification.
 Resource       <- (!KeywordWord !"."
                     .)+
 
@@ -87,6 +96,13 @@ FormatTarget   <- (!"." .)+
 
 Language       <- (!"." .)+
 
+# tree-sitter/grammar.js's Name rule used to have the same (default) lexer
+# precedence as a resource word, which meant it truncated multi-word
+# resources sharing its starting position (Input's choice(Resource, Name,
+# Pronoun); Expression inside BindStmt's ResourceFrom-vs-Expression choice) -
+# a second, related Tree-sitter-only defect, now fixed. See
+# spec/cnl-editor-architecture.md §5's "Follow-Up" entry and
+# spec/parsing/tree-sitter-runtime-build-guide.md §6's fifth finding.
 Name           <- NameStart NameChar*
 
 NameStart      <- [A-Za-z_]

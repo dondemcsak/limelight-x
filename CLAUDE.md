@@ -53,6 +53,7 @@ Claude must assume the following directory layout:
         injections-scm.md
         tree-sitter-integration.md
         tree-sitter-build-guide.md
+        tree-sitter-runtime-build-guide.md
     /ux
         ui-architecture.md
         ui-components.md
@@ -201,7 +202,11 @@ Unless explicitly approved.
 
 **Explicitly approved for `/ui`:** Avalonia, Avalonia Community Toolkit, a Fluent UI icon set, Inter and JetBrains Mono fonts, MSIX packaging tooling, and — for persistent diagnostic logging — `Microsoft.Extensions.Logging` plus Serilog (`Serilog.Extensions.Logging`, `Serilog.Sinks.File`), per `spec/ux/*.md`. These apply only to `/ui` and do not license any further additions without explicit approval.
 
-**Also explicitly approved for `/ui`:** a native Tree‑sitter grammar library, `tree-sitter-limelightx.dll` (built from `tree-sitter/grammar.js` per `spec/parsing/tree-sitter-build-guide.md`), loaded via hand‑written, raw `[DllImport]` P/Invoke bindings only — **no third‑party Tree‑sitter binding NuGet package (e.g. TreeSitterSharp) is approved.** The DLL is currently built for **ARM64 only**; a `win-x64` build (matching `ui-build-pipeline.md` §7.1's pinned `RuntimeIdentifier`) is explicitly deferred future work. Until the `win-x64` build exists, any test or code path that loads this DLL must be skippable/gated on the `windows-latest` (x64) CI runner. This entry governs `/ui/native`, `/ui/queries`, and `/ui/intellisense` (see §1) and does not license any further native/interop additions without explicit approval.
+**Also explicitly approved for `/ui`:** two native Tree‑sitter DLLs, loaded via hand‑written, raw `[DllImport]` P/Invoke bindings only — **no third‑party Tree‑sitter binding NuGet package (e.g. TreeSitterSharp) is approved.**
+- `tree-sitter-limelightx.dll` (built from `tree-sitter/grammar.js` per `spec/parsing/tree-sitter-build-guide.md`) — the CNL grammar only; exports a single `tree_sitter_limelightx()` accessor.
+- `tree-sitter-runtime.dll` (built from `tree-sitter/tree-sitter` core's `lib/` per `spec/parsing/tree-sitter-runtime-build-guide.md`, a separate codebase from this repo's own `tree-sitter/` folder) — the actual `ts_parser_*`/`ts_node_*`/`ts_query_*` engine that consumes the grammar DLL's `TSLanguage*`. Required because Tree‑sitter's C API splits these into two separate libraries by design; a single self‑contained grammar DLL is not how it works (confirmed empirically — `tree-sitter-limelightx.dll` exports nothing but the language accessor).
+
+Both DLLs are currently built for **ARM64 only**; a `win-x64` build (matching `ui-build-pipeline.md` §7.1's pinned `RuntimeIdentifier`) is explicitly deferred future work. Until the `win-x64` build exists, any test or code path that loads either DLL must be skippable/gated on the `windows-latest` (x64) CI runner. This entry governs `/ui/native`, `/ui/queries`, and `/ui/intellisense` (see §1) and does not license any further native/interop additions without explicit approval.
 
 ---
 

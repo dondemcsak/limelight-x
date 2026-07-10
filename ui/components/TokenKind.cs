@@ -1,6 +1,6 @@
 namespace LimelightX.UI.Components;
 
-/// <summary>CNL token classes highlighted by SyntaxHighlighter (ui-styling-theming.md §5).</summary>
+/// <summary>CNL token classes highlighted by CnlSyntaxColorizer (ui-styling-theming.md §5).</summary>
 public enum TokenKind
 {
     Plain,

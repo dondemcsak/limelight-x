@@ -375,8 +375,8 @@
       "content": {
         "type": "REPEAT1",
         "content": {
-          "type": "PATTERN",
-          "value": "[^.\\n]+"
+          "type": "SYMBOL",
+          "name": "_free_text_word"
         }
       }
     },
@@ -386,8 +386,8 @@
       "content": {
         "type": "REPEAT1",
         "content": {
-          "type": "PATTERN",
-          "value": "[^.\\n]+"
+          "type": "SYMBOL",
+          "name": "_free_text_word"
         }
       }
     },
@@ -397,8 +397,8 @@
       "content": {
         "type": "REPEAT1",
         "content": {
-          "type": "PATTERN",
-          "value": "[^.\\n]+"
+          "type": "SYMBOL",
+          "name": "_free_text_word"
         }
       }
     },
@@ -408,14 +408,32 @@
       "content": {
         "type": "REPEAT1",
         "content": {
+          "type": "SYMBOL",
+          "name": "_free_text_word"
+        }
+      }
+    },
+    "_free_text_word": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": -1,
+        "content": {
           "type": "PATTERN",
-          "value": "[^.\\n]+"
+          "value": "[^\\s.\\n]+"
         }
       }
     },
     "name": {
-      "type": "PATTERN",
-      "value": "[A-Za-z_][A-Za-z0-9_]*"
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": -2,
+        "content": {
+          "type": "PATTERN",
+          "value": "[A-Za-z_][A-Za-z0-9_]*"
+        }
+      }
     },
     "string": {
       "type": "SEQ",

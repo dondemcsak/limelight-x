@@ -3,8 +3,9 @@
 
   <!--
     VS Code Dark+ base, CNL-specific token colors (ui-styling-theming.md §5).
-    Used by SyntaxHighlighter (CNL editor) and by IR/prompt/model-output
-    panels that reuse the same Dark+ palette for JSON/code coloring.
+    Used by CnlSyntaxColorizer (CNL editor, Tree-sitter-backed) and by
+    IR/prompt/model-output panels that reuse the same Dark+ palette for
+    JSON/code coloring.
   -->
   <Color x:Key="SyntaxKeywordColor">#569CD6</Color>
   <Color x:Key="SyntaxPronounColor">#4EC9B0</Color>

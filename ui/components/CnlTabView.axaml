@@ -51,6 +51,8 @@
         <components:CnlEditor Text="{Binding Editor.Text}"
                                CursorPosition="{Binding Editor.CursorPosition}"
                                SelectionRange="{Binding Editor.SelectionRange}"
+                               LocalDiagnostics="{Binding Editor.LocalDiagnostics}"
+                               FoldRegions="{Binding Editor.FoldRegions}"
                                MinHeight="200" />
       </ScrollViewer>
 

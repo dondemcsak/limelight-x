@@ -12,22 +12,25 @@
          Assembly.GetExecutingAssembly().GetName().Version. Bump this (and
          only this) before tagging a release. -->
     <Version>0.5.1.0</Version>
-    <!-- ui-build-pipeline.md §7.1: Windows-only, win-x64 CI runners. Listing
-         win-x64 here (plural form) only makes `dotnet restore` capture win-x64
-         assets into packages.lock.json for later publish - it does NOT pin
-         `dotnet build`/`dotnet test` to a RID, so those keep running against
-         whatever RID the host actually is (e.g. win-arm64 on an ARM64 dev
-         machine, win-x64 in CI). The singular <RuntimeIdentifier> form was
-         tried first and pinned build/test to win-x64 unconditionally, which
-         hung `dotnet test` on an ARM64 dev machine (an arm64 test host cannot
+    <!-- ui-build-pipeline.md §7.1: Windows-only, win-x64 CI runners; win-arm64
+         added alongside it so `dotnet restore` also captures win-arm64 assets
+         into packages.lock.json - needed for scripts/build-manual-testing.ps1
+         to publish a working build on an ARM64 dev machine (matching this
+         repo's current native Tree-sitter DLLs, which are ARM64-only per
+         CLAUDE.md §3.5; a win-x64 native build is deferred future work).
+         Listing RIDs here (plural form) does NOT pin `dotnet build`/`dotnet
+         test` to either - those keep running against whatever RID the host
+         actually is. The singular <RuntimeIdentifier> form was tried first
+         and pinned build/test to win-x64 unconditionally, which hung
+         `dotnet test` on an ARM64 dev machine (an arm64 test host cannot
          load the resulting x64-only native SkiaSharp/HarfBuzzSharp/Avalonia
          libraries, and no x64 emulation was available in that environment).
-         The actual win-x64-only trim (avoiding a runtimes/{RID}/native/ folder
-         per platform for every native-asset package) is applied explicitly via
-         the "-r win-x64" and "self-contained false" publish flags on the
-         commands that produce shipped output (CI's publish step,
-         build-manual-testing.ps1), not here. -->
-    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+         The actual per-RID trim (avoiding a runtimes/{RID}/native/ folder for
+         every platform every native-asset package supports) is applied
+         explicitly via the "-r <rid>" and "self-contained false" publish
+         flags on the commands that produce shipped output (CI's publish
+         step, build-manual-testing.ps1), not here. -->
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <SelfContained>false</SelfContained>
     <Nullable>enable</Nullable>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
@@ -42,16 +45,36 @@
   </ItemGroup>
 
   <!-- Tree-sitter runtime artifacts (tier 3 of cnl-editor-architecture.md §3.1's
-       three-tier file model). tree-sitter-limelightx.dll is currently built
-       ARM64-only (tree-sitter-build-guide.md §0; CLAUDE.md §3.5) - this copies
-       it unconditionally today because no code P/Invokes it yet and the dev
-       machine is ARM64 (see the RuntimeIdentifiers comment above for the prior
-       incident pinning win-x64 caused here). Once a win-x64 build exists
-       (tree-sitter-build-guide.md §9), this must become RID-conditional
-       (e.g. two Include items guarded by $(RuntimeIdentifier)) so a win-x64
-       publish never ships the ARM64 binary. -->
+       three-tier file model). Both DLLs are currently built ARM64-only
+       (tree-sitter-build-guide.md §0, tree-sitter-runtime-build-guide.md;
+       CLAUDE.md §3.5) - this copies them unconditionally today because the
+       dev machine is ARM64 (see the RuntimeIdentifiers comment above for the
+       prior incident pinning win-x64 caused here). Once a win-x64 build
+       exists, this must become RID-conditional (e.g. two Include items
+       guarded by $(RuntimeIdentifier)) so a win-x64 publish never ships the
+       ARM64 binaries.
+
+       Two separate native DLLs, not one: tree-sitter-limelightx.dll is the
+       grammar-only shared library (exports just tree_sitter_limelightx());
+       tree-sitter-runtime.dll is the actual Tree-sitter parsing/tree/node/
+       query engine (ts_parser_*/ts_node_*/ts_query_* - built from
+       tree-sitter core's lib/, not this grammar's own src/). The grammar DLL
+       is loaded into the runtime DLL at runtime via ts_parser_set_language,
+       not the other way around - see tree-sitter-runtime-build-guide.md for
+       why a single self-contained DLL isn't how Tree-sitter's C API works.
+
+       Link="%(Filename)%(Extension)" is required, not decorative: without
+       it, CopyToOutputDirectory preserves the native\ subfolder from the
+       Include path (-> $(OutDir)\native\tree-sitter-runtime.dll), but a bare
+       [DllImport("tree-sitter-runtime.dll")] only searches the output root
+       (and a few OS-standard locations) - never a subfolder. Confirmed by
+       running the actual P/Invoke code: without this, ts_parser_new() throws
+       DllNotFoundException even though the file is sitting right there one
+       folder down. native\ stays the source-tree location (matches
+       CLAUDE.md §1's /ui layout); Link flattens only the copied output. -->
   <ItemGroup>
-    <None Include="native\tree-sitter-limelightx.dll" CopyToOutputDirectory="Always" />
+    <None Include="native\tree-sitter-limelightx.dll" CopyToOutputDirectory="Always" Link="%(Filename)%(Extension)" />
+    <None Include="native\tree-sitter-runtime.dll" CopyToOutputDirectory="Always" Link="%(Filename)%(Extension)" />
     <None Include="queries\*.scm" CopyToOutputDirectory="Always" />
   </ItemGroup>
 

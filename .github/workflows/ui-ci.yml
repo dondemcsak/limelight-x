@@ -95,8 +95,13 @@ jobs:
         run: cargo clippy --release --all-targets --locked -- -D warnings
 
       # --- Test stage (§3.4) ---
+      # NativeArm64-tagged tests P/Invoke tree-sitter-limelightx.dll, which is
+      # currently built ARM64-only (spec/parsing/tree-sitter-build-guide.md
+      # §0; CLAUDE.md §3.5) - this windows-latest runner is x64, so those
+      # tests are excluded here until a win-x64 build exists. Run them
+      # locally on ARM64 hardware in the meantime (dotnet test ui/LimelightX.slnx --filter "Category=NativeArm64").
       - name: Test /ui
-        run: dotnet test ui/LimelightX.slnx -c Release --no-build
+        run: dotnet test ui/LimelightX.slnx -c Release --no-build --filter "Category!=NativeArm64"
 
       - name: Test /src
         run: cargo test --release --locked

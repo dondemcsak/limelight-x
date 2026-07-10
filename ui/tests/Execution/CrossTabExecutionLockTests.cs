@@ -1,3 +1,4 @@
+using LimelightX.UI.Intellisense;
 using LimelightX.UI.Services;
 using LimelightX.UI.Services.Dto;
 using LimelightX.UI.Tests.TestDoubles;
@@ -64,7 +65,7 @@ public class CrossTabExecutionLockTests
         {
             var lockService = new ExecutionLockService();
             var eventStream = new FakeEventStreamService();
-            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService);
+            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService, new CompletionService(), new DiagnosticService(), new HoverService(), new FoldingService(new TestDoubles.FakeQueryRunner()), new TestDoubles.FakeStructuralSelectionService());
             var workspace = new WorkspaceViewModel(tabFactory, new FakeFilePickerService(), new FakeModalService(), lockService);
             workspace.OpenRoot(root);
 
@@ -102,7 +103,7 @@ public class CrossTabExecutionLockTests
         {
             var lockService = new ExecutionLockService();
             var eventStream = new FakeEventStreamService();
-            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService);
+            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService, new CompletionService(), new DiagnosticService(), new HoverService(), new FoldingService(new TestDoubles.FakeQueryRunner()), new TestDoubles.FakeStructuralSelectionService());
             var workspace = new WorkspaceViewModel(tabFactory, new FakeFilePickerService(), new FakeModalService(), lockService);
             workspace.OpenRoot(root);
 
@@ -141,7 +142,7 @@ public class CrossTabExecutionLockTests
         {
             var lockService = new ExecutionLockService();
             var eventStream = new FakeEventStreamService();
-            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService);
+            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService, new CompletionService(), new DiagnosticService(), new HoverService(), new FoldingService(new TestDoubles.FakeQueryRunner()), new TestDoubles.FakeStructuralSelectionService());
             var workspace = new WorkspaceViewModel(tabFactory, new FakeFilePickerService(), new FakeModalService(), lockService);
             workspace.OpenRoot(root);
 

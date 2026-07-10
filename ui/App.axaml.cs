@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using LimelightX.UI.Intellisense;
 using LimelightX.UI.Services;
 using LimelightX.UI.ViewModels;
 using LimelightX.UI.ViewModels.Errors;
@@ -40,7 +41,23 @@ public partial class App : Application
             var eventStream = new EventStreamService();
             var executionLock = new ExecutionLockService();
 
-            var tabFactory = new TabFactory(pipelineService, eventStream, executionLock);
+            // App-wide IntelliSense singletons (cnl-editor-architecture.md §5):
+            // stateless functions of a caller-supplied CST, so - unlike
+            // IParserHost, which is per-tab and constructed inside
+            // CnlTabViewModel itself - these are shared across every open tab,
+            // exactly like pipelineService/eventStream/executionLock above.
+            // queryRunner is the one app-wide compiled-query cache
+            // (ui/intellisense/QueryRunner.cs) - every service below that
+            // needs a .scm query shares this instance rather than each
+            // loading/compiling its own copy.
+            var queryRunner = new QueryRunner();
+            var completionService = new CompletionService();
+            var diagnosticService = new DiagnosticService();
+            var hoverService = new HoverService();
+            var foldingService = new FoldingService(queryRunner);
+            var structuralSelectionService = new StructuralSelectionService();
+
+            var tabFactory = new TabFactory(pipelineService, eventStream, executionLock, completionService, diagnosticService, hoverService, foldingService, structuralSelectionService);
             var workspace = new WorkspaceViewModel(tabFactory, filePicker, modal, executionLock);
             var settings = new SettingsViewModel(configService, credentialService, llxProcessService);
             var about = new AboutViewModel();

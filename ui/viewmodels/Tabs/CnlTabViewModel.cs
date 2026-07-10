@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using LimelightX.UI.Intellisense;
 using LimelightX.UI.Services;
 
 namespace LimelightX.UI.ViewModels.Tabs;
@@ -11,6 +12,10 @@ namespace LimelightX.UI.ViewModels.Tabs;
 /// Editor.RunRequested/ExplainRequested directly to this tab's own
 /// PipelineExecution is simpler than the old app-wide Func-wiring done in
 /// App.axaml.cs, since it's naturally 1:1 per tab now.
+/// Also constructs this tab's own IParserHost (per-tab native parse/tree
+/// lifecycle, cnl-editor-architecture.md §5) - unlike the completion/
+/// diagnostic/hover/folding services, which are app-wide singletons passed
+/// in from TabFactory since they hold no per-document state.
 /// </summary>
 public sealed partial class CnlTabViewModel : TabViewModel
 {
@@ -19,10 +24,15 @@ public sealed partial class CnlTabViewModel : TabViewModel
         string initialText,
         IPipelineService pipelineService,
         IEventStreamService eventStream,
-        IExecutionLockService executionLock)
+        IExecutionLockService executionLock,
+        ICompletionService completionService,
+        IDiagnosticService diagnosticService,
+        IHoverService hoverService,
+        IFoldingService foldingService,
+        IStructuralSelectionService structuralSelectionService)
         : base(filePath, Path.GetFileName(filePath))
     {
-        Editor = new EditorViewModel(pipelineService, eventStream, executionLock) { Text = initialText };
+        Editor = new EditorViewModel(pipelineService, eventStream, executionLock, new ParserHost(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService) { Text = initialText };
         PipelineExecution = new PipelineExecutionViewModel(pipelineService, eventStream, executionLock);
 
         Editor.RunRequested = PipelineExecution.RunPipelineAsync;
@@ -38,10 +48,15 @@ public sealed partial class CnlTabViewModel : TabViewModel
         string header,
         IPipelineService pipelineService,
         IEventStreamService eventStream,
-        IExecutionLockService executionLock)
+        IExecutionLockService executionLock,
+        ICompletionService completionService,
+        IDiagnosticService diagnosticService,
+        IHoverService hoverService,
+        IFoldingService foldingService,
+        IStructuralSelectionService structuralSelectionService)
         : base(null, header)
     {
-        Editor = new EditorViewModel(pipelineService, eventStream, executionLock) { Text = string.Empty };
+        Editor = new EditorViewModel(pipelineService, eventStream, executionLock, new ParserHost(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService) { Text = string.Empty };
         PipelineExecution = new PipelineExecutionViewModel(pipelineService, eventStream, executionLock);
 
         Editor.RunRequested = PipelineExecution.RunPipelineAsync;

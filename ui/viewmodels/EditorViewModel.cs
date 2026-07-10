@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using LimelightX.UI.Intellisense;
 using LimelightX.UI.Services;
 using LimelightX.UI.Services.Dto;
 using LimelightX.UI.ViewModels.Editor;
@@ -16,10 +17,18 @@ namespace LimelightX.UI.ViewModels;
 /// CorrelationId - it never touches this tab's PipelineExecutionViewModel
 /// state, and is exempt from IExecutionLockService (ui-viewmodels.md §6 Live
 /// Validation).
-/// Completion/quick-fix/hover (CompletionItems, QuickFixes, HoverInfo,
-/// SelectCompletionItemCommand, ApplyQuickFixCommand) are stubbed pending
-/// Phase 4b's grammar-driven completion engine - a materially separate,
-/// larger piece of work than the rest of this phase (see the approved plan).
+/// Completion/hover/folding/local-diagnostics (CompletionItems, HoverInfo,
+/// FoldRegions, LocalDiagnostics and their Request*/Refresh* triggers below)
+/// are wired to the IParserHost/ICompletionService/IDiagnosticService/
+/// IHoverService/IFoldingService interfaces (ui/intellisense/), but those
+/// implementations are still stubs throwing NotImplementedException - see
+/// the BDD-tests-first implementation plan. Deliberately NOT wired to
+/// OnTextChanged yet (unlike the eventual real behavior described in
+/// ui-viewmodels.md §6 "IntelliSense (Tree-sitter)"): every trigger below is
+/// explicit-call-only for now, so existing text-driven tests are unaffected
+/// by services that aren't implemented yet.
+/// QuickFixes/ApplyQuickFixCommand stay empty - DiagnosticService produces
+/// advisory diagnostics only, not actionable fixes (ui-viewmodels.md §6).
 /// FormatCommand is stubbed: no formatting-rule spec content exists anywhere
 /// in spec/ux/*, so it cannot be implemented yet (flagged ambiguity).
 /// </summary>
@@ -33,24 +42,46 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     private readonly IPipelineService _pipelineService;
     private readonly IEventStreamService _eventStream;
     private readonly IExecutionLockService _executionLock;
+    private readonly IParserHost _parserHost;
+    private readonly ICompletionService _completionService;
+    private readonly IDiagnosticService _diagnosticService;
+    private readonly IHoverService _hoverService;
+    private readonly IFoldingService _foldingService;
+    private readonly IStructuralSelectionService _structuralSelectionService;
     private CancellationTokenSource? _validationDebounceCts;
     private string? _validationCorrelationId;
 
-    public EditorViewModel(IPipelineService pipelineService, IEventStreamService eventStream, IExecutionLockService executionLock)
+    public EditorViewModel(
+        IPipelineService pipelineService,
+        IEventStreamService eventStream,
+        IExecutionLockService executionLock,
+        IParserHost parserHost,
+        ICompletionService completionService,
+        IDiagnosticService diagnosticService,
+        IHoverService hoverService,
+        IFoldingService foldingService,
+        IStructuralSelectionService structuralSelectionService)
     {
         _pipelineService = pipelineService;
         _eventStream = eventStream;
         _executionLock = executionLock;
+        _parserHost = parserHost;
+        _completionService = completionService;
+        _diagnosticService = diagnosticService;
+        _hoverService = hoverService;
+        _foldingService = foldingService;
+        _structuralSelectionService = structuralSelectionService;
         eventStream.EventReceived += OnValidationEventReceived;
         _executionLock.ExecutionLockChanged += NotifyPipelineCommandsCanExecuteChanged;
     }
 
-    /// <summary>Unsubscribes from the shared event stream/lock so a closed tab's EditorViewModel no longer reacts to anything (ui-viewmodels.md §5.2: disposed alongside its owning CnlTabViewModel).</summary>
+    /// <summary>Unsubscribes from the shared event stream/lock, and disposes this tab's IParserHost, so a closed tab's EditorViewModel no longer reacts to anything (ui-viewmodels.md §5.2: disposed alongside its owning CnlTabViewModel).</summary>
     public void Dispose()
     {
         _validationDebounceCts?.Cancel();
         _eventStream.EventReceived -= OnValidationEventReceived;
         _executionLock.ExecutionLockChanged -= NotifyPipelineCommandsCanExecuteChanged;
+        _parserHost.Dispose();
     }
 
     [ObservableProperty]
@@ -86,6 +117,12 @@ public partial class EditorViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<QuickFixItem> QuickFixes { get; } = [];
 
+    /// <summary>Client-side folding regions, one per CNL sentence (bdd-ui-interactions.md §2.9). Populated by RefreshDecorations.</summary>
+    public ObservableCollection<FoldRegion> FoldRegions { get; } = [];
+
+    /// <summary>Advisory, local-only diagnostics from Tree-sitter ERROR/MISSING nodes (bdd-ui-interactions.md §2.7-§2.8) - never authoritative, never written into SyntaxErrors/ValidationErrors. Populated by RefreshDecorations.</summary>
+    public ObservableCollection<LocalDiagnostic> LocalDiagnostics { get; } = [];
+
     /// <summary>Error-or-higher validation errors promoted to this tab's banner (ui-error-handling.md §9) - the ErrorBanner component binds directly to this.</summary>
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -118,9 +155,76 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     {
     }
 
+    /// <summary>
+    /// Intentionally empty: the real completion window (CnlEditor + AvaloniaEdit's
+    /// CompletionWindow/CnlCompletionData) applies the selected item's text
+    /// directly via AvaloniaEdit's own document API, not through this
+    /// command - see CnlCompletionData.Complete(). Kept as documented API
+    /// surface (ui-viewmodels.md §6) for any future non-AvaloniaEdit caller.
+    /// </summary>
     [RelayCommand]
     private void SelectCompletionItem(CompletionItem item)
     {
+    }
+
+    /// <summary>
+    /// Reparses Text and recomputes FoldRegions/LocalDiagnostics
+    /// (bdd-ui-interactions.md §2.7-§2.9). Explicit-call-only for now - see
+    /// this class's doc comment.
+    /// </summary>
+    public void RefreshDecorations()
+    {
+        var root = _parserHost.Parse(Text);
+
+        LocalDiagnostics.Clear();
+        foreach (var diagnostic in _diagnosticService.GetDiagnostics(root))
+        {
+            LocalDiagnostics.Add(diagnostic);
+        }
+
+        FoldRegions.Clear();
+        foreach (var fold in _foldingService.GetFolds(root))
+        {
+            FoldRegions.Add(fold);
+        }
+    }
+
+    /// <summary>Completion trigger (bdd-ui-interactions.md §2.12-§2.13) - explicit, not on every keystroke.</summary>
+    public void RequestCompletionsAt(int cursorByte)
+    {
+        var root = _parserHost.Parse(Text);
+
+        CompletionItems.Clear();
+        foreach (var item in _completionService.GetCompletions(Text, root, cursorByte))
+        {
+            CompletionItems.Add(item);
+        }
+    }
+
+    /// <summary>Hover trigger, pointer-driven not caret-driven (bdd-ui-interactions.md §2.11) - CnlEditor calls this from Editor.PointerHover.</summary>
+    public void RequestHoverAt(int cursorByte) => HoverInfo = _hoverService.GetHover(Text, _parserHost.Parse(Text), cursorByte);
+
+    /// <summary>CnlEditor calls this from Editor.PointerHoverStopped.</summary>
+    public void ClearHover() => HoverInfo = null;
+
+    /// <summary>
+    /// Structural selection (bdd-ui-interactions.md §2.10, cnl-editor-architecture.md
+    /// §1 "structural selection"): grows SelectionRange to the smallest
+    /// strictly-larger enclosing CST node on each invocation. SelectionRange
+    /// is UTF-16 char offsets (matches CnlEditor's SelectionStart/Length
+    /// binding); IStructuralSelectionService operates in UTF-8 byte offsets
+    /// like every other Tree-sitter-backed service, so this converts both ways.
+    /// </summary>
+    public void ExpandSelection()
+    {
+        var utf8Text = new Utf8Text(Text);
+        var startByte = utf8Text.CharOffsetToByteOffset(SelectionRange.Start);
+        var endByte = utf8Text.CharOffsetToByteOffset(SelectionRange.End);
+
+        var root = _parserHost.Parse(Text);
+        var (newStartByte, newEndByte) = _structuralSelectionService.ExpandSelection(root, startByte, endByte);
+
+        SelectionRange = (utf8Text.ByteOffsetToCharOffset(newStartByte), utf8Text.ByteOffsetToCharOffset(newEndByte));
     }
 
     /// <summary>

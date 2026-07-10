@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using LimelightX.UI.Components;
+using LimelightX.UI.Intellisense;
 using LimelightX.UI.Services;
 using LimelightX.UI.Services.Dto;
 using LimelightX.UI.ViewModels;
@@ -68,7 +69,7 @@ public class WorkspaceShellRenderTests
         var pipeline = new FakePipelineService();
         var eventStream = new TestDoubles.FakeEventStreamService();
         var lockService = new ExecutionLockService();
-        var tabFactory = new TabFactory(pipeline, eventStream, lockService);
+        var tabFactory = new TabFactory(pipeline, eventStream, lockService, new CompletionService(), new DiagnosticService(), new HoverService(), new FoldingService(new TestDoubles.FakeQueryRunner()), new TestDoubles.FakeStructuralSelectionService());
         return new WorkspaceViewModel(tabFactory, new FakeFilePickerService(), new FakeModalService(), lockService);
     }
 
@@ -162,7 +163,7 @@ public class WorkspaceShellRenderTests
         {
             var eventStream = new TestDoubles.FakeEventStreamService();
             var lockService = new ExecutionLockService();
-            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService);
+            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService, new CompletionService(), new DiagnosticService(), new HoverService(), new FoldingService(new TestDoubles.FakeQueryRunner()), new TestDoubles.FakeStructuralSelectionService());
             var workspace = new WorkspaceViewModel(tabFactory, new FakeFilePickerService(), new FakeModalService(), lockService);
             workspace.OpenRoot(root);
             workspace.OpenOrFocusTabCommand.Execute(workspace.FileTree.Nodes.Single(n => n.FullPath == llxPath));

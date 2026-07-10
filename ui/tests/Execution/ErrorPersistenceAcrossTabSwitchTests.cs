@@ -1,3 +1,4 @@
+using LimelightX.UI.Intellisense;
 using LimelightX.UI.Services;
 using LimelightX.UI.Tests.TestDoubles;
 using LimelightX.UI.ViewModels.Errors;
@@ -66,7 +67,7 @@ public class ErrorPersistenceAcrossTabSwitchTests
         {
             var lockService = new ExecutionLockService();
             var eventStreamA = new FakeEventStreamService();
-            var tabFactory = new TabFactory(new FakePipelineService(), eventStreamA, lockService);
+            var tabFactory = new TabFactory(new FakePipelineService(), eventStreamA, lockService, new CompletionService(), new DiagnosticService(), new HoverService(), new FoldingService(new TestDoubles.FakeQueryRunner()), new TestDoubles.FakeStructuralSelectionService());
             var workspace = new WorkspaceViewModel(tabFactory, new FakeFilePickerService(), new FakeModalService(), lockService);
             workspace.OpenRoot(root);
 
@@ -109,7 +110,7 @@ public class ErrorPersistenceAcrossTabSwitchTests
         {
             var lockService = new ExecutionLockService();
             var eventStream = new FakeEventStreamService();
-            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService);
+            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService, new CompletionService(), new DiagnosticService(), new HoverService(), new FoldingService(new TestDoubles.FakeQueryRunner()), new TestDoubles.FakeStructuralSelectionService());
             var workspace = new WorkspaceViewModel(tabFactory, new FakeFilePickerService(), new FakeModalService(), lockService);
             workspace.OpenRoot(root);
 

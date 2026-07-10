@@ -1,3 +1,4 @@
+using LimelightX.UI.Intellisense;
 using LimelightX.UI.Services;
 using LimelightX.UI.ViewModels.Tabs;
 using LimelightX.UI.ViewModels.Workspace;
@@ -48,7 +49,7 @@ public class SaveWorkflowTests
         var pipeline = new FakePipelineService();
         var eventStream = new TestDoubles.FakeEventStreamService();
         var lockService = new ExecutionLockService();
-        var tabFactory = new TabFactory(pipeline, eventStream, lockService);
+        var tabFactory = new TabFactory(pipeline, eventStream, lockService, new CompletionService(), new DiagnosticService(), new HoverService(), new FoldingService(new TestDoubles.FakeQueryRunner()), new TestDoubles.FakeStructuralSelectionService());
         var filePicker = new FakeFilePickerService();
         var workspace = new WorkspaceViewModel(tabFactory, filePicker, new FakeModalService(), lockService);
         return (workspace, filePicker);

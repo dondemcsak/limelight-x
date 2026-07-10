@@ -59,7 +59,7 @@ OnTextChanged(text):
     tree = ParserHost.Parse(text)
     root = ts_tree_root_node(tree)
 
-    completions = CompletionService.GetCompletions(root, cursor)
+    completions = CompletionService.GetCompletions(text, root, cursor)
     diagnostics = DiagnosticService.GetDiagnostics(root)
     highlights = QueryRunner.Run(highlights.scm, root)
     folds = FoldingService.GetFolds(root)

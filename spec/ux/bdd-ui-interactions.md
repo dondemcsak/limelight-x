@@ -63,9 +63,9 @@ All scenarios assume:
 
 ---
 
-## 2.5–2.15 Tree‑sitter Editor Decoration (Draft — pending review)
+## 2.5–2.15 Tree‑sitter Editor Decoration
 
-> **Status: DRAFT.** These scenarios are newly authored to close the gap identified when reviewing `spec/cnl-editor-architecture.md`: no BDD source existed anywhere for syntax highlighting migration, folding, hover, or completion before this addition. They have not yet been implemented against and should be treated as proposed acceptance criteria, not yet as settled fact, until confirmed. Cross-checked against `ui-viewmodels.md` §6 and `ui-components.md` §4.2 after those were extended with matching `CompletionItems`/`HoverInfo`/`QuickFixes` state — no drift found; `HoverInfo` is confirmed nullable (`null` = no hover) and `CompletionItems` is confirmed to be the same `ObservableCollection<CompletionItem>` type these scenarios already assume.
+> **Status: FINAL.** Authored to close the gap identified when reviewing `spec/cnl-editor-architecture.md`: no BDD source existed anywhere for syntax highlighting migration, folding, hover, or completion before this addition. Cross-checked against `ui-viewmodels.md` §6 and `ui-components.md` §4.2 (which were extended with matching `CompletionItems`/`HoverInfo`/`QuickFixes` state) and, in this pass, against `FoldRegions`/`LocalDiagnostics` (§2.7–§2.9) — no drift found; `HoverInfo` is confirmed nullable (`null` = no hover), `CompletionItems` is confirmed to be the same `ObservableCollection<CompletionItem>` type, and `FoldRegions`/`LocalDiagnostics` are confirmed to be `ObservableCollection<FoldRegion>`/`ObservableCollection<LocalDiagnostic>` on `EditorViewModel`. These 11 scenarios are the executable spec for the tests in `ui/tests/Edit/EditorViewModelTests.cs` and `ui/tests/Intellisense/` — one test per scenario, per `CLAUDE.md` §6.
 >
 > Scope premise (per `cnl-editor-architecture.md` §1, §5, as clarified): Tree‑sitter is client‑side‑only editor decoration. It never calls, and is never called by, `/src/api` or Rust. It does not participate in validation (`SyntaxErrors`) or execution. Everything below is local computation, keyed off the CST that `spec/parsing/grammer-js.md` produces from `SourceText`.
 
@@ -88,21 +88,21 @@ All scenarios assume:
 **WHEN** Tree‑sitter reparses  
 **THEN** Tree‑sitter produces an `ERROR`/`MISSING` node scoped to the incomplete region only, and every token it can still classify outside that region keeps its normal highlight color  
 **SO THAT** one incomplete sentence never blanks out highlighting for the rest of the document  
-**AS MEASURED BY** tokens before/after the error region retaining their `TokenKind` color; the error region itself rendered with the local error‑node style (§2.8), not a validation‑error style
+**AS MEASURED BY** tokens before/after the error region retaining their `TokenKind` color; the error region itself represented as one entry in `EditorViewModel.LocalDiagnostics` (§2.8), not a validation‑error style
 
 ## 2.8 Local Error Squiggles Never Replace `/explain` Validation
 **GIVEN** the user types invalid CNL text  
 **WHEN** Tree‑sitter's next in‑process reparse produces an `ERROR` node, arriving before the debounced `/explain` call returns  
-**THEN** a local, advisory squiggle appears immediately at the `ERROR` node's span, but `EditorViewModel.SyntaxErrors` is unchanged by it  
+**THEN** `EditorViewModel.LocalDiagnostics` gains an entry for the `ERROR` node's span immediately, but `EditorViewModel.SyntaxErrors` is unchanged by it  
 **SO THAT** the user gets fast visual feedback without Tree‑sitter becoming a second, possibly‑conflicting source of truth for validation state  
-**AS MEASURED BY** `SyntaxErrors` changing only in response to `/explain`'s streamed events (§2.2), never in response to a Tree‑sitter reparse alone — confirmed by a case where Tree‑sitter shows no error node but `/explain` still returns one (and vice versa), with `SyntaxErrors` reflecting only `/explain`'s answer in both cases
+**AS MEASURED BY** `SyntaxErrors` changing only in response to `/explain`'s streamed events (§2.2), never in response to a Tree‑sitter reparse alone — confirmed by a case where Tree‑sitter shows no error node (`LocalDiagnostics` empty) but `/explain` still returns one (`SyntaxErrors` non-empty), and vice versa, with `SyntaxErrors` reflecting only `/explain`'s answer in both cases and `LocalDiagnostics` reflecting only the current parse's `ERROR`/`MISSING` nodes
 
 ## 2.9 Folding: One Region Per Sentence
 **GIVEN** a `.llx` tab contains two or more CNL sentences  
 **WHEN** the editor renders  
-**THEN** a fold control appears at the start of each sentence, per `spec/parsing/folds-scm.md`'s `(sentence) @fold` query  
+**THEN** a fold control appears at the start of each sentence, per `spec/parsing/folds-scm.md`'s `(sentence) @fold` query, backed by one entry per sentence in `EditorViewModel.FoldRegions`  
 **SO THAT** the user can collapse individual sentences in a long CNL program  
-**AS MEASURED BY** exactly one collapsible region per top‑level `sentence` CST node, collapsing to a single summary line when toggled closed, with sentences outside it unaffected
+**AS MEASURED BY** `EditorViewModel.FoldRegions.Count` equal to the number of top‑level `sentence` CST nodes, each entry's `[StartByte, EndByte)` matching one sentence's span, collapsing to a single summary line when toggled closed, with sentences outside it unaffected
 
 ## 2.10 Structural Selection Expands to the Enclosing Grammar Node
 **GIVEN** the cursor is positioned inside a token within a sentence (e.g. inside a quoted string)  
@@ -137,7 +137,7 @@ All scenarios assume:
 **WHEN** the user types in any tab's editor, triggering highlighting, folding, hover, or completion  
 **THEN** all four continue to update normally  
 **SO THAT** purely local editor decoration is never gated by a lock that exists solely to serialize backend calls  
-**AS MEASURED BY** highlight spans, fold regions, `HoverInfo`, and `CompletionItems` all updating on keystroke regardless of `IExecutionLockService.IsAnyExecutionRunning`'s value
+**AS MEASURED BY** highlight spans, `FoldRegions`, `LocalDiagnostics`, `HoverInfo`, and `CompletionItems` all updating on keystroke regardless of `IExecutionLockService.IsAnyExecutionRunning`'s value
 
 ## 2.15 Deterministic Reparse
 **GIVEN** identical CNL source text  
