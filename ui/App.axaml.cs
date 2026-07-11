@@ -57,8 +57,10 @@ public partial class App : Application
             var foldingService = new FoldingService(queryRunner);
             var structuralSelectionService = new StructuralSelectionService();
             var outlineService = new OutlineService();
+            var autoPairService = new AutoPairService();
+            var navigationService = new NavigationService();
 
-            var tabFactory = new TabFactory(pipelineService, eventStream, executionLock, completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService);
+            var tabFactory = new TabFactory(pipelineService, eventStream, executionLock, completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService, autoPairService, navigationService);
             var workspace = new WorkspaceViewModel(tabFactory, filePicker, modal, executionLock);
             var settings = new SettingsViewModel(configService, credentialService, llxProcessService);
             var about = new AboutViewModel();

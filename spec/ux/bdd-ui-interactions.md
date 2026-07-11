@@ -64,13 +64,17 @@ All scenarios assume:
 
 ---
 
-## 2.5–2.29 Tree‑sitter Editor Decoration
+## 2.5–2.38 Tree‑sitter Editor Decoration
 
-> **Status: §2.5–§2.19 FINAL (implemented).** Authored to close the gap identified when reviewing `spec/cnl-editor-architecture.md`: no BDD source existed anywhere for syntax highlighting migration, folding, hover, or completion before this addition. Cross-checked against `ui-viewmodels.md` §6 and `ui-components.md` §4.2 (which were extended with matching `CompletionItems`/`HoverInfo`/`QuickFixes` state) and, in this pass, against `FoldRegions`/`LocalDiagnostics` (§2.7–§2.9) — no drift found; `HoverInfo` is confirmed nullable (`null` = no hover), `CompletionItems` is confirmed to be the same `ObservableCollection<CompletionItem>` type, and `FoldRegions`/`LocalDiagnostics` are confirmed to be `ObservableCollection<FoldRegion>`/`ObservableCollection<LocalDiagnostic>` on `EditorViewModel`. These 15 scenarios are the executable spec for the tests in `ui/tests/Edit/EditorViewModelTests.cs` and `ui/tests/Intellisense/` — one test per scenario, per `CLAUDE.md` §6.
+> **Status: §2.5–§2.38 FINAL (implemented), except §2.27 (Find All References) which remains PROPOSED.** Authored to close the gap identified when reviewing `spec/cnl-editor-architecture.md`: no BDD source existed anywhere for syntax highlighting migration, folding, hover, or completion before this addition. Cross-checked against `ui-viewmodels.md` §6 and `ui-components.md` §4.2 (which were extended with matching `CompletionItems`/`HoverInfo`/`QuickFixes` state) and, in this pass, against `FoldRegions`/`LocalDiagnostics` (§2.7–§2.9) — no drift found; `HoverInfo` is confirmed nullable (`null` = no hover), `CompletionItems` is confirmed to be the same `ObservableCollection<CompletionItem>` type, and `FoldRegions`/`LocalDiagnostics` are confirmed to be `ObservableCollection<FoldRegion>`/`ObservableCollection<LocalDiagnostic>` on `EditorViewModel`. §2.5–§2.19 are the executable spec for the tests in `ui/tests/Edit/EditorViewModelTests.cs` and `ui/tests/Intellisense/` — one test per scenario, per `CLAUDE.md` §6; §2.20–§2.38 (bar §2.27) are covered the same way, per each scenario's own **Status** line.
 >
 > **Amendment (§2.16–§2.19 added):** closes the "VS Code-style editor" gap — squiggly rendering, hover-shows-diagnostic-message, ghost-text suggested fixes, and Tab-to-accept. §2.7's "not a validation‑error style" wording is clarified below to mean the *data-model* separation (`LocalDiagnostics` must never flow into any backend-authoritative error state) — it was never a constraint on visual shape, and `ui-components.md` §4.2 already anticipated an "advisory squiggle." `RefreshDecorations()` is now triggered directly by `OnTextChanged` (§2.7a) rather than being explicit-call-only, since local diagnostics must be visible as the user types, matching the editors this feature is modeled on.
 >
-> **Amendment (§2.20–§2.29 added, PROPOSED — NOT YET IMPLEMENTED):** backlog scenarios from an IDE-capability gap review, guiding the next phase of IntelliSense work. Unlike §2.5–§2.19, these describe code that does not exist yet (`CompletionService.cs`, `HoverService.cs`, `CompletionItem.cs`, and `ParserHost.cs` are all untouched as of this amendment). Each carries its own **Status**/**Note** line recording exactly what's missing. §2.20–§2.22 close a gap in `ui-intellisense-engine-spec.md` §5.1/§5.3 itself — variable and prompt-template completions were already specified there but never built. §2.23–§2.27 and §2.29 are net-new IDE conveniences (sentence-skeleton snippets, auto-closing pairs, Go to Definition, Find All References, auto-trigger completion) proposed by analogy to mainstream editors, kept inside the existing "CST-only, syntactic, advisory" boundary (§12 Non-Goals) — none of them call `/src/api` or require the AST Normalizer. §2.28 reuses the squiggle/margin-marker/hover-priority rendering §2.16–§2.17 already ship, adding only a new `DiagnosticService` yield condition. Two related capabilities — Rename Symbol and an undefined-variable-reference diagnostic — are deliberately **not** included here because they need a product decision first (Rename mutates document text, the first editor service to do so; the undefined-variable diagnostic brushes against §12's "no semantic diagnostics" boundary) rather than being a spec gap like §2.20–§2.22.
+> **Amendment (§2.20–§2.29 added, then IMPLEMENTED):** backlog scenarios from an IDE-capability gap review, guiding the next phase of IntelliSense work. §2.20–§2.22 closed a gap in `ui-intellisense-engine-spec.md` §5.1/§5.3 itself — variable and prompt-template completions were already specified there but not yet built at the time this amendment was written. §2.23–§2.26, §2.28, and §2.29 were net-new IDE conveniences (sentence-skeleton snippets, auto-closing pairs, Go to Definition, a dangling-pronoun diagnostic, auto-trigger completion) proposed by analogy to mainstream editors, kept inside the existing "CST-only, syntactic, advisory" boundary (§12 Non-Goals) — none of them call `/src/api` or require the AST Normalizer. All of §2.20–§2.26, §2.28, and §2.29 are now implemented and covered by tests in `ui/tests/Intellisense/` and `ui/tests/Edit/`, per each scenario's own **Status** line. **§2.27 (Find All References) remains PROPOSED — NOT YET IMPLEMENTED**, deferred per an explicit decision: no results-list UI component exists anywhere in this codebase, and inventing one wasn't spec'd; only Go to Definition shipped this round. Two related capabilities — Rename Symbol and an undefined-variable-reference diagnostic — remain deliberately **excluded** because they need a product decision first (Rename mutates document text, the first editor service to do so; the undefined-variable diagnostic brushes against §12's "no semantic diagnostics" boundary) rather than being a spec gap like §2.20–§2.22.
+>
+> **Amendment (§2.30–§2.36 added, then IMPLEMENTED):** closed a concrete gap found by manual testing — typing `Summariz` (missing only the trailing `e`) produced no completion suggestion at all. Root cause, confirmed by code review: `CompletionService.GetCompletions` was built for "suggest the next token at an empty boundary" (trial-inserting a full candidate string at the cursor and checking the reparse), not "finish the word already being typed" — it had no concept of a partially-typed prefix anywhere, so it silently returned nothing once any character of a keyword had been typed. Even if it had matched, `CnlCompletionData.Complete()` would have inserted without replacing the typed prefix, producing duplicated text like `SummarizSummarize`. §2.30–§2.34 fixed the matching/commit algorithm (via `CompletionService.MatchPrefix`/`HasCleanPrecedingContext` and `CnlCompletionData.Complete()`'s per-item replace-segment); §2.35–§2.36 added auto-trigger while typing, superseding §2.29's narrower single-case version of the same idea (§2.29 is now trivially satisfied as a special case of §2.35's general rule, both implemented by the same debounced auto-trigger in `CnlEditor.axaml.cs`). All seven scenarios are implemented and covered by tests in `ui/tests/Intellisense/CompletionServiceTests.cs` and `ui/tests/Edit/CnlEditorTests.cs`.
+>
+> **Amendment (§2.37 added, then IMPLEMENTED):** closed a regression introduced by §2.35's auto-trigger — reported by manual testing as "a sentence missing its period no longer shows an error or suggests adding one." Root cause: a sentence ending in a word that is itself a complete, valid candidate (e.g. the pronoun `it`) auto-opened a no-op completion popup (offering to replace `it` with `it`), which visually covered the missing-period squiggle/ghost text at that same caret position even though `LocalDiagnostics`/`GhostSuggestion` were still computed correctly underneath it — confirmed by writing `ui/tests/Edit/CnlEditorLiveTypingTests.cs` against the real (non-fake) services end-to-end, which reproduced the exact popup-left-open state. Fixed by having the auto-trigger path treat "every candidate already fully typed" the same as "no candidates."
 >
 > Scope premise (per `cnl-editor-architecture.md` §1, §5, as clarified): Tree‑sitter is client‑side‑only editor decoration. It never calls, and is never called by, `/src/api` or Rust. It does not participate in backend validation or execution. Everything below is local computation, keyed off the CST that `spec/parsing/grammer-js.md` produces from `SourceText`.
 
@@ -188,7 +192,7 @@ All scenarios assume:
 **AS MEASURED BY** `Text` containing the inserted literal at the expected offset and `GhostSuggestion == null` immediately after commit; a companion case confirms that when `GhostSuggestion` is `null`, the key‑down handler leaves the event unhandled (`e.Handled == false`), so `Tab` falls through to the editor's existing indent‑insert behavior (`ui-accessibility.md` §2) rather than being silently swallowed
 
 ## 2.20 Completions Suggest Bound Variable Names Inside Resource Positions
-**Status: PROPOSED — not yet implemented.** `CompletionService.cs`'s own doc comment currently excludes this ("'Variables'/'Prompt templates' are out of scope, nothing exercises them"), even though `ui-intellisense-engine-spec.md` §5.1/§5.2 already call for it ("Inside resource position → Suggest variables and pronouns").  
+**Status: IMPLEMENTED.** `CompletionService.GetCompletions` scans `BindingScanner.FindAllBindings` (shared with `HoverService`/`NavigationService`) for names bound before the cursor and includes them as `CompletionKind.Variable` candidates, validated via the same trial-insertion mechanism (accepting either a `resource`- or `name`-typed match, per the same grammar quirk `HoverService.VariableBindingText` already accounts for). Tested in `ui/tests/Intellisense/CompletionServiceTests.cs`.  
 **GIVEN** the document contains `Let article be the text from "a.txt".` followed by a new sentence with the cursor inside an `input`/`resource` position  
 **WHEN** the user triggers completion  
 **THEN** `CompletionItems` includes `article` alongside the existing pronoun suggestions  
@@ -196,7 +200,7 @@ All scenarios assume:
 **AS MEASURED BY** `CompletionItems` containing one entry per distinct `bind_stmt` name bound anywhere before the cursor's byte offset, sourced the same way `HoverService.VariableBindingText` already resolves bindings — never a name bound *after* the cursor. This is CST‑only, best‑effort local scanning — the same class of computation §2.13 already blesses for `HoverService`, not a use of the AST Normalizer, so it does not conflict with §12's "no semantic completions" Non‑Goal.
 
 ## 2.21 Variable Completions Rank Above Pronoun Completions
-**Status: PROPOSED — not yet implemented; also blocked on a data-shape gap.** `CompletionItem` (`ui/viewmodels/CompletionItem.cs`) currently has only `Text`/`Description` — no `Kind`/`Rank` field to sort by, so this scenario cannot be implemented until one is added.  
+**Status: IMPLEMENTED.** `CompletionItem.Kind : CompletionKind` (declared in ascending rank order - Variable, Pronoun, Verb, Keyword, PromptTemplate) and `CompletionService.GetCompletions` sorts its final result by `(int)Kind` before returning. Tested in `ui/tests/Intellisense/CompletionServiceTests.cs`.  
 **GIVEN** the cursor is in a position where both a bound variable name and a pronoun are grammar‑valid  
 **WHEN** the user triggers completion  
 **THEN** `CompletionItems` lists the variable name(s) before any pronoun  
@@ -204,7 +208,7 @@ All scenarios assume:
 **AS MEASURED BY** `CompletionItems` index of any variable entry being lower than the index of any pronoun entry, per `ui-intellisense-engine-spec.md` §5.3 ("Variables rank above pronouns")
 
 ## 2.22 Completion Inside `using` Suggests a Prompt‑Hole Skeleton
-**Status: PROPOSED — not yet implemented.** Also specified but unbuilt, per `ui-intellisense-engine-spec.md` §5.1/§5.2 ("Inside prompt hole → Suggest prompt templates").  
+**Status: IMPLEMENTED.** `CompletionService.GetCompletions` includes a fixed `{{ prompt: "" }}` skeleton candidate (`CompletionKind.PromptTemplate`), validated by trial-inserting it and checking for a `prompt_hole` node rather than exact type-equals-text (the skeleton's own literal text isn't a grammar type name). Tested in `ui/tests/Intellisense/CompletionServiceTests.cs`.  
 **GIVEN** the cursor is immediately after `using ` in a statement that allows `using_prompt`  
 **WHEN** the user triggers completion  
 **THEN** `CompletionItems` includes a `{{ prompt: "" }}` skeleton entry  
@@ -212,7 +216,7 @@ All scenarios assume:
 **AS MEASURED BY** selecting that item inserting text that reparses with a valid `prompt_hole` node at the insertion point, cursor left between the empty string's quotes — structural skeleton only, no content suggestions, per §5.1
 
 ## 2.23 Selecting a Verb Completion Inserts a Sentence Skeleton
-**Status: PROPOSED — not yet implemented; net-new, not previously specified.**  
+**Status: IMPLEMENTED.** `CompletionItem.SnippetText`/`SnippetCursorOffset`, populated for all seven verbs via `CompletionService`'s `VerbSnippets` table; `CnlCompletionData.Complete()` inserts `SnippetText` (falling back to `Text` when null) and positions the caret at `SnippetCursorOffset` within it. Tested in `ui/tests/Intellisense/CompletionServiceTests.cs` and `ui/tests/Edit/CnlEditorTests.cs`.  
 **GIVEN** the cursor is at a sentence‑start position  
 **WHEN** the user selects the `Load` completion item  
 **THEN** the editor inserts `Load the  from "".` with the cursor placed inside the first blank (before `from`)  
@@ -220,7 +224,7 @@ All scenarios assume:
 **AS MEASURED BY** the inserted text reparsing with no `ERROR`/`MISSING` nodes once the blanks are filled, and the cursor's post‑insertion byte offset matching the start of the `resource` span — derived purely from `tree-sitter/grammar.js`'s seven statement rules, no semantics needed
 
 ## 2.24 Typing an Opening Quote Auto‑Inserts Its Match
-**Status: PROPOSED — not yet implemented; net-new.** Also has a practical side benefit: it sidesteps `cnl-editor-known-issues.md` §1 in the common case, since a user who never leaves a string unterminated never hits the unreachable `MISSING '"'` diagnostic gap, independent of that GLR recovery issue ever getting root-caused.  
+**Status: IMPLEMENTED.** `IAutoPairService`/`AutoPairService` (trial-inserts a validity probe and checks for the expected node type), wired through `CnlEditor.axaml.cs`'s `TextEntering`/`TextEntered` handlers. Also has a practical side benefit: it sidesteps `cnl-editor-known-issues.md` §1 in the common case, since a user who never leaves a string unterminated never hits the unreachable `MISSING '"'` diagnostic gap, independent of that GLR recovery issue ever getting root-caused. Tested in `ui/tests/Edit/CnlEditorTests.cs`.  
 **GIVEN** the cursor is at any position where a `string` token is grammar‑valid  
 **WHEN** the user types `"`  
 **THEN** the editor inserts a matching `"` immediately after the cursor and leaves the cursor between the two quotes  
@@ -228,7 +232,7 @@ All scenarios assume:
 **AS MEASURED BY** `Editor.Text` gaining exactly two `"` characters and `CaretOffset` sitting between them; typing a `"` immediately afterward moves past the auto‑inserted one instead of inserting a third
 
 ## 2.25 Typing `{{` Auto‑Inserts the Matching `}}`
-**Status: PROPOSED — not yet implemented; net-new.** Complements, but is distinct from, the `}}` self‑describing‑fix/ghost‑text path (§2.18): that scenario covers *recovery* after the pair is already unbalanced, this one covers *prevention*.  
+**Status: IMPLEMENTED.** Same `AutoPairService` mechanism as §2.24, using a full minimal `{{prompt:""}}` skeleton as its validity probe (bare `{{}}` alone is never a valid `prompt_hole`, per the grammar's own `seq("{{", "prompt:", $.string, "}}")` rule). Complements, but is distinct from, the `}}` self‑describing‑fix/ghost‑text path (§2.18): that scenario covers *recovery* after the pair is already unbalanced, this one covers *prevention*. Tested in `ui/tests/Edit/CnlEditorTests.cs`.  
 **GIVEN** the cursor is at a position where `using_prompt` is grammar‑valid  
 **WHEN** the user types `{{`  
 **THEN** the editor inserts `}}` immediately after the cursor  
@@ -236,7 +240,7 @@ All scenarios assume:
 **AS MEASURED BY** `Editor.Text` containing a balanced `{{...}}` pair immediately after the keystroke, cursor positioned between them
 
 ## 2.26 Go to Definition Jumps From a Reference to Its Binding
-**Status: PROPOSED — not yet implemented; net-new.**  
+**Status: IMPLEMENTED.** `INavigationService`/`NavigationService.FindDefinition`, reusing `BindingScanner` and the same nearest-preceding-binding resolution `HoverService.VariableBindingText` implements; `EditorViewModel.GoToDefinition()` sets `SelectionRange` (no-op when `null`), bound to `F12` in `CnlEditor.axaml.cs`. Tested in `ui/tests/Intellisense/NavigationServiceTests.cs` and `ui/tests/Edit/EditorViewModelTests.cs`.  
 **GIVEN** the document contains `Let article be the text from "a.txt".` and a later sentence referencing `article`  
 **WHEN** the user invokes Go to Definition on that later reference  
 **THEN** the caret/selection moves to the `bind_stmt` that bound `article`  
@@ -252,7 +256,7 @@ All scenarios assume:
 **AS MEASURED BY** the returned span count and byte ranges matching every `name`/`resource` node whose text equals the target, plus the originating `bind_stmt`
 
 ## 2.28 Diagnostic: Pronoun With No Preceding Sentence
-**Status: PROPOSED — not yet implemented, but cheap: the rendering pipeline (§2.16 squiggle/marker, §2.17 hover priority) already exists and needs no changes; only `DiagnosticService` needs a new yield condition.**  
+**Status: IMPLEMENTED.** `PronounReferenceResolver.PrecedingSentence` (extracted from `HoverService.PronounReferenceText`, now shared by both) plus a new yield condition in `DiagnosticService.GetDiagnostics` - no rendering-pipeline changes needed, reusing §2.16/§2.17's existing squiggle/marker/hover-priority machinery. Tested in `ui/tests/Intellisense/DiagnosticServiceTests.cs`.  
 **GIVEN** a document's first sentence is `Summarize it.`  
 **WHEN** Tree‑sitter reparses  
 **THEN** `EditorViewModel.LocalDiagnostics` gains an advisory entry spanning the pronoun, with `SuggestedFix == null` (there is no literal to insert — this is a message‑only diagnostic, unlike the §2.18 self‑describing cases)  
@@ -260,12 +264,84 @@ All scenarios assume:
 **AS MEASURED BY** one `LocalDiagnostics` entry appearing whenever the same nearest‑preceding‑sentence check `HoverService.PronounReferenceText` already performs returns "no preceding sentence," rendered through the same squiggle + margin‑marker + hover‑priority pipeline §2.16/§2.17 already ship — no backend-sourced error state exists to be affected either way (mirrors §2.8's separation)
 
 ## 2.29 Completion Triggers Automatically After a Verb‑Terminating Space
-**Status: PROPOSED — not yet implemented.** `EditorViewModel.RequestCompletionsAt`'s doc comment still reads "explicit, not on every keystroke," unchanged even though `RefreshDecorations()` itself was just promoted from explicit‑only to automatic (§2.7a) for the diagnostics/folds/outline path — this scenario would extend that same promotion to completions.  
+**Status: IMPLEMENTED, as a trivial special case of §2.35's general rule** (same debounced auto-trigger in `CnlEditor.axaml.cs`, no separate code path). `EditorViewModel.RequestCompletionsAt` itself remains explicit-call-only; the auto-trigger lives entirely in `CnlEditor.axaml.cs`, not `EditorViewModel`.  
 **GIVEN** the cursor is at a sentence‑start position  
 **WHEN** the user types `Load the article ` (a space immediately after a token where the grammar allows exactly one next keyword)  
 **THEN** the completion window opens automatically, without Ctrl+Space  
 **SO THAT** the user is guided proactively rather than only on request  
 **AS MEASURED BY** `CompletionItems` populating and the completion window opening within one debounce cycle of the triggering keystroke, without an explicit `RequestCompletionsAt` call from `CnlEditor`'s key‑down handler
+
+## 2.30 Completions Filter to Candidates Matching the Currently‑Typed Prefix
+**Status: IMPLEMENTED** via `CompletionService.MatchPrefix` + `HasCleanPrecedingContext` (the core capability this whole batch depended on). Tested in `ui/tests/Intellisense/CompletionServiceTests.cs`.
+**GIVEN** the cursor sits immediately after a partially‑typed word at a position where completion candidates would otherwise include a superset (e.g. `Summariz` at sentence start, where `Summarize` is the one grammar‑valid verb candidate)  
+**WHEN** completion is requested (auto‑triggered or explicit Ctrl+Space)  
+**THEN** `CompletionItems` contains only candidates whose text begins with the exact characters already typed since the nearest word boundary (whitespace, sentence start, or document start), filtered from the same grammar‑valid‑here candidate set §2.12 already computes  
+**SO THAT** the suggestion list narrows to what's relevant instead of showing every grammar‑valid token regardless of what's already on screen  
+**AS MEASURED BY** `CompletionItems` containing `Summarize` and excluding every other verb (`Load the`, `Extract the`, ...) when the typed prefix is `Summariz`; `CompletionItems.Count == 0` when the typed prefix diverges from every grammar‑valid candidate (e.g. `Summarizzz`). A position with an *empty* prefix (the existing §2.12 case — cursor right after a completed token and a space) is unaffected: the full unfiltered candidate list still applies, since there's nothing to filter by.
+
+## 2.31 Prefix Matching Is Case‑Sensitive
+**Status: IMPLEMENTED** - `MatchPrefix` uses `AsSpan(...).SequenceEqual(...)`, ordinal by default. Tested in `ui/tests/Intellisense/CompletionServiceTests.cs`.  
+**GIVEN** the user has typed `summariz` (lowercase) at a sentence‑start position  
+**WHEN** completion is requested  
+**THEN** `CompletionItems` does not include `Summarize`  
+**SO THAT** completions never suggest a token whose case wouldn't actually parse — `cnl-grammar.md`'s verbs are exact‑case literals (confirmed in `src/parser/mod.rs`: `match first_word { "Load" => ... }`, case‑sensitive)  
+**AS MEASURED BY** `CompletionItems.Count == 0` for a prefix whose case doesn't match any grammar‑valid candidate, even when it would match case‑insensitively
+
+## 2.32 Completion Candidates Narrow Progressively as the User Types
+**Status: IMPLEMENTED** - a direct consequence of §2.30's per-call `MatchPrefix` evaluation; no separate state tracking needed. Tested in `ui/tests/Intellisense/CompletionServiceTests.cs`.  
+**GIVEN** a sentence‑start position  
+**WHEN** the user types `S`, then `u`, then `m` in sequence, one character at a time  
+**THEN** `CompletionItems` recomputes after each keystroke, narrowing (never widening) as each additional character is typed  
+**SO THAT** the suggestion list behaves the way incremental completion does in any mainstream editor — more precise the more the user types  
+**AS MEASURED BY** `CompletionItems` after `S` being a superset of (or equal to) `CompletionItems` after `Su`, itself a superset of (or equal to) `CompletionItems` after `Sum` — for this grammar's verb set, all three already narrow to the single candidate `Summarize` as soon as the prefix stops matching any other verb
+
+## 2.33 Deleting Characters Re‑Widens the Candidate List
+**Status: IMPLEMENTED.** Not independently testable at `CompletionService`'s pure-function layer (same `(text, cursorByte)` in, same output out, regardless of how the caller got there); its real assurance is `ui/tests/Edit/CnlEditorTests.cs`'s `Backspace_TriggersCompletionRecompute`, which drives an actual Backspace keystroke through §2.35's auto-trigger wiring.  
+**GIVEN** the user has typed `Sum` and `CompletionItems` has narrowed to `Summarize`  
+**WHEN** the user presses Backspace, shortening the typed text to `Su`  
+**THEN** `CompletionItems` recomputes against the shorter prefix  
+**SO THAT** the suggestion list never shows a stale, over‑narrowed snapshot after a deletion  
+**AS MEASURED BY** `CompletionItems` after the Backspace matching exactly what `CompletionItems` would be if `Su` had been typed directly (§2.32's "Su" case)
+
+## 2.34 Accepting a Completion Replaces the Typed Prefix, Not Just the Caret
+**Status: IMPLEMENTED.** Fixed the `SummarizSummarize` bug: `CompletionItem.PrefixLength` travels with each candidate, and `CnlCompletionData.Complete()` computes its own replace-start from `completionSegment.EndOffset - item.PrefixLength`, deliberately ignoring the `CompletionWindow`'s own shared `StartOffset` (which can't correctly serve items with different matched prefix lengths). Tested in `ui/tests/Edit/CnlEditorTests.cs`.  
+**GIVEN** the user has typed `Summariz` and the completion window shows `Summarize`  
+**WHEN** the user accepts that completion item (Enter, Tab, or click)  
+**THEN** the editor's text becomes `Summarize ` — the complete word, replacing the partial one — never `SummarizSummarize`  
+**SO THAT** accepting a completion always yields valid, non‑duplicated text  
+**AS MEASURED BY** `Editor.Text` containing exactly one occurrence of `Summarize` at the sentence‑start position immediately after commit, and `CursorPosition` landing immediately after the inserted word, not mid‑duplicate
+
+## 2.35 Completion Auto‑Triggers While Typing a Grammar‑Valid Token
+**Status: IMPLEMENTED** via a debounced `DispatcherTimer` in `CnlEditor.axaml.cs`, restarted on every real user keystroke and firing `RequestCompletionsAndUpdateWindow` once after a ~200ms pause; supersedes §2.29's narrower "trigger after a verb‑terminating space" case with the general rule it's actually an instance of. Tested in `ui/tests/Edit/CnlEditorTests.cs`.  
+**GIVEN** the cursor is at a position where at least one grammar‑valid candidate remains consistent with the currently‑typed prefix (§2.30)  
+**WHEN** the user types a character that still leaves at least one candidate matching  
+**THEN** the completion window opens (or updates, if already open) automatically — no Ctrl+Space required  
+**SO THAT** the user is guided proactively as they type, matching the behavior requested  
+**AS MEASURED BY** the completion window opening within one keystroke of the prefix first matching a candidate, with no explicit key‑down‑triggered `RequestCompletionsAt` call required; Ctrl+Space remains available as an unchanged manual fallback (§2.12)
+
+## 2.36 Auto‑Trigger Never Fires Inside Free‑Text Positions
+**Status: IMPLEMENTED for free** - `CompletionService.GetCompletions` already returns empty inside free-text positions (§2.13's pre-existing guard, untouched by this batch), and `RequestCompletionsAndUpdateWindow` already closes/never-opens the window whenever `CompletionItems` is empty; no separate check was needed in `CnlEditor.axaml.cs`.  
+**GIVEN** the cursor is inside a `resource`/`target`/`format_target`/`language` span (free‑text noun phrase)  
+**WHEN** the user types any character  
+**THEN** no completion window opens automatically  
+**SO THAT** the editor never interrupts free‑text typing with irrelevant suggestions, extending §2.13's existing explicit‑trigger rule to the auto‑trigger path  
+**AS MEASURED BY** the completion window staying closed and `CompletionItems` staying empty for every keystroke while the cursor resolves inside one of those four free‑text node kinds
+
+## 2.37 Auto‑Trigger Never Opens a No‑Op Popup Over an Already‑Complete Token
+**Status: IMPLEMENTED.** Regression found via manual testing after §2.30–§2.36 shipped: a sentence ending in a word that is *itself* a complete, valid candidate (e.g. a pronoun like `it`) left a completion popup open offering to replace `it` with `it` — a pure no‑op. Because that popup is a caret‑anchored overlay, it visually sat on top of (effectively hiding) the missing‑period squiggle/ghost text (§2.7‑§2.8, §2.18) that should have been visible at that same caret position, even though `LocalDiagnostics`/`GhostSuggestion` were computed correctly underneath it — reported by the user as "we don't show that as an error, or even suggest to add it." Fixed in `CnlEditor.axaml.cs`'s `RequestCompletionsAndUpdateWindow`: when auto‑triggered (not on an explicit Ctrl+Space request, §2.12), a result where every `CompletionItem.PrefixLength` already equals its own `Text.Length` (nothing left to type) is treated the same as an empty result — the window is closed/never opened. Tested in `ui/tests/Edit/CnlEditorLiveTypingTests.cs` (real Tree‑sitter‑backed services, real simulated keystrokes, real `CnlTabView` binding — not the fakes `CnlEditorTests.cs` uses).  
+**GIVEN** the user has typed a sentence ending in a word that fully matches a completion candidate with nothing left to complete (e.g. `Summarize it`)  
+**WHEN** the auto‑trigger debounce elapses  
+**THEN** no completion window opens (or a currently‑open one closes), even though `CompletionItems` may still report that candidate  
+**SO THAT** a no‑op suggestion never visually obscures the missing‑period diagnostic/ghost‑text at the same caret position  
+**AS MEASURED BY** `CnlEditor`'s private `_completionWindow` field being `null` after the debounce settles, while `LocalDiagnostics` still contains the missing‑period diagnostic and `GhostSuggestion` is still non‑null at that caret position
+
+## 2.38 Every Sentence Missing Its Period Is Flagged, Not Just the Last One
+**Status: IMPLEMENTED — verified, no code change needed.** Written in response to the user asking whether this general case was covered, given §2.18's existing test coverage (`ui/tests/Intellisense/DiagnosticServiceTests.cs`) only ever exercised single-sentence documents where the missing period was necessarily also the last thing in the document. `DiagnosticService.GetDiagnostics` walks every node in the parse tree (`DescendantsAndSelf(root)`), not just the last one, so this was already architecturally general — confirmed empirically by dumping the real parse tree for a multi-sentence document with a non-final sentence missing its period: Tree‑sitter's GLR recovery inserts one clean, independent `MISSING "."` node at each malformed sentence boundary (`program => repeat($.sentence)`, each `sentence` alternative ending in a literal `"."`), never merging adjacent sentences into one blob. Holds whether sentences are separated by a newline or just a space (both are `extras`), and holds even when every sentence in a 3-sentence document is simultaneously missing its period — each gets its own diagnostic at its own position.  
+**GIVEN** a document contains two or more sentences, and any sentence other than the last is missing its terminating period  
+**WHEN** `RefreshDecorations()`/`DiagnosticService.GetDiagnostics` runs  
+**THEN** a "Missing period at end of sentence." diagnostic appears at that sentence's own end position, independently of whether any other sentence in the document is also missing its period  
+**SO THAT** the user gets the same missing-period feedback (squiggle, §2.16; ghost text, §2.18) for every sentence in the document, not only the one nearest end-of-file  
+**AS MEASURED BY** `ui/tests/Intellisense/DiagnosticServiceTests.cs`'s `GetDiagnostics_MissingPeriodOnNonLastSentence_ReturnsOneDiagnosticPerMissingPeriod` — one diagnostic per missing period, each at its own exact `StartByte`, for same-line-separated, newline-separated, and all-three-sentences-missing-their-period cases
 
 ---
 

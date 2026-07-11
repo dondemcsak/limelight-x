@@ -22,18 +22,20 @@ public sealed class TabFactory(
     IFoldingService foldingService,
     IStructuralSelectionService structuralSelectionService,
     IOutlineService outlineService,
+    IAutoPairService autoPairService,
+    INavigationService navigationService,
     Func<IParserHost>? parserHostFactory = null) : ITabFactory
 {
     private readonly Func<IParserHost> _parserHostFactory = parserHostFactory ?? (() => new ParserHost());
 
     public CnlTabViewModel CreateCnlTab(string filePath) =>
-        new(filePath, File.ReadAllText(filePath), pipelineService, eventStream, executionLock, completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService, _parserHostFactory);
+        new(filePath, File.ReadAllText(filePath), pipelineService, eventStream, executionLock, completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService, autoPairService, navigationService, _parserHostFactory);
 
     public PlainTextTabViewModel CreatePlainTextTab(string filePath) =>
         new(filePath, File.ReadAllText(filePath));
 
     public CnlTabViewModel CreateUntitledCnlTab(string header) =>
-        new(header, pipelineService, eventStream, executionLock, completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService, _parserHostFactory);
+        new(header, pipelineService, eventStream, executionLock, completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService, autoPairService, navigationService, _parserHostFactory);
 
     public PlainTextTabViewModel CreateUntitledPlainTextTab(string header) =>
         new(header);

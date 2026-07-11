@@ -75,7 +75,15 @@ async fn run_run(
         let raw_ast = parser::parse(&source)?;
         let normalized_ast = normalizer::normalize(&raw_ast)?;
         let program = ir::compiler::compile(&normalized_ast)?;
-        evaluator::evaluate(&program, adapter.as_ref(), &base_dir, false, None, None, None)
+        evaluator::evaluate(
+            &program,
+            adapter.as_ref(),
+            &base_dir,
+            false,
+            None,
+            None,
+            None,
+        )
     })
     .await
     .expect("pipeline task panicked");

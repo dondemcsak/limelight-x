@@ -44,6 +44,8 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     private readonly IFoldingService _foldingService;
     private readonly IStructuralSelectionService _structuralSelectionService;
     private readonly IOutlineService _outlineService;
+    private readonly IAutoPairService _autoPairService;
+    private readonly INavigationService _navigationService;
 
     public EditorViewModel(
         IExecutionLockService executionLock,
@@ -53,7 +55,9 @@ public partial class EditorViewModel : ObservableObject, IDisposable
         IHoverService hoverService,
         IFoldingService foldingService,
         IStructuralSelectionService structuralSelectionService,
-        IOutlineService outlineService)
+        IOutlineService outlineService,
+        IAutoPairService autoPairService,
+        INavigationService navigationService)
     {
         _executionLock = executionLock;
         _parserHost = parserHost;
@@ -63,6 +67,8 @@ public partial class EditorViewModel : ObservableObject, IDisposable
         _foldingService = foldingService;
         _structuralSelectionService = structuralSelectionService;
         _outlineService = outlineService;
+        _autoPairService = autoPairService;
+        _navigationService = navigationService;
         _executionLock.ExecutionLockChanged += NotifyPipelineCommandsCanExecuteChanged;
     }
 
@@ -239,6 +245,14 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     public void ClearHover() => HoverInfo = null;
 
     /// <summary>
+    /// Auto-closing pairs (bdd-ui-interactions.md §2.24-§2.25): CnlEditor
+    /// calls this right after the opener (`"` or the second `{` of `{{`) is
+    /// typed, to decide whether to auto-insert the matching closer.
+    /// </summary>
+    public bool CanAutoClose(int cursorByte, string opener) =>
+        _autoPairService.CanAutoClose(Text, _parserHost.Parse(Text), cursorByte, opener);
+
+    /// <summary>
     /// Structural selection (bdd-ui-interactions.md §2.10, cnl-editor-architecture.md
     /// §1 "structural selection"): grows SelectionRange to the smallest
     /// strictly-larger enclosing CST node on each invocation. SelectionRange
@@ -256,6 +270,26 @@ public partial class EditorViewModel : ObservableObject, IDisposable
         var (newStartByte, newEndByte) = _structuralSelectionService.ExpandSelection(root, startByte, endByte);
 
         SelectionRange = (utf8Text.ByteOffsetToCharOffset(newStartByte), utf8Text.ByteOffsetToCharOffset(newEndByte));
+    }
+
+    /// <summary>
+    /// Go to Definition (bdd-ui-interactions.md §2.26): moves SelectionRange
+    /// to the bind_stmt that bound the reference at the current
+    /// CursorPosition, if any - a no-op when there is no such binding
+    /// (INavigationService.FindDefinition returns null).
+    /// </summary>
+    public void GoToDefinition()
+    {
+        var utf8Text = new Utf8Text(Text);
+        var cursorByte = utf8Text.CharOffsetToByteOffset(CursorPosition);
+        var root = _parserHost.Parse(Text);
+
+        if (_navigationService.FindDefinition(Text, root, cursorByte) is not { } span)
+        {
+            return;
+        }
+
+        SelectionRange = (utf8Text.ByteOffsetToCharOffset(span.Start), utf8Text.ByteOffsetToCharOffset(span.End));
     }
 
     /// <summary>

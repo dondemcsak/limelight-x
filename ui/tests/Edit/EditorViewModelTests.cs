@@ -68,6 +68,20 @@ public class EditorViewModelTests
         public IEnumerable<OutlineItem> GetOutline(string text, TSNode root) => ItemsToReturn;
     }
 
+    private sealed class FakeAutoPairService : IAutoPairService
+    {
+        public bool ResultToReturn { get; set; }
+
+        public bool CanAutoClose(string text, TSNode root, int cursorByte, string opener) => ResultToReturn;
+    }
+
+    private sealed class FakeNavigationService : INavigationService
+    {
+        public (int Start, int End)? ResultToReturn { get; set; }
+
+        public (int Start, int End)? FindDefinition(string text, TSNode root, int cursorByte) => ResultToReturn;
+    }
+
     /// <summary>
     /// Constructs a real EditorViewModel with fakes for every collaborator,
     /// defaulted so each test only names the ones it cares about.
@@ -84,7 +98,9 @@ public class EditorViewModelTests
         IHoverService? hoverService = null,
         IFoldingService? foldingService = null,
         IStructuralSelectionService? structuralSelectionService = null,
-        IOutlineService? outlineService = null) =>
+        IOutlineService? outlineService = null,
+        IAutoPairService? autoPairService = null,
+        INavigationService? navigationService = null) =>
         new(
             executionLock ?? new ExecutionLockService(),
             parserHost ?? new FakeParserHost(),
@@ -93,7 +109,9 @@ public class EditorViewModelTests
             hoverService ?? new FakeHoverService(),
             foldingService ?? new FakeFoldingService(),
             structuralSelectionService ?? new FakeStructuralSelectionService(),
-            outlineService ?? new FakeOutlineService());
+            outlineService ?? new FakeOutlineService(),
+            autoPairService ?? new FakeAutoPairService(),
+            navigationService ?? new FakeNavigationService());
 
     [Fact]
     public void RunExplainCommands_BlockedWhileAnyTabExecutionRunning()
@@ -191,6 +209,33 @@ public class EditorViewModelTests
         viewModel.ExpandSelection();
 
         Assert.Equal((0, 13), viewModel.SelectionRange);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.26: Go to Definition sets SelectionRange to the byte span (converted to char offsets) INavigationService.FindDefinition returns.</summary>
+    [Fact]
+    public void GoToDefinition_NavigationServiceReturnsSpan_SetsSelectionRange()
+    {
+        var navigationService = new FakeNavigationService { ResultToReturn = (0, 13) };
+        var viewModel = CreateViewModel(navigationService: navigationService);
+        viewModel.Text = "Summarize it.";
+        viewModel.CursorPosition = 10;
+
+        viewModel.GoToDefinition();
+
+        Assert.Equal((0, 13), viewModel.SelectionRange);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.26: no definition found leaves SelectionRange unchanged.</summary>
+    [Fact]
+    public void GoToDefinition_NavigationServiceReturnsNull_LeavesSelectionRangeUnchanged()
+    {
+        var viewModel = CreateViewModel(navigationService: new FakeNavigationService());
+        viewModel.Text = "Summarize it.";
+        viewModel.SelectionRange = (2, 4);
+
+        viewModel.GoToDefinition();
+
+        Assert.Equal((2, 4), viewModel.SelectionRange);
     }
 
     /// <summary>bdd-ui-interactions.md §2.11: hover populates HoverInfo on request and clears to null on ClearHover.</summary>

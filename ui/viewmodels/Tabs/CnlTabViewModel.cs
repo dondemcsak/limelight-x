@@ -37,10 +37,12 @@ public sealed partial class CnlTabViewModel : TabViewModel
         IFoldingService foldingService,
         IStructuralSelectionService structuralSelectionService,
         IOutlineService outlineService,
+        IAutoPairService autoPairService,
+        INavigationService navigationService,
         Func<IParserHost> parserHostFactory)
         : base(filePath, Path.GetFileName(filePath))
     {
-        Editor = new EditorViewModel(executionLock, parserHostFactory(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService) { Text = initialText };
+        Editor = new EditorViewModel(executionLock, parserHostFactory(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService, autoPairService, navigationService) { Text = initialText };
         PipelineExecution = new PipelineExecutionViewModel(pipelineService, eventStream, executionLock);
 
         Editor.RunRequested = PipelineExecution.RunPipelineAsync;
@@ -63,10 +65,12 @@ public sealed partial class CnlTabViewModel : TabViewModel
         IFoldingService foldingService,
         IStructuralSelectionService structuralSelectionService,
         IOutlineService outlineService,
+        IAutoPairService autoPairService,
+        INavigationService navigationService,
         Func<IParserHost> parserHostFactory)
         : base(null, header)
     {
-        Editor = new EditorViewModel(executionLock, parserHostFactory(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService) { Text = string.Empty };
+        Editor = new EditorViewModel(executionLock, parserHostFactory(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService, autoPairService, navigationService) { Text = string.Empty };
         PipelineExecution = new PipelineExecutionViewModel(pipelineService, eventStream, executionLock);
 
         Editor.RunRequested = PipelineExecution.RunPipelineAsync;

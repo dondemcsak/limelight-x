@@ -24,7 +24,7 @@ public class DiagnosticServiceTests
 {
     /// <summary>bdd-ui-interactions.md §2.18, ui-intellisense-engine-spec.md §6.1: a MISSING "." node produces a specific message and SuggestedFix.</summary>
     [Theory]
-    [InlineData("Summarize it")]
+    [InlineData("Summarize the article")]
     [InlineData("Load the article from \"a.txt\"")]
     public void GetDiagnostics_MissingPeriod_ReturnsPeriodMessageWithSuggestedFix(string text)
     {
@@ -40,6 +40,40 @@ public class DiagnosticServiceTests
         Assert.Equal(text.Length, diagnostic.StartByte);
     }
 
+    /// <summary>
+    /// bdd-ui-interactions.md §2.7a, §2.18: the rule applies to every
+    /// sentence in a multi-sentence document, not just the last/only one -
+    /// GetDiagnostics walks the whole tree, so Tree-sitter's per-sentence
+    /// GLR recovery (which inserts one clean MISSING "." at each malformed
+    /// sentence boundary independently, confirmed by dumping the real parse
+    /// tree) surfaces one diagnostic per missing period, regardless of
+    /// whether sentences are newline- or space-separated, and regardless of
+    /// how many are missing their period at once.
+    /// </summary>
+    [Theory]
+    [InlineData("Load the article from \"a.txt\" Summarize it.", new[] { 29 })]
+    [InlineData("Load the article from \"a.txt\"\nSummarize it", new[] { 29, 42 })]
+    [InlineData("Load the article from \"a.txt\"\nSummarize it\nTranslate it to French", new[] { 29, 42, 65 })]
+    public void GetDiagnostics_MissingPeriodOnNonLastSentence_ReturnsOneDiagnosticPerMissingPeriod(string text, int[] expectedStartBytes)
+    {
+        using var parserHost = new ParserHost();
+        var diagnosticService = new DiagnosticService();
+        var root = parserHost.Parse(text);
+
+        var diagnostics = diagnosticService.GetDiagnostics(root)
+            .Where(d => d.Message == "Missing period at end of sentence.")
+            .OrderBy(d => d.StartByte)
+            .ToList();
+
+        Assert.Equal(expectedStartBytes.Length, diagnostics.Count);
+        for (var i = 0; i < expectedStartBytes.Length; i++)
+        {
+            Assert.Equal(expectedStartBytes[i], diagnostics[i].StartByte);
+            Assert.Equal(".", diagnostics[i].SuggestedFix);
+            Assert.Equal(diagnostics[i].StartByte, diagnostics[i].EndByte);
+        }
+    }
+
     /// <summary>bdd-ui-interactions.md §2.18, ui-intellisense-engine-spec.md §6.1: a MISSING "}}" node produces a specific message and SuggestedFix.</summary>
     [Fact]
     public void GetDiagnostics_MissingClosingBraceForExpressionHole_ReturnsBraceMessageWithSuggestedFix()
@@ -47,7 +81,7 @@ public class DiagnosticServiceTests
         using var parserHost = new ParserHost();
         var diagnosticService = new DiagnosticService();
 
-        const string text = "Summarize it using {{ prompt: \"abc\".";
+        const string text = "Summarize the article using {{ prompt: \"abc\".";
         var root = parserHost.Parse(text);
 
         var diagnostic = Assert.Single(diagnosticService.GetDiagnostics(root));
@@ -82,7 +116,37 @@ public class DiagnosticServiceTests
         using var parserHost = new ParserHost();
         var diagnosticService = new DiagnosticService();
 
+        const string text = "Summarize the article.";
+        var root = parserHost.Parse(text);
+
+        Assert.Empty(diagnosticService.GetDiagnostics(root));
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.28: a pronoun as the first sentence has no preceding sentence to refer to - flagged as an advisory diagnostic, distinct from ERROR/MISSING, with no SuggestedFix.</summary>
+    [Fact]
+    public void GetDiagnostics_PronounAsFirstSentence_ReturnsDanglingPronounDiagnosticWithNoSuggestedFix()
+    {
+        using var parserHost = new ParserHost();
+        var diagnosticService = new DiagnosticService();
+
         const string text = "Summarize it.";
+        var root = parserHost.Parse(text);
+
+        var diagnostic = Assert.Single(diagnosticService.GetDiagnostics(root));
+
+        Assert.Equal("Pronoun has no preceding sentence to refer to.", diagnostic.Message);
+        Assert.Null(diagnostic.SuggestedFix);
+        Assert.Equal(text.IndexOf("it", StringComparison.Ordinal), diagnostic.StartByte);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.28: a pronoun with a genuine preceding sentence is not flagged.</summary>
+    [Fact]
+    public void GetDiagnostics_PronounWithPrecedingSentence_ReturnsNoDiagnostics()
+    {
+        using var parserHost = new ParserHost();
+        var diagnosticService = new DiagnosticService();
+
+        const string text = "Load the article from \"a.txt\".\nSummarize it.";
         var root = parserHost.Parse(text);
 
         Assert.Empty(diagnosticService.GetDiagnostics(root));

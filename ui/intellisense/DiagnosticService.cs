@@ -13,7 +13,12 @@ namespace LimelightX.UI.Intellisense;
 /// self-describing tokens (ui-intellisense-engine-spec.md §6.1), also
 /// derives a specific message and SuggestedFix, driving ghost-text
 /// (bdd-ui-interactions.md §2.18). This table is exhaustive for v1 - do not
-/// extend without explicit instruction (CLAUDE.md §3.2).
+/// extend without explicit instruction (CLAUDE.md §3.2). Also flags a
+/// structurally-valid `pronoun` node with no preceding sentence to refer to
+/// (bdd-ui-interactions.md §2.28) - reuses PronounReferenceResolver, the same
+/// nearest-preceding-sentence check HoverService's §7.2 pronoun hover already
+/// performs; a real bug in the user's CNL, not a grammar violation, so it
+/// carries no SuggestedFix.
 /// </summary>
 public sealed class DiagnosticService : IDiagnosticService
 {
@@ -40,6 +45,10 @@ public sealed class DiagnosticService : IDiagnosticService
             else if (NativeMethods.ts_node_is_error(node))
             {
                 yield return new LocalDiagnostic("Unexpected token.", (int)NativeMethods.ts_node_start_byte(node), (int)NativeMethods.ts_node_end_byte(node));
+            }
+            else if (NodeType(node) == "pronoun" && PronounReferenceResolver.PrecedingSentence(node) is null)
+            {
+                yield return new LocalDiagnostic("Pronoun has no preceding sentence to refer to.", (int)NativeMethods.ts_node_start_byte(node), (int)NativeMethods.ts_node_end_byte(node));
             }
         }
     }

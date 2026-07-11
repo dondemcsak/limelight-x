@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using AvaloniaEdit;
+using AvaloniaEdit.Document;
 using LimelightX.UI.Components;
 using LimelightX.UI.Intellisense;
 using LimelightX.UI.Services;
@@ -124,6 +125,218 @@ public class CnlEditorTests
         Assert.Equal("Summarize it", tab.Editor.Text);
     }
 
+    /// <summary>bdd-ui-interactions.md §2.24: typing an opening quote at a grammar-valid position auto-inserts the matching closer, caret left between the pair.</summary>
+    [AvaloniaFact]
+    public void QuoteTyped_AutoPairServiceApproves_InsertsClosingQuoteWithCaretBetween()
+    {
+        var tab = CreateTab(autoPairService: new FakeAutoPairService { ResultToReturn = true });
+        const string before = "Load the article from ";
+
+        var cnlEditor = new CnlEditor { DataContext = tab, Text = before };
+        var window = new Window { Content = cnlEditor, Width = 800, Height = 600 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var innerEditor = GetInnerTextEditor(cnlEditor);
+        innerEditor.TextArea.Focus();
+        innerEditor.CaretOffset = before.Length;
+        Dispatcher.UIThread.RunJobs();
+
+        window.KeyTextInput("\"");
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(before + "\"\"", innerEditor.Text);
+        Assert.Equal(before.Length + 1, innerEditor.CaretOffset);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.24: typing a quote when the next character is already a quote types through it instead of inserting a duplicate.</summary>
+    [AvaloniaFact]
+    public void QuoteTyped_NextCharIsAlreadyQuote_TypesThroughInsteadOfDuplicating()
+    {
+        var tab = CreateTab();
+        const string before = "Load the article from \"";
+        const string full = before + "\"";
+
+        var cnlEditor = new CnlEditor { DataContext = tab, Text = full };
+        var window = new Window { Content = cnlEditor, Width = 800, Height = 600 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var innerEditor = GetInnerTextEditor(cnlEditor);
+        innerEditor.TextArea.Focus();
+        innerEditor.CaretOffset = before.Length;
+        Dispatcher.UIThread.RunJobs();
+
+        window.KeyTextInput("\"");
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(full, innerEditor.Text);
+        Assert.Equal(full.Length, innerEditor.CaretOffset);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.25: typing the second `{` of `{{` at a grammar-valid position auto-inserts `}}`, caret left between.</summary>
+    [AvaloniaFact]
+    public void DoubleBraceTyped_AutoPairServiceApproves_InsertsClosingBraces()
+    {
+        var tab = CreateTab(autoPairService: new FakeAutoPairService { ResultToReturn = true });
+        const string before = "Summarize it using ";
+
+        var cnlEditor = new CnlEditor { DataContext = tab, Text = before };
+        var window = new Window { Content = cnlEditor, Width = 800, Height = 600 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var innerEditor = GetInnerTextEditor(cnlEditor);
+        innerEditor.TextArea.Focus();
+        innerEditor.CaretOffset = before.Length;
+        Dispatcher.UIThread.RunJobs();
+
+        window.KeyTextInput("{");
+        Dispatcher.UIThread.RunJobs();
+        window.KeyTextInput("{");
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(before + "{{}}", innerEditor.Text);
+        Assert.Equal(before.Length + 2, innerEditor.CaretOffset);
+    }
+
+    /// <summary>
+    /// bdd-ui-interactions.md §2.34: accepting a completion whose PrefixLength
+    /// covers an already-typed partial word replaces exactly that prefix,
+    /// never duplicating it (the "SummarizSummarize" bug). Calls
+    /// CnlCompletionData.Complete() directly with a zero-length segment at
+    /// the caret - exactly the shape AvaloniaEdit's real CompletionWindow
+    /// hands it on commit - rather than driving the popup window's own
+    /// Enter-to-commit interaction through headless key simulation, which
+    /// depends on CompletionWindow's internal selection/focus behavior, not
+    /// on the fix under test here.
+    /// </summary>
+    [AvaloniaFact]
+    public void CnlCompletionData_Complete_PartialWordTyped_ReplacesPrefixNotJustCaret()
+    {
+        var cnlEditor = new CnlEditor { Text = "Summariz" };
+        var window = new Window { Content = cnlEditor, Width = 800, Height = 600 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var innerEditor = GetInnerTextEditor(cnlEditor);
+        var data = new CnlCompletionData(new CompletionItem { Text = "Summarize", PrefixLength = 8 });
+        var completionSegment = new SimpleSegment(8, 0);
+
+        data.Complete(innerEditor.TextArea, completionSegment, EventArgs.Empty);
+
+        Assert.Equal("Summarize", innerEditor.Text);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.23: accepting a verb completion with a SnippetText inserts the full skeleton (not just the bare verb) and leaves the caret at SnippetCursorOffset, not at the end of the inserted text.</summary>
+    [AvaloniaFact]
+    public void CnlCompletionData_Complete_VerbWithSnippet_InsertsSkeletonWithCaretAtOffset()
+    {
+        var cnlEditor = new CnlEditor { Text = "Load" };
+        var window = new Window { Content = cnlEditor, Width = 800, Height = 600 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var innerEditor = GetInnerTextEditor(cnlEditor);
+        const string snippet = "Load the  from \"\".";
+        var cursorOffset = snippet.IndexOf("from", StringComparison.Ordinal);
+        var data = new CnlCompletionData(new CompletionItem
+        {
+            Text = "Load the",
+            PrefixLength = 4,
+            SnippetText = snippet,
+            SnippetCursorOffset = cursorOffset,
+        });
+        var completionSegment = new SimpleSegment(4, 0);
+
+        data.Complete(innerEditor.TextArea, completionSegment, EventArgs.Empty);
+
+        Assert.Equal(snippet, innerEditor.Text);
+        Assert.Equal(cursorOffset, innerEditor.CaretOffset);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.29, §2.35: typing a character that keeps at least one candidate matching populates CompletionItems without an explicit Ctrl+Space.</summary>
+    [AvaloniaFact]
+    public async Task TypingCharacter_AutoPopulatesCompletionItemsWithoutCtrlSpace()
+    {
+        var completionService = new FakeCompletionService
+        {
+            ItemsToReturn = [new CompletionItem { Text = "Summarize" }],
+        };
+        var tab = CreateTab(completionService: completionService);
+
+        var cnlEditor = new CnlEditor { DataContext = tab };
+        var window = new Window { Content = cnlEditor, Width = 800, Height = 600 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        GetInnerTextEditor(cnlEditor).TextArea.Focus();
+        Dispatcher.UIThread.RunJobs();
+
+        window.KeyTextInput("S");
+        Dispatcher.UIThread.RunJobs();
+        await Task.Delay(300);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Single(tab.Editor.CompletionItems);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.36: when the completion engine returns nothing for the current position (e.g. inside a free-text span, §2.13), auto-trigger leaves CompletionItems empty rather than opening anything.</summary>
+    [AvaloniaFact]
+    public async Task TypingCharacter_CompletionServiceReturnsEmpty_LeavesCompletionItemsEmpty()
+    {
+        var tab = CreateTab();
+
+        var cnlEditor = new CnlEditor { DataContext = tab };
+        var window = new Window { Content = cnlEditor, Width = 800, Height = 600 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        GetInnerTextEditor(cnlEditor).TextArea.Focus();
+        Dispatcher.UIThread.RunJobs();
+
+        window.KeyTextInput("x");
+        Dispatcher.UIThread.RunJobs();
+        await Task.Delay(300);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Empty(tab.Editor.CompletionItems);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.33: a Backspace keystroke also triggers a fresh completion recompute, not just forward typing - proven by swapping what the (fake) engine returns between the two keystrokes and confirming the post-Backspace state reflects the new result, not a stale one.</summary>
+    [AvaloniaFact]
+    public async Task Backspace_TriggersCompletionRecompute()
+    {
+        var completionService = new FakeCompletionService
+        {
+            ItemsToReturn = [new CompletionItem { Text = "Summarize" }],
+        };
+        var tab = CreateTab(completionService: completionService);
+
+        var cnlEditor = new CnlEditor { DataContext = tab };
+        var window = new Window { Content = cnlEditor, Width = 800, Height = 600 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        GetInnerTextEditor(cnlEditor).TextArea.Focus();
+        Dispatcher.UIThread.RunJobs();
+
+        window.KeyTextInput("S");
+        Dispatcher.UIThread.RunJobs();
+        await Task.Delay(300);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Single(tab.Editor.CompletionItems);
+
+        completionService.ItemsToReturn = [];
+        window.KeyPress(Key.Back, RawInputModifiers.None, PhysicalKey.Backspace, string.Empty);
+        Dispatcher.UIThread.RunJobs();
+        await Task.Delay(300);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Empty(tab.Editor.CompletionItems);
+    }
+
     private static TextEditor GetInnerTextEditor(CnlEditor cnlEditor)
     {
         var textEditor = cnlEditor.GetVisualDescendants().OfType<TextEditor>().FirstOrDefault();
@@ -163,17 +376,19 @@ public class CnlEditorTests
     }
 
     /// <summary>Untitled CnlTabViewModel wired with fakes for every native/backend collaborator, so opening it never P/Invokes the ARM64-only DLL (CLAUDE.md §3.5) or touches a real socket/HTTP client.</summary>
-    private static CnlTabViewModel CreateTab(IDiagnosticService? diagnosticService = null) =>
+    private static CnlTabViewModel CreateTab(IDiagnosticService? diagnosticService = null, ICompletionService? completionService = null, IAutoPairService? autoPairService = null, INavigationService? navigationService = null) =>
         new(
             "untitled.llx",
             new FakePipelineService(),
             new FakeEventStreamService(),
             new ExecutionLockService(),
-            new FakeCompletionService(),
+            completionService ?? new FakeCompletionService(),
             diagnosticService ?? new FakeDiagnosticService(),
             new FakeHoverService(),
             new FakeFoldingService(),
             new FakeStructuralSelectionService(),
             new FakeOutlineService(),
+            autoPairService ?? new FakeAutoPairService(),
+            navigationService ?? new FakeNavigationService(),
             () => new FakeParserHost());
 }

@@ -660,7 +660,11 @@ pub struct ModelOutputBlock {
     pub metadata: ModelOutputMetadata,
 }
 
-pub fn model_output_block(operation_index: usize, raw_text: &str, latency_ms: u128) -> ModelOutputBlock {
+pub fn model_output_block(
+    operation_index: usize,
+    raw_text: &str,
+    latency_ms: u128,
+) -> ModelOutputBlock {
     let content_type = detect_content_type(raw_text);
     let json = if content_type == "json" {
         serde_json::from_str(raw_text).ok()

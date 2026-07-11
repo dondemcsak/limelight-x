@@ -5,6 +5,7 @@ using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Threading;
 using AvaloniaEdit.CodeCompletion;
 using AvaloniaEdit.Folding;
 using AvaloniaEdit.Rendering;
@@ -50,6 +51,18 @@ public partial class CnlEditor : UserControl
     private readonly DiagnosticMarginMarker _marginMarker;
     private readonly GhostTextElementGenerator _ghostTextGenerator;
     private readonly FoldingManager _foldingManager;
+
+    /// <summary>
+    /// Auto-trigger debounce (bdd-ui-interactions.md §2.29, §2.35) - restarted
+    /// on every real user keystroke (Editor.TextChanged, guarded by
+    /// !_isSyncingFromViewModel so programmatic Text assignment never
+    /// triggers it), firing once after a short pause rather than on every
+    /// single keystroke, since CompletionService.GetCompletions now runs up
+    /// to ~18 reparses per call (one per candidate) on top of
+    /// RefreshDecorations' own reparse.
+    /// </summary>
+    private readonly DispatcherTimer _completionDebounceTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
+
     private CompletionWindow? _completionWindow;
     private bool _isSyncingFromViewModel;
     private bool _isSyncingSelectionFromViewModel;
@@ -82,6 +95,8 @@ public partial class CnlEditor : UserControl
 
         _foldingManager = FoldingManager.Install(Editor.TextArea);
 
+        _completionDebounceTimer.Tick += OnCompletionDebounceElapsed;
+
         Editor.TextChanged += (_, _) =>
         {
             if (_isSyncingFromViewModel)
@@ -90,6 +105,9 @@ public partial class CnlEditor : UserControl
             }
 
             SetCurrentValue(TextProperty, Editor.Text);
+
+            _completionDebounceTimer.Stop();
+            _completionDebounceTimer.Start();
         };
 
         Editor.TextArea.Caret.PositionChanged += (_, _) =>
@@ -113,6 +131,9 @@ public partial class CnlEditor : UserControl
         // unhandled otherwise so it still falls through to that default
         // indent behavior (ui-accessibility.md §2).
         Editor.TextArea.AddHandler(InputElement.KeyDownEvent, OnTextAreaKeyDown, RoutingStrategies.Tunnel);
+
+        Editor.TextArea.TextEntering += OnTextEntering;
+        Editor.TextArea.TextEntered += OnTextEntered;
 
         ToolTip.SetServiceEnabled(Editor, false);
         Editor.PointerHover += OnPointerHover;
@@ -189,6 +210,22 @@ public partial class CnlEditor : UserControl
         {
             OnExpandSelectionRequested(e);
         }
+        else if (e.Key == Key.F12 && e.KeyModifiers == KeyModifiers.None)
+        {
+            OnGoToDefinitionRequested(e);
+        }
+    }
+
+    /// <summary>Go to Definition (bdd-ui-interactions.md §2.26), F12 - matches VS Code's binding for the same concept. Find All References (Shift+F12) is deferred; not wired here yet.</summary>
+    private void OnGoToDefinitionRequested(KeyEventArgs e)
+    {
+        if (DataContext is not CnlTabViewModel tab)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        tab.Editor.GoToDefinition();
     }
 
     /// <summary>
@@ -227,24 +264,137 @@ public partial class CnlEditor : UserControl
         }
 
         e.Handled = true;
+        RequestCompletionsAndUpdateWindow(tab, isAutoTriggered: false);
+    }
 
+    /// <summary>
+    /// Auto-trigger (bdd-ui-interactions.md §2.29, §2.35-§2.36): fires once
+    /// per pause in typing (the timer is restarted, not re-ticked, on every
+    /// keystroke - see the field doc comment). §2.36's free-text exclusion
+    /// needs no separate check here - CompletionService.GetCompletions
+    /// already returns empty inside resource/target/format_target/language
+    /// positions (§2.13's existing guard), which UpdateCompletionWindow below
+    /// already treats as "close/never open" via the empty-items case.
+    /// </summary>
+    private void OnCompletionDebounceElapsed(object? sender, EventArgs e)
+    {
+        _completionDebounceTimer.Stop();
+
+        if (DataContext is CnlTabViewModel tab)
+        {
+            RequestCompletionsAndUpdateWindow(tab, isAutoTriggered: true);
+        }
+    }
+
+    /// <summary>
+    /// isAutoTriggered suppresses opening a popup for a "completion" that
+    /// would insert nothing new - e.g. a sentence ending in a pronoun like
+    /// "it" or "that" is itself a valid, already-complete candidate
+    /// (PrefixLength == candidate length), so silently auto-popping a window
+    /// offering to replace "it" with "it" is pure noise. Worse, that popup is
+    /// a caret-anchored overlay - left open, it visually sits on top of
+    /// (effectively hiding) the missing-period squiggle/ghost text
+    /// (bdd-ui-interactions.md §2.18) that should appear at that exact same
+    /// caret position. An explicit Ctrl+Space request (isAutoTriggered:
+    /// false) is unaffected - a user who explicitly asks still sees it.
+    /// </summary>
+    private void RequestCompletionsAndUpdateWindow(CnlTabViewModel tab, bool isAutoTriggered)
+    {
         var utf8Text = new Utf8Text(Editor.Text);
         var cursorByte = utf8Text.CharOffsetToByteOffset(Editor.CaretOffset);
         tab.Editor.RequestCompletionsAt(cursorByte);
 
-        if (tab.Editor.CompletionItems.Count == 0)
+        var hasNothingLeftToOffer = tab.Editor.CompletionItems.Count == 0
+            || (isAutoTriggered && tab.Editor.CompletionItems.All(i => i.PrefixLength >= i.Text.Length));
+
+        if (hasNothingLeftToOffer)
+        {
+            _completionWindow?.Close();
+            return;
+        }
+
+        if (_completionWindow is null)
+        {
+            _completionWindow = new CompletionWindow(Editor.TextArea);
+            AddCompletionData(tab);
+            _completionWindow.Closed += (_, _) => _completionWindow = null;
+            _completionWindow.Show();
+        }
+        else
+        {
+            _completionWindow.CompletionList.CompletionData.Clear();
+            AddCompletionData(tab);
+        }
+    }
+
+    private void AddCompletionData(CnlTabViewModel tab)
+    {
+        foreach (var item in tab.Editor.CompletionItems)
+        {
+            _completionWindow!.CompletionList.CompletionData.Add(new CnlCompletionData(item));
+        }
+    }
+
+    /// <summary>
+    /// Auto-closing pairs (bdd-ui-interactions.md §2.24-§2.25). Typing the
+    /// closer of an already-auto-inserted pair "types through" it instead of
+    /// duplicating it - handled here, before insertion, since it's purely a
+    /// caret-vs-adjacent-character check with no grammar involved.
+    /// </summary>
+    private static readonly HashSet<string> TypeThroughChars = ["\"", "}"];
+
+    private void OnTextEntering(object? sender, TextInputEventArgs e)
+    {
+        if (e.Text is not { Length: 1 } typed || !TypeThroughChars.Contains(typed))
         {
             return;
         }
 
-        _completionWindow = new CompletionWindow(Editor.TextArea);
-        foreach (var item in tab.Editor.CompletionItems)
+        if (Editor.CaretOffset < Editor.Text.Length && Editor.Text[Editor.CaretOffset] == typed[0])
         {
-            _completionWindow.CompletionList.CompletionData.Add(new CnlCompletionData(item));
+            e.Text = string.Empty;
+            Editor.CaretOffset += 1;
+        }
+    }
+
+    /// <summary>
+    /// Auto-closing pairs, insertion side: after `"` or the second `{` of
+    /// `{{` is typed, asks EditorViewModel (via IAutoPairService) whether a
+    /// closer belongs here, and if so inserts it with the caret left between
+    /// the pair - never via OnTextEntering, since that fires before the
+    /// grammar-relevant character is actually in the document to check against.
+    /// </summary>
+    private void OnTextEntered(object? sender, TextInputEventArgs e)
+    {
+        if (DataContext is not CnlTabViewModel tab || e.Text is not { Length: 1 } typed)
+        {
+            return;
         }
 
-        _completionWindow.Closed += (_, _) => _completionWindow = null;
-        _completionWindow.Show();
+        string? opener = typed switch
+        {
+            "\"" => "\"",
+            "{" when Editor.CaretOffset >= 2 && Editor.Text[Editor.CaretOffset - 2] == '{' => "{{",
+            _ => null,
+        };
+
+        if (opener is null)
+        {
+            return;
+        }
+
+        var utf8Text = new Utf8Text(Editor.Text);
+        var cursorByte = utf8Text.CharOffsetToByteOffset(Editor.CaretOffset);
+
+        if (!tab.Editor.CanAutoClose(cursorByte, opener))
+        {
+            return;
+        }
+
+        var closer = opener == "\"" ? "\"" : "}}";
+        var caretOffset = Editor.CaretOffset;
+        Editor.Document.Insert(caretOffset, closer);
+        Editor.CaretOffset = caretOffset;
     }
 
     public string Text
@@ -401,6 +551,7 @@ public partial class CnlEditor : UserControl
         base.OnDetachedFromVisualTree(e);
         _colorizer.Dispose();
         FoldingManager.Uninstall(_foldingManager);
+        _completionDebounceTimer.Stop();
         _completionWindow?.Close();
     }
 

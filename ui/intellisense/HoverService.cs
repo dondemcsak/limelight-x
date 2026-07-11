@@ -105,14 +105,13 @@ public sealed class HoverService : IHoverService
     /// <summary>
     /// §7.2 Pronoun Hover: the nearest preceding top-level sentence's
     /// statement kind and source line. Null (falls back to plain "pronoun")
-    /// when there is no preceding sentence to reference.
+    /// when there is no preceding sentence to reference - the same check
+    /// DiagnosticService uses to flag a dangling pronoun (bdd-ui-interactions.md
+    /// §2.28), shared via PronounReferenceResolver.
     /// </summary>
     private static string? PronounReferenceText(TSNode pronoun)
     {
-        if (EnclosingSentence(pronoun) is not { } sentence
-            || PreviousSibling(sentence) is not { } previous
-            || NodeType(previous) != "sentence"
-            || NativeMethods.ts_node_child_count(previous) == 0)
+        if (PronounReferenceResolver.PrecedingSentence(pronoun) is not { } previous)
         {
             return null;
         }
@@ -122,48 +121,6 @@ public sealed class HoverService : IHoverService
         var line = (int)NativeMethods.ts_node_start_point(previous).Row + 1;
 
         return $"Pronoun refers to: {displayName} at line {line}";
-    }
-
-    private static TSNode? EnclosingSentence(TSNode node)
-    {
-        while (!NativeMethods.ts_node_is_null(node))
-        {
-            if (NodeType(node) == "sentence")
-            {
-                return node;
-            }
-
-            node = NativeMethods.ts_node_parent(node);
-        }
-
-        return null;
-    }
-
-    /// <summary>No ts_node_next/prev_sibling export exists (spec/parsing/tree-sitter-runtime-build-guide.md §2's fixed export list) - walks the parent's children instead.</summary>
-    private static TSNode? PreviousSibling(TSNode node)
-    {
-        var parent = NativeMethods.ts_node_parent(node);
-        if (NativeMethods.ts_node_is_null(parent))
-        {
-            return null;
-        }
-
-        var count = NativeMethods.ts_node_child_count(parent);
-        var nodeStart = NativeMethods.ts_node_start_byte(node);
-
-        TSNode? previous = null;
-        for (uint i = 0; i < count; i++)
-        {
-            var child = NativeMethods.ts_node_child(parent, i);
-            if (NativeMethods.ts_node_start_byte(child) == nodeStart)
-            {
-                return previous;
-            }
-
-            previous = child;
-        }
-
-        return null;
     }
 
     /// <summary>
@@ -183,41 +140,16 @@ public sealed class HoverService : IHoverService
         string? best = null;
         var bestStart = -1;
 
-        foreach (var bindStmt in FindAll(root, "bind_stmt"))
+        foreach (var binding in BindingScanner.FindAllBindings(text, utf8Text, root))
         {
-            if (NativeMethods.ts_node_child_count(bindStmt) < 2)
+            if (binding.StartByte <= nodeStart && binding.StartByte > bestStart && binding.Name == nodeText)
             {
-                continue;
-            }
-
-            var nameNode = NativeMethods.ts_node_child(bindStmt, 1);
-            var bindStart = (int)NativeMethods.ts_node_start_byte(bindStmt);
-
-            if (bindStart <= nodeStart && bindStart > bestStart && NodeText(text, utf8Text, nameNode) == nodeText)
-            {
-                best = NodeText(text, utf8Text, bindStmt);
-                bestStart = bindStart;
+                best = NodeText(text, utf8Text, binding.BindStmt);
+                bestStart = binding.StartByte;
             }
         }
 
         return best;
-    }
-
-    private static IEnumerable<TSNode> FindAll(TSNode node, string type)
-    {
-        if (NodeType(node) == type)
-        {
-            yield return node;
-        }
-
-        var count = NativeMethods.ts_node_child_count(node);
-        for (uint i = 0; i < count; i++)
-        {
-            foreach (var descendant in FindAll(NativeMethods.ts_node_child(node, i), type))
-            {
-                yield return descendant;
-            }
-        }
     }
 
     private static string NodeText(string text, Utf8Text utf8Text, TSNode node)

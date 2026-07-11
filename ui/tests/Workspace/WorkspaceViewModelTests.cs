@@ -56,7 +56,7 @@ public class WorkspaceViewModelTests
         var pipeline = new FakePipelineService();
         var eventStream = new TestDoubles.FakeEventStreamService();
         var lockService = executionLock ?? new ExecutionLockService();
-        var tabFactory = new TabFactory(pipeline, eventStream, lockService, new TestDoubles.FakeCompletionService(), new TestDoubles.FakeDiagnosticService(), new TestDoubles.FakeHoverService(), new TestDoubles.FakeFoldingService(), new TestDoubles.FakeStructuralSelectionService(), new TestDoubles.FakeOutlineService(), () => new TestDoubles.FakeParserHost());
+        var tabFactory = new TabFactory(pipeline, eventStream, lockService, new TestDoubles.FakeCompletionService(), new TestDoubles.FakeDiagnosticService(), new TestDoubles.FakeHoverService(), new TestDoubles.FakeFoldingService(), new TestDoubles.FakeStructuralSelectionService(), new TestDoubles.FakeOutlineService(), new TestDoubles.FakeAutoPairService(), new TestDoubles.FakeNavigationService(), () => new TestDoubles.FakeParserHost());
         return new WorkspaceViewModel(tabFactory, new FakeFilePickerService(folderToPick), modal ?? new FakeModalService(), lockService);
     }
 

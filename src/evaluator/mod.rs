@@ -418,8 +418,16 @@ mod tests {
     use crate::model::mock::{CapturingAdapter, MockModelAdapter};
 
     fn eval(ir: Ir, adapter: &dyn ModelAdapter) -> Result<String, Error> {
-        evaluate(&ir, adapter, std::path::Path::new("."), false, None, None, None)
-            .map(|outcome| outcome.final_result)
+        evaluate(
+            &ir,
+            adapter,
+            std::path::Path::new("."),
+            false,
+            None,
+            None,
+            None,
+        )
+        .map(|outcome| outcome.final_result)
     }
 
     // BDD: Evaluate a Load operation

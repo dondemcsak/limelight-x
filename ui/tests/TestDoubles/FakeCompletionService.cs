@@ -14,5 +14,7 @@ namespace LimelightX.UI.Tests.TestDoubles;
 /// </summary>
 public sealed class FakeCompletionService : ICompletionService
 {
-    public IEnumerable<CompletionItem> GetCompletions(string text, TSNode root, int cursorByte) => [];
+    public IReadOnlyList<CompletionItem> ItemsToReturn { get; set; } = [];
+
+    public IEnumerable<CompletionItem> GetCompletions(string text, TSNode root, int cursorByte) => ItemsToReturn;
 }
