@@ -35,6 +35,9 @@
     <Nullable>enable</Nullable>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Win32 executable icon (Explorer, taskbar, Alt-Tab) - see MainWindow.axaml's
+         Window.Icon for the matching runtime/title-bar icon, loaded from the same file. -->
+    <ApplicationIcon>assets\limelightx.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -42,6 +45,7 @@
 
   <ItemGroup>
     <AvaloniaResource Include="styles\Fonts\**" />
+    <AvaloniaResource Include="assets\limelightx.ico" />
   </ItemGroup>
 
   <!-- Tree-sitter runtime artifacts (tier 3 of cnl-editor-architecture.md §3.1's

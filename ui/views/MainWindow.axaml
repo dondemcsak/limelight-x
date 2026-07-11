@@ -8,6 +8,7 @@
         x:Class="LimelightX.UI.Views.MainWindow"
         x:DataType="workspace:WorkspaceViewModel"
         Title="Limelight-X"
+        Icon="/assets/limelightx.ico"
         Width="1200" Height="800"
         Background="{StaticResource BackgroundPrimaryBrush}">
 
