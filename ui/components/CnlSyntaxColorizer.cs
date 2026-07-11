@@ -96,5 +96,9 @@ public sealed class CnlSyntaxColorizer(IReadOnlyDictionary<TokenKind, IBrush> br
         }
     }
 
-    public void Dispose() => _parserHost.Dispose();
+    public void Dispose()
+    {
+        _parserHost.Dispose();
+        _queryRunner.Dispose();
+    }
 }

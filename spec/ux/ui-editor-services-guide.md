@@ -119,9 +119,11 @@ The Editor Services Layer orchestrates all IntelliSense features.
 ## 3.4 DiagnosticService
 
 - Detects `ERROR` nodes  
+- Detects `MISSING` nodes, and for a fixed set of self‑describing literals (`.`, `"`, `}}`) derives both a specific message and a `SuggestedFix` (`ui-intellisense-engine-spec.md` §6.1) — every other `MISSING`/`ERROR` case keeps a generic message with no fix  
 - Detects malformed prompt holes  
 - Detects unknown verbs  
 - Produces non‑blocking, advisory diagnostics — never authoritative; `/explain`'s `SyntaxErrors` remain the source of truth (`cnl-editor-architecture.md` §5)  
+- Rendered in the editor as a squiggly underline + margin marker, and drives ghost‑text suggestions when `SuggestedFix` is present (`bdd-ui-interactions.md` §2.16, §2.18)  
 
 ## 3.5 HoverService
 
@@ -131,6 +133,8 @@ The Editor Services Layer orchestrates all IntelliSense features.
 - Prompt hole metadata  
 
 Variable definitions and pronoun reference previews are **syntactic, CST-only, best-effort local echoes**, not semantic resolution — they are reliable because CNL v0.1 has no branching (`spec/cnl-grammar.md` §7 Non-Goals), so "nearest preceding sentence" always agrees with what Rust's AST Normalizer would resolve. They are never authoritative and are always superseded by `/explain`'s actual response (`cnl-editor-architecture.md` §1.1.3).
+
+`HoverService` itself has no diagnostic-related logic — `EditorViewModel.RequestHoverAt` checks `LocalDiagnostics` first and only falls back to `HoverService.GetHover` when the hovered byte isn't inside a diagnostic's span (`ui-intellisense-engine-spec.md` §7.5, `bdd-ui-interactions.md` §2.17).
 
 ## 3.6 FoldingService
 

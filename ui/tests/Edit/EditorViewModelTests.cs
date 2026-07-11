@@ -79,6 +79,13 @@ public class EditorViewModelTests
         public (int Start, int End) ExpandSelection(TSNode root, int startByte, int endByte) => RangeToReturn;
     }
 
+    private sealed class FakeOutlineService : IOutlineService
+    {
+        public IReadOnlyList<OutlineItem> ItemsToReturn { get; set; } = [];
+
+        public IEnumerable<OutlineItem> GetOutline(string text, TSNode root) => ItemsToReturn;
+    }
+
     /// <summary>
     /// Constructs a real EditorViewModel with fakes for every collaborator,
     /// defaulted so each test only names the ones it cares about. Introduced
@@ -95,7 +102,8 @@ public class EditorViewModelTests
         IDiagnosticService? diagnosticService = null,
         IHoverService? hoverService = null,
         IFoldingService? foldingService = null,
-        IStructuralSelectionService? structuralSelectionService = null) =>
+        IStructuralSelectionService? structuralSelectionService = null,
+        IOutlineService? outlineService = null) =>
         new(
             pipeline ?? new FakePipelineService(),
             eventStream ?? new FakeEventStreamService(),
@@ -105,7 +113,8 @@ public class EditorViewModelTests
             diagnosticService ?? new FakeDiagnosticService(),
             hoverService ?? new FakeHoverService(),
             foldingService ?? new FakeFoldingService(),
-            structuralSelectionService ?? new FakeStructuralSelectionService());
+            structuralSelectionService ?? new FakeStructuralSelectionService(),
+            outlineService ?? new FakeOutlineService());
 
     private static async Task WaitForDebounceAsync() => await Task.Delay(700);
 
@@ -406,5 +415,112 @@ public class EditorViewModelTests
 
         Assert.Equal(firstFolds, secondFolds);
         Assert.Equal(firstDiagnostics, secondDiagnostics);
+    }
+
+    // --- bdd-ui-interactions.md §2.7a, §2.16-§2.19 (squiggles, diagnostic hover, ghost text, Tab-to-accept) ---
+
+    /// <summary>bdd-ui-interactions.md §2.7a: RefreshDecorations now runs synchronously from OnTextChanged, not explicit-call-only.</summary>
+    [Fact]
+    public void OnTextChanged_SettingText_AutomaticallyPopulatesLocalDiagnosticsWithoutExplicitRefreshDecorationsCall()
+    {
+        var diagnosticService = new FakeDiagnosticService
+        {
+            DiagnosticsToReturn = [new LocalDiagnostic("Unexpected token", 10, 14)],
+        };
+        var viewModel = CreateViewModel(diagnosticService: diagnosticService);
+
+        viewModel.Text = "Load the article from";
+
+        Assert.Single(viewModel.LocalDiagnostics);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.18: a LocalDiagnostic carrying a SuggestedFix produces a matching QuickFixes entry; one without does not.</summary>
+    [Fact]
+    public void RefreshDecorations_DiagnosticHasSuggestedFix_PopulatesQuickFixes()
+    {
+        var diagnosticService = new FakeDiagnosticService
+        {
+            DiagnosticsToReturn =
+            [
+                new LocalDiagnostic("Missing period at end of sentence.", 12, 12, "."),
+                new LocalDiagnostic("Unexpected token.", 20, 24),
+            ],
+        };
+        var viewModel = CreateViewModel(diagnosticService: diagnosticService);
+
+        viewModel.Text = "Load the article";
+
+        var fix = Assert.Single(viewModel.QuickFixes);
+        Assert.Equal(12, fix.InsertionByte);
+        Assert.Equal(".", fix.InsertText);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.18: GhostSuggestion tracks whichever QuickFixes entry sits at the current CursorPosition, and clears when the caret moves away.</summary>
+    [Fact]
+    public void OnCursorPositionChanged_AtQuickFixInsertionByte_PopulatesGhostSuggestion()
+    {
+        var diagnosticService = new FakeDiagnosticService
+        {
+            DiagnosticsToReturn = [new LocalDiagnostic("Missing period at end of sentence.", 12, 12, ".")],
+        };
+        var viewModel = CreateViewModel(diagnosticService: diagnosticService);
+        viewModel.Text = "Load the article";
+
+        viewModel.CursorPosition = 12;
+        Assert.NotNull(viewModel.GhostSuggestion);
+        Assert.Equal(".", viewModel.GhostSuggestion!.InsertText);
+
+        viewModel.CursorPosition = 0;
+        Assert.Null(viewModel.GhostSuggestion);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.19: ApplyQuickFixCommand splices InsertText into Text at InsertionByte, moves the caret past it, and clears GhostSuggestion.</summary>
+    [Fact]
+    public void ApplyQuickFix_SplicesInsertTextAtInsertionByteAndClearsGhostSuggestion()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.Text = "Load the article";
+
+        viewModel.ApplyQuickFixCommand.Execute(new QuickFixItem { Title = "Insert '.'", InsertionByte = 16, InsertText = "." });
+
+        Assert.Equal("Load the article.", viewModel.Text);
+        Assert.Equal(17, viewModel.CursorPosition);
+        Assert.Null(viewModel.GhostSuggestion);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.17: hovering a byte inside a LocalDiagnostics span shows that diagnostic's message, taking priority over grammar-role hover for the same position.</summary>
+    [Fact]
+    public void RequestHoverAt_CursorInsideLocalDiagnosticSpan_ReturnsDiagnosticMessageOverGrammarHover()
+    {
+        var diagnosticService = new FakeDiagnosticService
+        {
+            DiagnosticsToReturn = [new LocalDiagnostic("Missing period at end of sentence.", 12, 12, ".")],
+        };
+        var hoverService = new FakeHoverService { HoverToReturn = new HoverInfo { Text = "keyword", Position = 12 } };
+        var viewModel = CreateViewModel(diagnosticService: diagnosticService, hoverService: hoverService);
+        viewModel.Text = "Load the article";
+
+        viewModel.RequestHoverAt(12);
+
+        Assert.NotNull(viewModel.HoverInfo);
+        Assert.Equal("Missing period at end of sentence.", viewModel.HoverInfo!.Text);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.17: hovering outside any LocalDiagnostics span falls back to grammar-role hover.</summary>
+    [Fact]
+    public void RequestHoverAt_CursorOutsideLocalDiagnosticSpan_FallsBackToHoverService()
+    {
+        var diagnosticService = new FakeDiagnosticService
+        {
+            DiagnosticsToReturn = [new LocalDiagnostic("Missing period at end of sentence.", 12, 12, ".")],
+        };
+        var hoverService = new FakeHoverService { HoverToReturn = new HoverInfo { Text = "keyword", Position = 0 } };
+        var viewModel = CreateViewModel(diagnosticService: diagnosticService, hoverService: hoverService);
+        viewModel.Text = "Load the article";
+
+        viewModel.RequestHoverAt(0);
+
+        Assert.NotNull(viewModel.HoverInfo);
+        Assert.Equal("keyword", viewModel.HoverInfo!.Text);
     }
 }

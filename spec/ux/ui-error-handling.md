@@ -275,6 +275,12 @@ State:
 - Red margin marker  
 - Tooltip with error message
 
+This styling is shared by two data-model-separate sources, per `bdd-ui-interactions.md` §2.7/§2.16:
+- **Authoritative**: `EditorViewModel.SyntaxErrors`, sourced from `/explain`.
+- **Advisory**: `EditorViewModel.LocalDiagnostics`, sourced from Tree‑sitter `ERROR`/`MISSING` nodes, rendered by `LocalDiagnosticsRenderer` with the same red‑underline‑plus‑margin‑marker‑plus‑tooltip shape.
+
+Sharing the visual style is deliberate (a Tree‑sitter error should read exactly like any other error to the user); the two collections never merge and `LocalDiagnostics` never writes into `SyntaxErrors` (`bdd-ui-interactions.md` §2.8).
+
 ---
 
 # 11. Workspace & Error Interaction

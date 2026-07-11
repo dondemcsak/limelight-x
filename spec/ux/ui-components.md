@@ -226,8 +226,10 @@ Execution Panel                │
 ### Bindings
 - `SourceText`  
 - `SyntaxErrors` — authoritative validation state, from `/explain` only  
+- `LocalDiagnostics` — advisory, Tree‑sitter‑sourced; rendered by `LocalDiagnosticsRenderer` as a squiggly underline + margin marker (`bdd-ui-interactions.md` §2.16), same visual shape as `SyntaxErrors`' styling (`ui-error-handling.md` §10.3) but never merged into it  
 - `CompletionItems`, `SelectCompletionItemCommand` — completion list popup, positioned at the cursor  
-- `HoverInfo` — hover tooltip; not shown when `null`  
+- `HoverInfo` — hover tooltip; not shown when `null`; sourced from a `LocalDiagnostics` match first, falling back to grammar‑role hover (`bdd-ui-interactions.md` §2.17)  
+- `GhostSuggestion` — rendered inline by `GhostTextElementGenerator` as non‑editable, semi‑transparent text at the caret when set; committed to real text by `Tab` via `ApplyQuickFixCommand` (`bdd-ui-interactions.md` §2.18–§2.19)  
 - `RunCommand` (invokes `/trace`)
 - `ExplainCommand` (invokes `/explain`)
 - `IExecutionLockService.IsAnyExecutionRunning` → disable both buttons (does **not** disable completion/hover/highlighting/folding — those are local, per Streaming Rules below)
@@ -235,7 +237,11 @@ Execution Panel                │
 ### Streaming Rules
 - There is no `TraceCommand` binding; the Trace trigger is removed entirely.
 - Inline errors come from `/explain`'s streamed event sequence (`pipeline_started` → `raw_ast_generated` → `normalized_ast_generated`), the same as any other execution — see `ui-viewmodels.md` §6 Live Validation.
-- Syntax highlighting, folding, completions, and hover are computed entirely client-side by Tree‑sitter and are **not** streaming-driven and **not** gated by `IExecutionLockService` — see `ui-viewmodels.md` §6 "IntelliSense (Tree‑sitter)". Local Tree‑sitter error nodes may render an advisory squiggle distinct from `SyntaxErrors`'s inline validation styling; they never replace or delay it.
+- Syntax highlighting, folding, completions, and hover are computed entirely client-side by Tree‑sitter and are **not** streaming-driven and **not** gated by `IExecutionLockService` — see `ui-viewmodels.md` §6 "IntelliSense (Tree‑sitter)". Local Tree‑sitter error nodes render a squiggly underline + margin marker, visually matching but data‑model‑separate from `SyntaxErrors`'s inline validation styling (`ui-error-handling.md` §10.3); they never replace or delay it.
+
+### Sub‑Components
+- **`LocalDiagnosticsRenderer`** (`ui/components/LocalDiagnosticsRenderer.cs`) — an `IBackgroundRenderer` drawing a zig‑zag squiggle stroke (not a filled wash) plus a margin marker glyph for each `LocalDiagnostics` entry's span, in `SyntaxErrorBrush`.
+- **`GhostTextElementGenerator`** (`ui/components/GhostTextElementGenerator.cs`) — a `VisualLineElementGenerator` that injects a single non‑editable, low‑opacity text element at `GhostSuggestion.InsertionByte` when set, leaving surrounding real content unaffected; `null` when there is no active `GhostSuggestion`.
 
 ### Layout Rules
 - Occupies the top half of the tab's content area (below the Run/Explain buttons), sized by `CnlTabViewModel.EditorPaneRatio` (§4.1, §4.5).

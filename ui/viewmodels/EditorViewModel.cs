@@ -17,18 +17,18 @@ namespace LimelightX.UI.ViewModels;
 /// CorrelationId - it never touches this tab's PipelineExecutionViewModel
 /// state, and is exempt from IExecutionLockService (ui-viewmodels.md §6 Live
 /// Validation).
-/// Completion/hover/folding/local-diagnostics (CompletionItems, HoverInfo,
-/// FoldRegions, LocalDiagnostics and their Request*/Refresh* triggers below)
-/// are wired to the IParserHost/ICompletionService/IDiagnosticService/
-/// IHoverService/IFoldingService interfaces (ui/intellisense/), but those
-/// implementations are still stubs throwing NotImplementedException - see
-/// the BDD-tests-first implementation plan. Deliberately NOT wired to
-/// OnTextChanged yet (unlike the eventual real behavior described in
-/// ui-viewmodels.md §6 "IntelliSense (Tree-sitter)"): every trigger below is
-/// explicit-call-only for now, so existing text-driven tests are unaffected
-/// by services that aren't implemented yet.
-/// QuickFixes/ApplyQuickFixCommand stay empty - DiagnosticService produces
-/// advisory diagnostics only, not actionable fixes (ui-viewmodels.md §6).
+/// Completion/hover/folding/outline/local-diagnostics (CompletionItems,
+/// HoverInfo, FoldRegions, Outline, LocalDiagnostics and their Request*/
+/// Refresh* triggers below) are wired to the real, Tree-sitter-backed
+/// IParserHost/ICompletionService/IDiagnosticService/IHoverService/
+/// IFoldingService/IOutlineService implementations (ui/intellisense/).
+/// RefreshDecorations() runs synchronously from OnTextChanged
+/// (bdd-ui-interactions.md §2.7a, ui-viewmodels.md §6), so LocalDiagnostics/
+/// QuickFixes/FoldRegions/Outline are never stale relative to Text.
+/// QuickFixes is rebuilt from LocalDiagnostics entries carrying a
+/// SuggestedFix; GhostSuggestion tracks whichever QuickFixes entry sits at
+/// the current CursorPosition, and ApplyQuickFixCommand commits it into Text
+/// (bdd-ui-interactions.md §2.18-§2.19).
 /// FormatCommand is stubbed: no formatting-rule spec content exists anywhere
 /// in spec/ux/*, so it cannot be implemented yet (flagged ambiguity).
 /// </summary>
@@ -48,6 +48,7 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     private readonly IHoverService _hoverService;
     private readonly IFoldingService _foldingService;
     private readonly IStructuralSelectionService _structuralSelectionService;
+    private readonly IOutlineService _outlineService;
     private CancellationTokenSource? _validationDebounceCts;
     private string? _validationCorrelationId;
 
@@ -60,7 +61,8 @@ public partial class EditorViewModel : ObservableObject, IDisposable
         IDiagnosticService diagnosticService,
         IHoverService hoverService,
         IFoldingService foldingService,
-        IStructuralSelectionService structuralSelectionService)
+        IStructuralSelectionService structuralSelectionService,
+        IOutlineService outlineService)
     {
         _pipelineService = pipelineService;
         _eventStream = eventStream;
@@ -71,6 +73,7 @@ public partial class EditorViewModel : ObservableObject, IDisposable
         _hoverService = hoverService;
         _foldingService = foldingService;
         _structuralSelectionService = structuralSelectionService;
+        _outlineService = outlineService;
         eventStream.EventReceived += OnValidationEventReceived;
         _executionLock.ExecutionLockChanged += NotifyPipelineCommandsCanExecuteChanged;
     }
@@ -89,12 +92,15 @@ public partial class EditorViewModel : ObservableObject, IDisposable
 
     partial void OnTextChanged(string value)
     {
+        RefreshDecorations();
         QueueValidation();
         NotifyPipelineCommandsCanExecuteChanged();
     }
 
     [ObservableProperty]
     private int _cursorPosition;
+
+    partial void OnCursorPositionChanged(int value) => UpdateGhostSuggestion();
 
     [ObservableProperty]
     private (int Start, int End) _selectionRange;
@@ -111,6 +117,10 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private HoverInfo? _hoverInfo;
 
+    /// <summary>Active ghost-text suggestion at the caret, if any (bdd-ui-interactions.md §2.18) - the QuickFixes entry whose InsertionByte equals the current CursorPosition. Committed to real text by Tab via ApplyQuickFixCommand (§2.19).</summary>
+    [ObservableProperty]
+    private QuickFixItem? _ghostSuggestion;
+
     public ObservableCollection<ValidationError> ValidationErrors { get; } = [];
 
     public ObservableCollection<CompletionItem> CompletionItems { get; } = [];
@@ -122,6 +132,9 @@ public partial class EditorViewModel : ObservableObject, IDisposable
 
     /// <summary>Advisory, local-only diagnostics from Tree-sitter ERROR/MISSING nodes (bdd-ui-interactions.md §2.7-§2.8) - never authoritative, never written into SyntaxErrors/ValidationErrors. Populated by RefreshDecorations.</summary>
     public ObservableCollection<LocalDiagnostic> LocalDiagnostics { get; } = [];
+
+    /// <summary>Client-side outline entries, one per CNL sentence (ui-intellisense-engine-spec.md §2.5, §10). Populated by RefreshDecorations.</summary>
+    public ObservableCollection<OutlineItem> Outline { get; } = [];
 
     /// <summary>Error-or-higher validation errors promoted to this tab's banner (ui-error-handling.md §9) - the ErrorBanner component binds directly to this.</summary>
     public ErrorBannerViewModel ErrorBanner { get; } = new();
@@ -150,9 +163,15 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private Task FormatAsync() => Task.CompletedTask;
 
+    /// <summary>Splices item.InsertText into Text at item.InsertionByte, moves the caret past it, and clears GhostSuggestion (bdd-ui-interactions.md §2.19). Invoked by Tab when GhostSuggestion is active, or by any future explicit quick-fix UI.</summary>
     [RelayCommand]
     private void ApplyQuickFix(QuickFixItem item)
     {
+        var utf8Text = new Utf8Text(Text);
+        var charOffset = utf8Text.ByteOffsetToCharOffset(item.InsertionByte);
+        Text = Text[..charOffset] + item.InsertText + Text[charOffset..];
+        CursorPosition = charOffset + item.InsertText.Length;
+        GhostSuggestion = null;
     }
 
     /// <summary>
@@ -168,9 +187,9 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Reparses Text and recomputes FoldRegions/LocalDiagnostics
-    /// (bdd-ui-interactions.md §2.7-§2.9). Explicit-call-only for now - see
-    /// this class's doc comment.
+    /// Reparses Text and recomputes FoldRegions/LocalDiagnostics/QuickFixes/
+    /// Outline (bdd-ui-interactions.md §2.7-§2.9, §2.18). Runs synchronously
+    /// from OnTextChanged (§2.7a); also callable explicitly (e.g. by tests).
     /// </summary>
     public void RefreshDecorations()
     {
@@ -182,11 +201,35 @@ public partial class EditorViewModel : ObservableObject, IDisposable
             LocalDiagnostics.Add(diagnostic);
         }
 
+        QuickFixes.Clear();
+        foreach (var diagnostic in LocalDiagnostics)
+        {
+            if (diagnostic.SuggestedFix is { } fix)
+            {
+                QuickFixes.Add(new QuickFixItem { Title = $"Insert '{fix}'", InsertionByte = diagnostic.StartByte, InsertText = fix });
+            }
+        }
+
         FoldRegions.Clear();
         foreach (var fold in _foldingService.GetFolds(root))
         {
             FoldRegions.Add(fold);
         }
+
+        Outline.Clear();
+        foreach (var item in _outlineService.GetOutline(Text, root))
+        {
+            Outline.Add(item);
+        }
+
+        UpdateGhostSuggestion();
+    }
+
+    /// <summary>Sets GhostSuggestion to whichever QuickFixes entry sits at the current CursorPosition, or null (bdd-ui-interactions.md §2.18). Called on every cursor move and after every RefreshDecorations().</summary>
+    private void UpdateGhostSuggestion()
+    {
+        var cursorByte = new Utf8Text(Text).CharOffsetToByteOffset(CursorPosition);
+        GhostSuggestion = QuickFixes.FirstOrDefault(fix => fix.InsertionByte == cursorByte);
     }
 
     /// <summary>Completion trigger (bdd-ui-interactions.md §2.12-§2.13) - explicit, not on every keystroke.</summary>
@@ -201,8 +244,21 @@ public partial class EditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Hover trigger, pointer-driven not caret-driven (bdd-ui-interactions.md §2.11) - CnlEditor calls this from Editor.PointerHover.</summary>
-    public void RequestHoverAt(int cursorByte) => HoverInfo = _hoverService.GetHover(Text, _parserHost.Parse(Text), cursorByte);
+    /// <summary>
+    /// Hover trigger, pointer-driven not caret-driven (bdd-ui-interactions.md
+    /// §2.11) - CnlEditor calls this from Editor.PointerHover. Checks
+    /// LocalDiagnostics first (inclusive span, so a zero-width MISSING span
+    /// is still hoverable) and shows the diagnostic's message, taking
+    /// priority over grammar-role hover for the same position (§2.17,
+    /// ui-intellisense-engine-spec.md §7.5).
+    /// </summary>
+    public void RequestHoverAt(int cursorByte)
+    {
+        var diagnostic = LocalDiagnostics.FirstOrDefault(d => cursorByte >= d.StartByte && cursorByte <= d.EndByte);
+        HoverInfo = diagnostic != default
+            ? new HoverInfo { Text = diagnostic.Message, Position = diagnostic.StartByte }
+            : _hoverService.GetHover(Text, _parserHost.Parse(Text), cursorByte);
+    }
 
     /// <summary>CnlEditor calls this from Editor.PointerHoverStopped.</summary>
     public void ClearHover() => HoverInfo = null;

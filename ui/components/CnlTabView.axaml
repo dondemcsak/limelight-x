@@ -53,6 +53,7 @@
                                SelectionRange="{Binding Editor.SelectionRange}"
                                LocalDiagnostics="{Binding Editor.LocalDiagnostics}"
                                FoldRegions="{Binding Editor.FoldRegions}"
+                               GhostSuggestion="{Binding Editor.GhostSuggestion}"
                                MinHeight="200" />
       </ScrollViewer>
 

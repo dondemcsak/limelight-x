@@ -6,8 +6,11 @@ namespace LimelightX.UI.Intellisense;
 /// Real Tree-sitter-backed implementation. App-wide singleton: loads and
 /// compiles the three .scm queries once at construction (from the output
 /// directory's queries/ folder, copied there from ui/queries/ by .csproj),
-/// caches each as a native TSQuery for the lifetime of the app, and runs a
-/// fresh cursor per call against whichever tab's TSNode root it's given.
+/// caches each as a native TSQuery for the lifetime of this instance, and
+/// runs a fresh cursor per call against whichever tab's TSNode root it's
+/// given. Dispose frees the three cached TSQuery handles - callers that own
+/// a QueryRunner (composition root, CnlSyntaxColorizer) must dispose it
+/// alongside their own native handles.
 /// </summary>
 public sealed class QueryRunner : IQueryRunner
 {
@@ -74,5 +77,12 @@ public sealed class QueryRunner : IQueryRunner
         }
 
         return results;
+    }
+
+    public void Dispose()
+    {
+        NativeMethods.ts_query_delete(_highlightsQuery);
+        NativeMethods.ts_query_delete(_foldsQuery);
+        NativeMethods.ts_query_delete(_injectionsQuery);
     }
 }

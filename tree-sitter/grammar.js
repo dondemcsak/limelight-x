@@ -116,7 +116,22 @@ module.exports = grammar({
     name: $ =>
       token(prec(-2, /[A-Za-z_][A-Za-z0-9_]*/)),
 
+    // Content excludes newline (not just '"'), matching _free_text_word's
+    // own /[^\s.\n]+/ boundary above. Without this, an unterminated string
+    // (missing closing '"') has no bounded failure point for Tree-sitter's
+    // GLR error recovery to insert a MISSING '"' at - the repeat regex
+    // greedily consumes everything up to true EOF trying to find a closing
+    // quote, so the whole remainder of the document becomes one ERROR node
+    // instead of a clean, position-specific MISSING '"' (confirmed
+    // empirically pre-fix: ui/tests/Intellisense/DiagnosticServiceTests.cs's
+    // doc comment documents the prior unreachable-quote-case finding this
+    // change addresses). Bounding content at the newline gives recovery a
+    // concrete stopping point on any line but the last, the same way the
+    // missing-period case already recovers cleanly at end-of-sentence. No
+    // spec example anywhere embeds a literal newline inside a quoted string
+    // (cnl-grammar.md, all worked examples) - this narrows nothing that was
+    // ever actually usable.
     string: $ =>
-      seq('"', repeat(/[^"]/), '"'),
+      seq('"', repeat(/[^"\n]/), '"'),
   }
 });

@@ -1,6 +1,6 @@
 namespace LimelightX.UI.ViewModels;
 
-/// <summary>Placeholder shape for EditorViewModel.HoverInfo - see CompletionItem's comment. Deferred to Phase 4b.</summary>
+/// <summary>Shape for EditorViewModel.HoverInfo, returned (nullable) by IHoverService.GetHover - null, not an Empty sentinel, means no hover content at that position.</summary>
 public sealed class HoverInfo
 {
     public required string Text { get; init; }

@@ -497,16 +497,17 @@ static bool ts_lex(TSLexer *lexer, TSStateId state) {
       if (lookahead != 0) ADVANCE(170);
       END_STATE();
     case 1:
-      if (lookahead == ' ') ADVANCE(65);
-      END_STATE();
-    case 2:
-      if (lookahead == ' ') ADVANCE(71);
-      END_STATE();
-    case 3:
+      if (lookahead == '\n') SKIP(1);
       if (lookahead == '"') ADVANCE(172);
       if (('\t' <= lookahead && lookahead <= '\r') ||
           lookahead == ' ') ADVANCE(174);
       if (lookahead != 0) ADVANCE(173);
+      END_STATE();
+    case 2:
+      if (lookahead == ' ') ADVANCE(65);
+      END_STATE();
+    case 3:
+      if (lookahead == ' ') ADVANCE(71);
       END_STATE();
     case 4:
       if (lookahead == '.') ADVANCE(87);
@@ -560,7 +561,7 @@ static bool ts_lex(TSLexer *lexer, TSStateId state) {
       if (lookahead == 'c') ADVANCE(72);
       END_STATE();
     case 16:
-      if (lookahead == 'd') ADVANCE(1);
+      if (lookahead == 'd') ADVANCE(2);
       END_STATE();
     case 17:
       if (lookahead == 'e') ADVANCE(93);
@@ -742,7 +743,7 @@ static bool ts_lex(TSLexer *lexer, TSStateId state) {
       if (lookahead == 't') ADVANCE(28);
       END_STATE();
     case 72:
-      if (lookahead == 't') ADVANCE(2);
+      if (lookahead == 't') ADVANCE(3);
       END_STATE();
     case 73:
       if (lookahead == 'u') ADVANCE(62);
@@ -1606,9 +1607,11 @@ static bool ts_lex(TSLexer *lexer, TSStateId state) {
       END_STATE();
     case 174:
       ACCEPT_TOKEN(aux_sym_string_token1);
-      if (('\t' <= lookahead && lookahead <= '\r') ||
+      if (lookahead == '\t' ||
+          (0x0b <= lookahead && lookahead <= '\r') ||
           lookahead == ' ') ADVANCE(174);
       if (lookahead != 0 &&
+          (lookahead < '\t' || '\r' < lookahead) &&
           lookahead != '"') ADVANCE(173);
       END_STATE();
     default:
@@ -1650,13 +1653,13 @@ static const TSLexerMode ts_lex_modes[STATE_COUNT] = {
   [30] = {.lex_state = 6},
   [31] = {.lex_state = 4},
   [32] = {.lex_state = 6},
-  [33] = {.lex_state = 3},
+  [33] = {.lex_state = 1},
   [34] = {.lex_state = 83},
   [35] = {.lex_state = 6},
-  [36] = {.lex_state = 3},
+  [36] = {.lex_state = 1},
   [37] = {.lex_state = 6},
   [38] = {.lex_state = 83},
-  [39] = {.lex_state = 3},
+  [39] = {.lex_state = 1},
   [40] = {.lex_state = 83},
   [41] = {.lex_state = 67},
   [42] = {.lex_state = 67},

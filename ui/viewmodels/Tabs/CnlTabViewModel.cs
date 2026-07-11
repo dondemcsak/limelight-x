@@ -12,10 +12,16 @@ namespace LimelightX.UI.ViewModels.Tabs;
 /// Editor.RunRequested/ExplainRequested directly to this tab's own
 /// PipelineExecution is simpler than the old app-wide Func-wiring done in
 /// App.axaml.cs, since it's naturally 1:1 per tab now.
-/// Also constructs this tab's own IParserHost (per-tab native parse/tree
-/// lifecycle, cnl-editor-architecture.md §5) - unlike the completion/
-/// diagnostic/hover/folding services, which are app-wide singletons passed
-/// in from TabFactory since they hold no per-document state.
+/// Also constructs this tab's own IParserHost via a caller-supplied factory
+/// (per-tab native parse/tree lifecycle, cnl-editor-architecture.md §5) -
+/// unlike the completion/diagnostic/hover/folding/outline services, which
+/// are app-wide singletons passed in from TabFactory since they hold no
+/// per-document state. Taking a factory (not an IParserHost instance)
+/// keeps ParserHost construction per-tab (each open document needs its own
+/// CST) while still letting tests substitute a fake that never P/Invokes
+/// the ARM64-only native DLL (CLAUDE.md §3.5's CI-gating requirement) -
+/// TabFactory is the only production caller, and always passes `() => new
+/// ParserHost()`.
 /// </summary>
 public sealed partial class CnlTabViewModel : TabViewModel
 {
@@ -29,10 +35,12 @@ public sealed partial class CnlTabViewModel : TabViewModel
         IDiagnosticService diagnosticService,
         IHoverService hoverService,
         IFoldingService foldingService,
-        IStructuralSelectionService structuralSelectionService)
+        IStructuralSelectionService structuralSelectionService,
+        IOutlineService outlineService,
+        Func<IParserHost> parserHostFactory)
         : base(filePath, Path.GetFileName(filePath))
     {
-        Editor = new EditorViewModel(pipelineService, eventStream, executionLock, new ParserHost(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService) { Text = initialText };
+        Editor = new EditorViewModel(pipelineService, eventStream, executionLock, parserHostFactory(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService) { Text = initialText };
         PipelineExecution = new PipelineExecutionViewModel(pipelineService, eventStream, executionLock);
 
         Editor.RunRequested = PipelineExecution.RunPipelineAsync;
@@ -53,10 +61,12 @@ public sealed partial class CnlTabViewModel : TabViewModel
         IDiagnosticService diagnosticService,
         IHoverService hoverService,
         IFoldingService foldingService,
-        IStructuralSelectionService structuralSelectionService)
+        IStructuralSelectionService structuralSelectionService,
+        IOutlineService outlineService,
+        Func<IParserHost> parserHostFactory)
         : base(null, header)
     {
-        Editor = new EditorViewModel(pipelineService, eventStream, executionLock, new ParserHost(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService) { Text = string.Empty };
+        Editor = new EditorViewModel(pipelineService, eventStream, executionLock, parserHostFactory(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService) { Text = string.Empty };
         PipelineExecution = new PipelineExecutionViewModel(pipelineService, eventStream, executionLock);
 
         Editor.RunRequested = PipelineExecution.RunPipelineAsync;

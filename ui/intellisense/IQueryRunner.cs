@@ -6,7 +6,7 @@ namespace LimelightX.UI.Intellisense;
 /// a caller-supplied CST. Stateless per call beyond its cached compiled
 /// queries - shared across all tabs, unlike IParserHost.
 /// </summary>
-public interface IQueryRunner
+public interface IQueryRunner : IDisposable
 {
     IEnumerable<QueryMatch> RunHighlights(TSNode root);
 

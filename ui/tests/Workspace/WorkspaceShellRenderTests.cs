@@ -69,7 +69,7 @@ public class WorkspaceShellRenderTests
         var pipeline = new FakePipelineService();
         var eventStream = new TestDoubles.FakeEventStreamService();
         var lockService = new ExecutionLockService();
-        var tabFactory = new TabFactory(pipeline, eventStream, lockService, new CompletionService(), new DiagnosticService(), new HoverService(), new FoldingService(new TestDoubles.FakeQueryRunner()), new TestDoubles.FakeStructuralSelectionService());
+        var tabFactory = new TabFactory(pipeline, eventStream, lockService, new TestDoubles.FakeCompletionService(), new TestDoubles.FakeDiagnosticService(), new TestDoubles.FakeHoverService(), new TestDoubles.FakeFoldingService(), new TestDoubles.FakeStructuralSelectionService(), new TestDoubles.FakeOutlineService(), () => new TestDoubles.FakeParserHost());
         return new WorkspaceViewModel(tabFactory, new FakeFilePickerService(), new FakeModalService(), lockService);
     }
 
@@ -163,7 +163,7 @@ public class WorkspaceShellRenderTests
         {
             var eventStream = new TestDoubles.FakeEventStreamService();
             var lockService = new ExecutionLockService();
-            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService, new CompletionService(), new DiagnosticService(), new HoverService(), new FoldingService(new TestDoubles.FakeQueryRunner()), new TestDoubles.FakeStructuralSelectionService());
+            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService, new TestDoubles.FakeCompletionService(), new TestDoubles.FakeDiagnosticService(), new TestDoubles.FakeHoverService(), new TestDoubles.FakeFoldingService(), new TestDoubles.FakeStructuralSelectionService(), new TestDoubles.FakeOutlineService(), () => new TestDoubles.FakeParserHost());
             var workspace = new WorkspaceViewModel(tabFactory, new FakeFilePickerService(), new FakeModalService(), lockService);
             workspace.OpenRoot(root);
             workspace.OpenOrFocusTabCommand.Execute(workspace.FileTree.Nodes.Single(n => n.FullPath == llxPath));

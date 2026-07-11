@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using AvaloniaEdit.CodeCompletion;
 using AvaloniaEdit.Folding;
@@ -17,11 +18,12 @@ namespace LimelightX.UI.Components;
 /// CNL text editor (ui-components.md §3.1) wrapping AvaloniaEdit's
 /// TextEditor. Two-way syncs Text/CursorPosition/SelectionRange with
 /// EditorViewModel; installs CnlSyntaxColorizer for syntax highlighting,
-/// LocalDiagnosticsRenderer for advisory error spans (bdd-ui-interactions.md
-/// §2.7-§2.8), a FoldingManager for sentence folding (§2.9), and a
-/// Ctrl+Space-triggered CompletionWindow (§2.12-§2.13). ValidationOverlay
-/// (inline error markers) is a separate component composed alongside this
-/// one in EditorPage, not owned by CnlEditor itself.
+/// LocalDiagnosticsRenderer/DiagnosticMarginMarker for advisory error spans
+/// (bdd-ui-interactions.md §2.16), a FoldingManager for sentence folding
+/// (§2.9), a GhostTextElementGenerator for inline suggested-fix ghost text
+/// (§2.18), and a Ctrl+Space-triggered CompletionWindow (§2.12-§2.13).
+/// ValidationOverlay (inline error markers) is a separate component composed
+/// alongside this one in EditorPage, not owned by CnlEditor itself.
 /// </summary>
 public partial class CnlEditor : UserControl
 {
@@ -40,8 +42,13 @@ public partial class CnlEditor : UserControl
     public static readonly StyledProperty<IEnumerable<FoldRegion>?> FoldRegionsProperty =
         AvaloniaProperty.Register<CnlEditor, IEnumerable<FoldRegion>?>(nameof(FoldRegions));
 
+    public static readonly StyledProperty<QuickFixItem?> GhostSuggestionProperty =
+        AvaloniaProperty.Register<CnlEditor, QuickFixItem?>(nameof(GhostSuggestion));
+
     private readonly CnlSyntaxColorizer _colorizer;
     private readonly LocalDiagnosticsRenderer _diagnosticsRenderer;
+    private readonly DiagnosticMarginMarker _marginMarker;
+    private readonly GhostTextElementGenerator _ghostTextGenerator;
     private readonly FoldingManager _foldingManager;
     private CompletionWindow? _completionWindow;
     private bool _isSyncingFromViewModel;
@@ -65,6 +72,13 @@ public partial class CnlEditor : UserControl
 
         _diagnosticsRenderer = new LocalDiagnosticsRenderer(((SolidColorBrush)GetBrush("SyntaxErrorBrush")).Color);
         Editor.TextArea.TextView.BackgroundRenderers.Add(_diagnosticsRenderer);
+
+        _marginMarker = new DiagnosticMarginMarker(((SolidColorBrush)GetBrush("SyntaxErrorBrush")).Color);
+        Editor.TextArea.LeftMargins.Add(_marginMarker);
+
+        var ghostTextBrush = new SolidColorBrush(((SolidColorBrush)GetBrush("TextPrimaryBrush")).Color, 0.4);
+        _ghostTextGenerator = new GhostTextElementGenerator(ghostTextBrush);
+        Editor.TextArea.TextView.ElementGenerators.Add(_ghostTextGenerator);
 
         _foldingManager = FoldingManager.Install(Editor.TextArea);
 
@@ -91,7 +105,14 @@ public partial class CnlEditor : UserControl
             SetCurrentValue(SelectionRangeProperty, (Editor.SelectionStart, Editor.SelectionStart + Editor.SelectionLength));
         };
 
-        Editor.TextArea.KeyDown += OnTextAreaKeyDown;
+        // Tunnel (preview), not bubble: TextArea.OnKeyDown is a class handler
+        // that claims Tab for indent-insertion before any bubble-phase
+        // instance handler on this same node would run. Intercepting at the
+        // tunnel phase lets Tab-to-accept (bdd-ui-interactions.md §2.19) win
+        // when a ghost suggestion is active, while leaving the event
+        // unhandled otherwise so it still falls through to that default
+        // indent behavior (ui-accessibility.md §2).
+        Editor.TextArea.AddHandler(InputElement.KeyDownEvent, OnTextAreaKeyDown, RoutingStrategies.Tunnel);
 
         ToolTip.SetServiceEnabled(Editor, false);
         Editor.PointerHover += OnPointerHover;
@@ -156,7 +177,11 @@ public partial class CnlEditor : UserControl
     /// </summary>
     private void OnTextAreaKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Space && e.KeyModifiers == KeyModifiers.Control)
+        if (e.Key == Key.Tab && e.KeyModifiers == KeyModifiers.None)
+        {
+            OnGhostTextAcceptRequested(e);
+        }
+        else if (e.Key == Key.Space && e.KeyModifiers == KeyModifiers.Control)
         {
             OnCompletionRequested(e);
         }
@@ -164,6 +189,23 @@ public partial class CnlEditor : UserControl
         {
             OnExpandSelectionRequested(e);
         }
+    }
+
+    /// <summary>
+    /// Tab commits the active ghost-text suggestion (bdd-ui-interactions.md
+    /// §2.19); when none is active, the event is left unhandled so it falls
+    /// through to AvaloniaEdit's existing default indent-insert behavior
+    /// (ui-accessibility.md §2's editor-scoped Tab override).
+    /// </summary>
+    private void OnGhostTextAcceptRequested(KeyEventArgs e)
+    {
+        if (DataContext is not CnlTabViewModel tab || tab.Editor.GhostSuggestion is not { } ghost)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        tab.Editor.ApplyQuickFixCommand.Execute(ghost);
     }
 
     private void OnExpandSelectionRequested(KeyEventArgs e)
@@ -235,6 +277,12 @@ public partial class CnlEditor : UserControl
         set => SetValue(FoldRegionsProperty, value);
     }
 
+    public QuickFixItem? GhostSuggestion
+    {
+        get => GetValue(GhostSuggestionProperty);
+        set => SetValue(GhostSuggestionProperty, value);
+    }
+
     public void Undo() => Editor.Undo();
 
     public void Redo() => Editor.Redo();
@@ -295,6 +343,10 @@ public partial class CnlEditor : UserControl
 
             UpdateFoldings();
         }
+        else if (change.Property == GhostSuggestionProperty)
+        {
+            UpdateGhostText();
+        }
     }
 
     private void OnLocalDiagnosticsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => UpdateDiagnosticsRenderer();
@@ -304,10 +356,33 @@ public partial class CnlEditor : UserControl
     private void UpdateDiagnosticsRenderer()
     {
         var utf8Text = new Utf8Text(Editor.Text);
-        _diagnosticsRenderer.Diagnostics = (LocalDiagnostics ?? [])
+        var diagnostics = (LocalDiagnostics ?? [])
             .Select(d => (utf8Text.ByteOffsetToCharOffset(d.StartByte), utf8Text.ByteOffsetToCharOffset(d.EndByte)))
             .ToList();
+
+        _diagnosticsRenderer.Diagnostics = diagnostics;
         Editor.TextArea.TextView.InvalidateLayer(KnownLayer.Selection);
+
+        _marginMarker.Diagnostics = diagnostics;
+        _marginMarker.InvalidateVisual();
+    }
+
+    /// <summary>Feeds GhostSuggestion (bdd-ui-interactions.md §2.18) into GhostTextElementGenerator, converting InsertionByte to a char offset, and forces the TextView to reconstruct visual lines so the injected element appears/disappears immediately.</summary>
+    private void UpdateGhostText()
+    {
+        if (GhostSuggestion is { } ghost)
+        {
+            var utf8Text = new Utf8Text(Editor.Text);
+            _ghostTextGenerator.InsertionOffset = utf8Text.ByteOffsetToCharOffset(ghost.InsertionByte);
+            _ghostTextGenerator.InsertText = ghost.InsertText;
+        }
+        else
+        {
+            _ghostTextGenerator.InsertionOffset = null;
+            _ghostTextGenerator.InsertText = string.Empty;
+        }
+
+        Editor.TextArea.TextView.Redraw();
     }
 
     private void UpdateFoldings()

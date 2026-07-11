@@ -185,8 +185,9 @@ Each ViewModel is deterministic and state‑derived.
 - `CompletionItems : ObservableCollection<CompletionItem>` — populated by `CompletionService` (`ui/intellisense/CompletionService.cs`, `spec/ux/ui-editor-services-guide.md` §3.3)
 - `HoverInfo : HoverInfo?` — populated by `HoverService`; `null` means no hover content for the current cursor position
 - `FoldRegions : ObservableCollection<FoldRegion>` — populated by `FoldingService` (`ui/intellisense/FoldingService.cs`, `spec/ux/ui-editor-services-guide.md` §3.6); one entry per CNL sentence (`bdd-ui-interactions.md` §2.9)
-- `LocalDiagnostics : ObservableCollection<LocalDiagnostic>` — populated by `DiagnosticService` (`ui/intellisense/DiagnosticService.cs`, `spec/ux/ui-editor-services-guide.md` §3.4); one entry per Tree‑sitter `ERROR`/`MISSING` node's span, advisory only, never written into `SyntaxErrors` (`bdd-ui-interactions.md` §2.7‑§2.8)
-- `QuickFixes : ObservableCollection<QuickFixItem>` — currently always empty: `DiagnosticService` produces read-only, advisory diagnostics only, not actionable fixes; no document in `spec/parsing/` or `spec/ux/ui-intellisense-*.md` defines an actual corrective action for any diagnostic. Populating this is future work requiring its own explicit instruction, not part of this IntelliSense integration.
+- `LocalDiagnostics : ObservableCollection<LocalDiagnostic>` — populated by `DiagnosticService` (`ui/intellisense/DiagnosticService.cs`, `spec/ux/ui-editor-services-guide.md` §3.4); one entry per Tree‑sitter `ERROR`/`MISSING` node's span, advisory only, never written into `SyntaxErrors` (`bdd-ui-interactions.md` §2.7‑§2.8). Each entry is `LocalDiagnostic(Message, StartByte, EndByte, SuggestedFix)` — `SuggestedFix : string?` is non‑null only for the fixed set of self‑describing `MISSING` literals (`.`, `"`, `}}`; `bdd-ui-interactions.md` §2.18), `null` for every other diagnostic. Rendered as a squiggly underline + margin marker (`bdd-ui-interactions.md` §2.16), and takes priority over grammar hover when hovered (§2.17).
+- `QuickFixes : ObservableCollection<QuickFixItem>` — one entry per `LocalDiagnostics` entry that carries a non‑null `SuggestedFix`, rebuilt alongside `LocalDiagnostics` by `RefreshDecorations()`. `QuickFixItem` is `{ Title : string, InsertionByte : int, InsertText : string }` — `InsertionByte` is the diagnostic's `StartByte` (the fix's insertion point), `InsertText` is the missing literal.
+- `GhostSuggestion : QuickFixItem?` — the `QuickFixes` entry (if any) whose `InsertionByte` equals the current `CursorPosition`, recomputed on every cursor move and after every `RefreshDecorations()`. Drives the inline ghost‑text rendering (`bdd-ui-interactions.md` §2.18) and is the source `ApplyQuickFixCommand` consumes when `Tab` commits it (§2.19).
 
 `EditorViewModel` has no `IsExecuting` property of its own. Two distinct flags matter here and must not be confused:
 - `PipelineExecutionViewModel.IsRunning` (§7) — is *this tab's* execution currently running (drives this tab's own spinner/inspector state).
@@ -196,7 +197,7 @@ Each ViewModel is deterministic and state‑derived.
 - `RunCommand` — invokes `POST /trace`.
 - `ExplainCommand` — invokes `POST /explain`.
 - `SelectCompletionItemCommand(CompletionItem)` — inserts the selected item's `Text` at the current cursor position; local-only, no backend call.
-- `ApplyQuickFixCommand(QuickFixItem)` — reserved for future use; `QuickFixes` is always empty today (see State above), so this command is never enabled/invoked yet.
+- `ApplyQuickFixCommand(QuickFixItem)` — splices `item.InsertText` into `Text` at `item.InsertionByte`, moves `CursorPosition` to just past the inserted text, and clears `GhostSuggestion` to `null` (`bdd-ui-interactions.md` §2.19). Invoked either by `Tab` when `GhostSuggestion` is active, or by any future explicit quick‑fix UI.
 
 There is no `TraceCommand`. The Trace button and its distinct trigger are removed entirely; Run now performs what Trace previously did.
 
@@ -218,9 +219,9 @@ There is no `TraceCommand`. The Trace button and its distinct trigger are remove
 
 ### IntelliSense (Tree‑sitter)
 - Client‑side only: computed entirely in-process from `SourceText` via `ui/intellisense`'s `ParserHost`/`CompletionService`/`HoverService`/`FoldingService`/`DiagnosticService` (`spec/ux/ui-editor-services-guide.md`, `spec/cnl-editor-architecture.md` §5). Never calls `/src/api`, never blocked by it.
-- Trigger points: `CompletionItems` recomputes on text change and on explicit completion invocation; `HoverInfo` recomputes on cursor move; `FoldRegions`/`LocalDiagnostics` recompute together via `RefreshDecorations()`, called on text change.
+- Trigger points: `CompletionItems` recomputes on text change and on explicit completion invocation; `HoverInfo` recomputes on cursor move (and now also checks `LocalDiagnostics` first — `bdd-ui-interactions.md` §2.17); `FoldRegions`/`LocalDiagnostics`/`QuickFixes`/`Outline` recompute together via `RefreshDecorations()`, called synchronously from `OnTextChanged` (`bdd-ui-interactions.md` §2.7a); `GhostSuggestion` recomputes on cursor move and after `RefreshDecorations()` (§2.18).
 - **Exempt from `IExecutionLockService`**, same reasoning as Live Validation above — this is local computation, not a backend call, so there is nothing to serialize against other tabs' executions.
-- Local diagnostics (Tree‑sitter `ERROR` nodes, surfaced as advisory squiggles distinct from `SyntaxErrors`) never write to `SyntaxErrors` and never substitute for a Live Validation cycle — see `cnl-editor-architecture.md` §5's "Tree‑sitter's view of 'valid' can disagree with Rust's."
+- Local diagnostics (Tree‑sitter `ERROR`/`MISSING` nodes, rendered as a squiggly underline + margin marker — `bdd-ui-interactions.md` §2.16) never write to `SyntaxErrors` and never substitute for a Live Validation cycle — see `cnl-editor-architecture.md` §5's "Tree‑sitter's view of 'valid' can disagree with Rust's." The visual resemblance to `SyntaxErrors`' authoritative styling (`ui-error-handling.md` §10.3) is deliberate (§2.7); the two remain data‑model‑separate.
 - `CompletionItems`/`HoverInfo` content that references prior bindings or pronoun targets (`ui-intellisense-engine-spec.md` §5.1, §7.1–§7.2) is a syntactic, CST-only, best-effort local echo — never authoritative, always superseded by `/explain`'s response (`cnl-editor-architecture.md` §1.1.3).
 
 ---

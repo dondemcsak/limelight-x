@@ -16,4 +16,8 @@ public sealed class FakeQueryRunner : IQueryRunner
     public IEnumerable<QueryMatch> RunFolds(TSNode root) => [];
 
     public IEnumerable<QueryMatch> RunInjections(TSNode root) => [];
+
+    public void Dispose()
+    {
+    }
 }

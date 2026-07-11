@@ -171,6 +171,21 @@ Diagnostics must:
 - Never override Rust diagnostics  
 - Be displayed immediately  
 - Be cleared when errors resolve  
+- Render as a squiggly underline with a margin marker (`bdd-ui-interactions.md` §2.16), matching `ui-error-handling.md` §10.3's authoritative styling in shape while remaining backed by `LocalDiagnostics`, never `SyntaxErrors`  
+
+## 6.1 Self‑Describing Fixes
+
+For `MISSING` nodes, the engine reads the missing node's expected token via `ts_node_type()` and checks it against a **fixed, narrow table** of grammar literals whose fix is unambiguous:
+
+| Missing literal | Message | Suggested fix |
+|---|---|---|
+| `.` | "Missing period at end of sentence." | `.` |
+| `"` | "Missing closing quote." | `"` |
+| `}}` | "Missing closing '}}' for expression hole." | `}}` |
+
+The `"` row is currently unreachable in practice — Tree‑sitter's error recovery does not produce a clean `MISSING '"'` node for an unterminated string even after grammar changes attempted to fix it; see `spec/ux/cnl-editor-known-issues.md` §1 for the full investigation. The table entry stays as correct, harmless code for if the real parser ever does produce one.
+
+A match populates the diagnostic's `SuggestedFix`, which the editor renders as ghost text at the fix location and lets the user accept with `Tab` (`bdd-ui-interactions.md` §2.18–§2.19). Every other `MISSING` literal (`from`, `to`, `as`, `be`, `Let`, `using`, `prompt:`, `{{`, etc.) and every `ERROR` node keeps the existing generic message (`"Missing expected token."` / `"Unexpected token."`) with `SuggestedFix == null` — this table is exhaustive for v1, not a general‑purpose fix‑suggestion engine, and must not be silently extended without explicit instruction (`CLAUDE.md` §3.2).
 
 ---
 
@@ -198,6 +213,9 @@ Summarize: Reduce text to a shorter form.
 
 ## 7.4 Prompt Hole Hover
 Show template description.
+
+## 7.5 Diagnostic Hover (Priority)
+Before resolving hover against a recognized grammar node (§7.1–§7.4), the engine checks whether the hovered byte falls inside a `LocalDiagnostics` entry's `[StartByte, EndByte]` span (inclusive of both ends, so a zero‑width `MISSING` span is still hoverable). If so, the diagnostic's `Message` is shown instead — the same tooltip mechanism as §7.1–§7.4, just diagnostic‑sourced content taking priority for that position (`bdd-ui-interactions.md` §2.17). In practice this rarely competes with §7.1–§7.4, since an `ERROR`/`MISSING` node's own type is never one of the recognized hover‑able node types.
 
 ---
 

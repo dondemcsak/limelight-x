@@ -43,6 +43,12 @@ Limelight‑X provides **full keyboard accessibility**.
 - Keyboard order must follow visual order.  
 - The folder tree and tab strip must be fully keyboard operable.
 
+### `Tab` Inside the CNL Editor Text Area (Editor‑Scoped Override)
+Inside `CnlEditor`'s `TextArea`, `Tab` is intercepted by the editor before the app‑chrome "move focus" rule above applies (`bdd-ui-interactions.md` §2.19):
+1. If `EditorViewModel.GhostSuggestion` is non‑null (an inline ghost‑text suggestion is showing at the caret — `bdd-ui-interactions.md` §2.18), `Tab` commits it via `ApplyQuickFixCommand` and the key event is marked handled — focus does **not** move.
+2. Otherwise, `Tab` falls through unhandled to AvaloniaEdit's existing default behavior (indent insertion at the caret) — this predates this feature and is unchanged.
+3. Focus‑navigation `Tab` (moving out of the editor to the next interactive element) only applies when neither of the above claims the key — i.e., in practice, a user must use `Shift+Tab`, click, or another navigation method to leave the editor via keyboard, consistent with how any code‑editor `TextArea` (including AvaloniaEdit's own default indent behavior) already claims `Tab` for itself rather than yielding to focus navigation.
+
 ---
 
 # 3. Focus Management

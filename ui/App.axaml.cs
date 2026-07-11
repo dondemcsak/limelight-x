@@ -56,8 +56,9 @@ public partial class App : Application
             var hoverService = new HoverService();
             var foldingService = new FoldingService(queryRunner);
             var structuralSelectionService = new StructuralSelectionService();
+            var outlineService = new OutlineService();
 
-            var tabFactory = new TabFactory(pipelineService, eventStream, executionLock, completionService, diagnosticService, hoverService, foldingService, structuralSelectionService);
+            var tabFactory = new TabFactory(pipelineService, eventStream, executionLock, completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService);
             var workspace = new WorkspaceViewModel(tabFactory, filePicker, modal, executionLock);
             var settings = new SettingsViewModel(configService, credentialService, llxProcessService);
             var about = new AboutViewModel();
@@ -135,6 +136,7 @@ public partial class App : Application
             {
                 pipelineService.Dispose();
                 eventStream.Dispose();
+                queryRunner.Dispose();
                 loggerFactory.Dispose();
                 _ = llxProcessService.StopAsync();
             };

@@ -225,22 +225,39 @@ Diagnostics are derived from:
 
 ## 5.1 Implementation Outline
 
+`GetDiagnostics` returns `LimelightX.UI.ViewModels.LocalDiagnostic` — `record struct LocalDiagnostic(string Message, int StartByte, int EndByte, string? SuggestedFix = null)`. For `MISSING` nodes, `ts_node_type()` gives the expected literal, looked up in a fixed table (`ui-intellisense-engine-spec.md` §6.1) to produce a specific message and, for the three self‑describing literals, a `SuggestedFix`:
+
 ```csharp
-public IEnumerable<Diagnostic> GetDiagnostics(TSNode root)
+private static readonly Dictionary<string, (string Message, string Fix)> SelfDescribingMissingLiterals = new()
 {
-    foreach (var node in Traverse(root))
+    ["."]  = ("Missing period at end of sentence.", "."),
+    ["\""] = ("Missing closing quote.", "\""),
+    ["}}"] = ("Missing closing '}}' for expression hole.", "}}"),
+};
+
+public IEnumerable<LocalDiagnostic> GetDiagnostics(TSNode root)
+{
+    foreach (var node in DescendantsAndSelf(root))
     {
-        if (node.Type == "ERROR")
-            yield return new Diagnostic("Syntax error", node.Range);
+        if (ts_node_is_missing(node))
+        {
+            var start = (int)ts_node_start_byte(node);
+            var end = (int)ts_node_end_byte(node);
+            var literal = ts_node_type(node);
 
-        if (IsMalformedPromptHole(node))
-            yield return new Diagnostic("Malformed prompt hole", node.Range);
-
-        if (IsUnknownVerb(node))
-            yield return new Diagnostic("Unknown verb", node.Range);
+            yield return SelfDescribingMissingLiterals.TryGetValue(literal, out var known)
+                ? new LocalDiagnostic(known.Message, start, end, known.Fix)
+                : new LocalDiagnostic("Missing expected token.", start, end);
+        }
+        else if (ts_node_is_error(node))
+        {
+            yield return new LocalDiagnostic("Unexpected token.", (int)ts_node_start_byte(node), (int)ts_node_end_byte(node));
+        }
     }
 }
 ```
+
+`ts_node_is_missing`/`ts_node_is_error`/`ts_node_type`/`ts_node_start_byte`/`ts_node_end_byte` are existing P/Invoke bindings, already used elsewhere in this file and in `HoverService` — no new native binding is required. The lookup table is intentionally small and fixed (`ui-intellisense-engine-spec.md` §6.1) — do not extend it without explicit instruction.
 
 ---
 
@@ -270,6 +287,18 @@ public HoverInfo? GetHover(TSNode root, int cursorByte)
         "prompt_hole" => PromptHoleHover(node, cursorByte),
         _ => null
     };
+}
+```
+
+`HoverService` itself stays grammar‑role‑only, as above — it has no `LocalDiagnostics` case and never will. The diagnostic‑message‑over‑grammar‑hover priority merge (`ui-intellisense-engine-spec.md` §7.5) is `EditorViewModel`'s responsibility, not `HoverService`'s, since only `EditorViewModel` holds both `LocalDiagnostics` and the `HoverService` reference:
+
+```csharp
+public void RequestHoverAt(int cursorByte)
+{
+    var diagnostic = LocalDiagnostics.FirstOrDefault(d => cursorByte >= d.StartByte && cursorByte <= d.EndByte);
+    HoverInfo = diagnostic != default
+        ? new HoverInfo { Text = diagnostic.Message, Position = diagnostic.StartByte }
+        : _hoverService.GetHover(Text, _parserHost.Parse(Text), cursorByte);
 }
 ```
 

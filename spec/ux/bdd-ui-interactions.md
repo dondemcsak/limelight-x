@@ -63,9 +63,11 @@ All scenarios assume:
 
 ---
 
-## 2.5–2.15 Tree‑sitter Editor Decoration
+## 2.5–2.19 Tree‑sitter Editor Decoration
 
-> **Status: FINAL.** Authored to close the gap identified when reviewing `spec/cnl-editor-architecture.md`: no BDD source existed anywhere for syntax highlighting migration, folding, hover, or completion before this addition. Cross-checked against `ui-viewmodels.md` §6 and `ui-components.md` §4.2 (which were extended with matching `CompletionItems`/`HoverInfo`/`QuickFixes` state) and, in this pass, against `FoldRegions`/`LocalDiagnostics` (§2.7–§2.9) — no drift found; `HoverInfo` is confirmed nullable (`null` = no hover), `CompletionItems` is confirmed to be the same `ObservableCollection<CompletionItem>` type, and `FoldRegions`/`LocalDiagnostics` are confirmed to be `ObservableCollection<FoldRegion>`/`ObservableCollection<LocalDiagnostic>` on `EditorViewModel`. These 11 scenarios are the executable spec for the tests in `ui/tests/Edit/EditorViewModelTests.cs` and `ui/tests/Intellisense/` — one test per scenario, per `CLAUDE.md` §6.
+> **Status: FINAL.** Authored to close the gap identified when reviewing `spec/cnl-editor-architecture.md`: no BDD source existed anywhere for syntax highlighting migration, folding, hover, or completion before this addition. Cross-checked against `ui-viewmodels.md` §6 and `ui-components.md` §4.2 (which were extended with matching `CompletionItems`/`HoverInfo`/`QuickFixes` state) and, in this pass, against `FoldRegions`/`LocalDiagnostics` (§2.7–§2.9) — no drift found; `HoverInfo` is confirmed nullable (`null` = no hover), `CompletionItems` is confirmed to be the same `ObservableCollection<CompletionItem>` type, and `FoldRegions`/`LocalDiagnostics` are confirmed to be `ObservableCollection<FoldRegion>`/`ObservableCollection<LocalDiagnostic>` on `EditorViewModel`. These 15 scenarios are the executable spec for the tests in `ui/tests/Edit/EditorViewModelTests.cs` and `ui/tests/Intellisense/` — one test per scenario, per `CLAUDE.md` §6.
+>
+> **Amendment (§2.16–§2.19 added):** closes the "VS Code-style editor" gap — squiggly rendering, hover-shows-diagnostic-message, ghost-text suggested fixes, and Tab-to-accept. §2.7's "not a validation‑error style" wording is clarified below to mean the *data-model* separation (`LocalDiagnostics` must never flow into `SyntaxErrors`) — it was never a constraint on visual shape, and `ui-components.md` §4.2 already anticipated an "advisory squiggle." `RefreshDecorations()` is now triggered directly by `OnTextChanged` (§2.7a) rather than being explicit-call-only, since local diagnostics must be visible as the user types, matching the editors this feature is modeled on.
 >
 > Scope premise (per `cnl-editor-architecture.md` §1, §5, as clarified): Tree‑sitter is client‑side‑only editor decoration. It never calls, and is never called by, `/src/api` or Rust. It does not participate in validation (`SyntaxErrors`) or execution. Everything below is local computation, keyed off the CST that `spec/parsing/grammer-js.md` produces from `SourceText`.
 
@@ -88,14 +90,21 @@ All scenarios assume:
 **WHEN** Tree‑sitter reparses  
 **THEN** Tree‑sitter produces an `ERROR`/`MISSING` node scoped to the incomplete region only, and every token it can still classify outside that region keeps its normal highlight color  
 **SO THAT** one incomplete sentence never blanks out highlighting for the rest of the document  
-**AS MEASURED BY** tokens before/after the error region retaining their `TokenKind` color; the error region itself represented as one entry in `EditorViewModel.LocalDiagnostics` (§2.8), not a validation‑error style
+**AS MEASURED BY** tokens before/after the error region retaining their `TokenKind` color; the error region itself represented as one entry in `EditorViewModel.LocalDiagnostics` (§2.8) — rendered with its own advisory squiggle styling (§2.16), which may visually resemble `SyntaxErrors`' authoritative styling (`ui-error-handling.md` §10.3) without being backed by it; "not a validation‑error style" means `LocalDiagnostics` data never becomes `SyntaxErrors` data (§2.8), not a constraint on how it's drawn
+
+## 2.7a `RefreshDecorations` Runs on Every Text Change
+**GIVEN** a `.llx` tab is open  
+**WHEN** the user's edit changes `EditorViewModel.Text`  
+**THEN** `RefreshDecorations()` runs synchronously within `OnTextChanged`, recomputing `LocalDiagnostics`, `QuickFixes`, `FoldRegions`, and `Outline` from the current parse  
+**SO THAT** squiggles, hover messages (§2.17), and ghost‑text suggestions (§2.18) are never stale relative to what's on screen, the same way a real language editor's diagnostics track keystrokes  
+**AS MEASURED BY** `LocalDiagnostics`/`QuickFixes`/`FoldRegions`/`Outline` reflecting the latest `Text` immediately after `Text` is set, with no separate explicit `RefreshDecorations()` call required by the caller — this supersedes this class's earlier "explicit‑call‑only" scope note, which existed only because no production call site existed yet
 
 ## 2.8 Local Error Squiggles Never Replace `/explain` Validation
 **GIVEN** the user types invalid CNL text  
 **WHEN** Tree‑sitter's next in‑process reparse produces an `ERROR` node, arriving before the debounced `/explain` call returns  
 **THEN** `EditorViewModel.LocalDiagnostics` gains an entry for the `ERROR` node's span immediately, but `EditorViewModel.SyntaxErrors` is unchanged by it  
 **SO THAT** the user gets fast visual feedback without Tree‑sitter becoming a second, possibly‑conflicting source of truth for validation state  
-**AS MEASURED BY** `SyntaxErrors` changing only in response to `/explain`'s streamed events (§2.2), never in response to a Tree‑sitter reparse alone — confirmed by a case where Tree‑sitter shows no error node (`LocalDiagnostics` empty) but `/explain` still returns one (`SyntaxErrors` non-empty), and vice versa, with `SyntaxErrors` reflecting only `/explain`'s answer in both cases and `LocalDiagnostics` reflecting only the current parse's `ERROR`/`MISSING` nodes
+**AS MEASURED BY** `SyntaxErrors` changing only in response to `/explain`'s streamed events (§2.2), never in response to a Tree‑sitter reparse alone — confirmed by a case where Tree‑sitter shows no error node (`LocalDiagnostics` empty) but `/explain` still returns one (`SyntaxErrors` non-empty), and vice versa, with `SyntaxErrors` reflecting only `/explain`'s answer in both cases and `LocalDiagnostics` reflecting only the current parse's `ERROR`/`MISSING` nodes. This scenario governs *data flow only* — it does not constrain the visual styling of either collection's rendering (see §2.7, §2.16).
 
 ## 2.9 Folding: One Region Per Sentence
 **GIVEN** a `.llx` tab contains two or more CNL sentences  
@@ -145,6 +154,34 @@ All scenarios assume:
 **THEN** the resulting CST, highlight spans, fold regions, and completion/hover results are identical both times  
 **SO THAT** editor decoration never flickers or varies for unchanged input, consistent with `CLAUDE.md` §3.3 and the determinism guarantee the hand‑coded `SyntaxHighlighter` it replaces already provided  
 **AS MEASURED BY** byte‑for‑byte identical token spans/kinds and fold region boundaries across both parses of the same text
+
+## 2.16 Local Diagnostics Render as a Squiggly Underline with a Margin Marker
+**GIVEN** `EditorViewModel.LocalDiagnostics` contains an entry for an `ERROR` or `MISSING` node's span  
+**WHEN** the editor renders  
+**THEN** `LocalDiagnosticsRenderer` draws a red squiggly (zig‑zag) underline beneath the span, using `SyntaxErrorBrush`, plus a red margin marker glyph on that line — matching `ui-error-handling.md` §10.3's authoritative styling in shape, while remaining backed by `LocalDiagnostics`, not `SyntaxErrors` (§2.8)  
+**SO THAT** Tree‑sitter‑derived errors read the same way any modern code editor renders a syntax error, instead of the prior translucent background wash  
+**AS MEASURED BY** the renderer producing zig‑zag stroke geometry (not a filled rectangle) for each `LocalDiagnostics` entry's span, plus one margin marker per line containing at least one entry; a zero‑width `MISSING` span (`StartByte == EndByte`) still produces a visible minimum‑width squiggle and marker
+
+## 2.17 Hovering a Local Diagnostic Shows Its Message, Taking Priority Over Grammar Hover
+**GIVEN** the pointer hovers a byte covered by a `LocalDiagnostics` entry's `[StartByte, EndByte]` (inclusive of both ends, so a zero‑width `MISSING` span is still hoverable)  
+**WHEN** hover resolves  
+**THEN** `EditorViewModel.HoverInfo.Text` equals that diagnostic's `Message` and `HoverInfo.Position` equals its `StartByte`, taking priority over any grammar‑role hover (§2.11) that would otherwise apply at the same position  
+**SO THAT** hovering an error explains what's wrong, through the same tooltip mechanism §2.11 already uses for grammar info  
+**AS MEASURED BY** `HoverInfo` matching the diagnostic whenever the hovered byte falls inside its span, and falling back to `HoverService.GetHover`'s existing grammar‑role result everywhere else, including `null` when neither applies
+
+## 2.18 A Self‑Describing Diagnostic Shows Ghost Text at the Fix Location
+**GIVEN** a `MISSING` node's expected token is one of a fixed set of self‑describing grammar literals — missing period (`.`), missing closing quote (`"`), or missing closing `}}` for an expression hole — and `EditorViewModel.CursorPosition` sits exactly at that node's `InsertionByte`  
+**WHEN** `RefreshDecorations()` (§2.7a) or a cursor move re‑evaluates the current position  
+**THEN** `EditorViewModel.GhostSuggestion` holds a `QuickFixItem` whose `InsertText` is the missing literal, rendered inline in the editor as non‑editable, semi‑transparent text at the caret, with real document content still flowing normally around it  
+**SO THAT** the user sees the fix the diagnostic's own message already implies, without leaving the editor — the same "ghost text" experience as VS Code / inline‑suggestion‑style editors  
+**AS MEASURED BY** `GhostSuggestion.InsertText` equal to the expected literal when the caret is at a self‑describing `MISSING` node's position; `GhostSuggestion == null` for every other `MISSING`/`ERROR` case (an unrecognized missing token such as `from`/`as`/`Let`, a generic `ERROR` node, or the caret positioned elsewhere) — this list is exhaustive for v1, not a general‑purpose fix‑suggestion engine; `EditorViewModel.Text` is never mutated by ghost text appearing or disappearing
+
+## 2.19 Tab Commits Ghost Text; Otherwise Falls Through Unhandled
+**GIVEN** `EditorViewModel.GhostSuggestion` is non‑null  
+**WHEN** the user presses `Tab` with no modifier keys held  
+**THEN** `ApplyQuickFixCommand` runs with that `QuickFixItem`, splicing `InsertText` into `Text` at `InsertionByte`, moving the caret to just past the inserted text, and clearing `GhostSuggestion` to `null`  
+**SO THAT** accepting a suggested fix matches the Tab‑to‑accept convention of VS Code / Copilot‑style inline suggestions  
+**AS MEASURED BY** `Text` containing the inserted literal at the expected offset and `GhostSuggestion == null` immediately after commit; a companion case confirms that when `GhostSuggestion` is `null`, the key‑down handler leaves the event unhandled (`e.Handled == false`), so `Tab` falls through to the editor's existing indent‑insert behavior (`ui-accessibility.md` §2) rather than being silently swallowed
 
 ---
 
