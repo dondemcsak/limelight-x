@@ -305,11 +305,9 @@ The `.llx` editor (CNL editor) must support:
 - expression holes  
 - quoted strings
 
-### 8.2 Live Validation
-- Inline parser errors  
-- Inline grammar errors  
-- Inline expression hole errors  
-- Errors retrieved via `/explain`
+### 8.2 Inline Error Feedback
+- Real-time inline errors (squiggly underline + hover tooltip) come entirely from Tree‑sitter's local, advisory `ERROR`/`MISSING` node detection — no backend call is made as the user types (`cnl-editor-architecture.md` §5, `bdd-ui-interactions.md` §2.2, §2.16–§2.17).
+- Authoritative errors retrieved via `/explain`/`/trace` only ever occur as a result of an explicit Run or Explain click, and surface in the execution panel's error banner (`ui-viewmodels.md` §7) — not inline in the editor.
 
 ### 8.3 Auto‑Formatting
 - Normalize whitespace  

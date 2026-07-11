@@ -225,8 +225,7 @@ Execution Panel                │
 
 ### Bindings
 - `SourceText`  
-- `SyntaxErrors` — authoritative validation state, from `/explain` only  
-- `LocalDiagnostics` — advisory, Tree‑sitter‑sourced; rendered by `LocalDiagnosticsRenderer` as a squiggly underline + margin marker (`bdd-ui-interactions.md` §2.16), same visual shape as `SyntaxErrors`' styling (`ui-error-handling.md` §10.3) but never merged into it  
+- `LocalDiagnostics` — advisory, Tree‑sitter‑sourced; the editor's only error-shaped state (`bdd-ui-interactions.md` §2.2, §2.8) — rendered by `LocalDiagnosticsRenderer` as a squiggly underline + margin marker (`bdd-ui-interactions.md` §2.16), same visual shape as `PipelineExecutionViewModel.ErrorBanner`'s styling (`ui-error-handling.md` §10.3) but never merged into it  
 - `CompletionItems`, `SelectCompletionItemCommand` — completion list popup, positioned at the cursor  
 - `HoverInfo` — hover tooltip; not shown when `null`; sourced from a `LocalDiagnostics` match first, falling back to grammar‑role hover (`bdd-ui-interactions.md` §2.17)  
 - `GhostSuggestion` — rendered inline by `GhostTextElementGenerator` as non‑editable, semi‑transparent text at the caret when set; committed to real text by `Tab` via `ApplyQuickFixCommand` (`bdd-ui-interactions.md` §2.18–§2.19)  
@@ -236,8 +235,8 @@ Execution Panel                │
 
 ### Streaming Rules
 - There is no `TraceCommand` binding; the Trace trigger is removed entirely.
-- Inline errors come from `/explain`'s streamed event sequence (`pipeline_started` → `raw_ast_generated` → `normalized_ast_generated`), the same as any other execution — see `ui-viewmodels.md` §6 Live Validation.
-- Syntax highlighting, folding, completions, and hover are computed entirely client-side by Tree‑sitter and are **not** streaming-driven and **not** gated by `IExecutionLockService` — see `ui-viewmodels.md` §6 "IntelliSense (Tree‑sitter)". Local Tree‑sitter error nodes render a squiggly underline + margin marker, visually matching but data‑model‑separate from `SyntaxErrors`'s inline validation styling (`ui-error-handling.md` §10.3); they never replace or delay it.
+- This component never triggers a backend call on its own. Authoritative errors only ever arrive as a result of an explicit Run/Explain click and surface through `PipelineExecutionViewModel.ErrorBanner` in the execution panel (`ui-viewmodels.md` §7), not through this component (`bdd-ui-interactions.md` §2.2).
+- Syntax highlighting, folding, completions, and hover are computed entirely client-side by Tree‑sitter and are **not** streaming-driven and **not** gated by `IExecutionLockService` — see `ui-viewmodels.md` §6 "IntelliSense (Tree‑sitter)". Local Tree‑sitter error nodes render a squiggly underline + margin marker, visually matching but data‑model‑separate from `PipelineExecutionViewModel.ErrorBanner`'s styling (`ui-error-handling.md` §10.3); they never replace or delay it.
 
 ### Sub‑Components
 - **`LocalDiagnosticsRenderer`** (`ui/components/LocalDiagnosticsRenderer.cs`) — an `IBackgroundRenderer` drawing a zig‑zag squiggle stroke (not a filled wash) plus a margin marker glyph for each `LocalDiagnostics` entry's span, in `SyntaxErrorBrush`.

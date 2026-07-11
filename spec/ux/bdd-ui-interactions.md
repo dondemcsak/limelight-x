@@ -39,12 +39,13 @@ All scenarios assume:
 **SO THAT** the UI reflects the new content  
 **AS MEASURED BY** syntax highlighting and updated validation state
 
-## 2.2 Live Validation
-**GIVEN** the user modifies CNL text  
-**WHEN** the editor triggers `/explain` validation  
-**THEN** syntax errors appear inline  
-**SO THAT** the user sees grammar issues immediately  
-**AS MEASURED BY** updated `SyntaxErrors` and margin markers
+## 2.2 The Editor Never Calls the Backend on Its Own
+**Status: FINAL.** Supersedes an earlier "Live Validation" design that called `/explain` on a debounce timer after every keystroke, populating `EditorViewModel.ValidationErrors`/`ErrorBanner` above the editor — removed entirely (`EditorViewModel` no longer takes `IPipelineService`/`IEventStreamService` at all).  
+**GIVEN** the user modifies CNL text in a `.llx` tab  
+**WHEN** no explicit Run or Explain click has occurred  
+**THEN** no HTTP request or WebSocket call is made — `RefreshDecorations()` (§2.7a) still runs synchronously and updates `LocalDiagnostics`/`QuickFixes`/`FoldRegions`/`Outline`/`GhostSuggestion` entirely from the local Tree‑sitter CST  
+**SO THAT** the backend is reached only when the user actually asks for it, matching `cnl-editor-architecture.md` §5's two‑independent‑parsers model: Tree‑sitter's local squiggle+hover (§2.16–§2.17) is the real‑time syntax-error surface, and the backend is authoritative only for what the user explicitly ran or explained  
+**AS MEASURED BY** zero calls to `IPipelineService`/`IEventStreamService` as a result of `EditorViewModel.Text` changing, for any number of keystrokes; the only two code paths that ever reach the backend are `RunRequested`/`ExplainRequested`, invoked exclusively by `RunCommand`/`ExplainCommand` (§2.3), which `CnlTabViewModel` wires to `PipelineExecutionViewModel.RunPipelineAsync`/`ExplainPipelineAsync` — the one and only backend-calling path for a `.llx` tab. Backend errors from an explicit Run/Explain click surface via `PipelineExecutionViewModel.ErrorBanner` (§6.1, unchanged) — there is no separate editor-level banner for backend errors.
 
 ## 2.3 Run/Explain Disabled During Execution
 **GIVEN** the user clicks Run  
@@ -63,13 +64,15 @@ All scenarios assume:
 
 ---
 
-## 2.5–2.19 Tree‑sitter Editor Decoration
+## 2.5–2.29 Tree‑sitter Editor Decoration
 
-> **Status: FINAL.** Authored to close the gap identified when reviewing `spec/cnl-editor-architecture.md`: no BDD source existed anywhere for syntax highlighting migration, folding, hover, or completion before this addition. Cross-checked against `ui-viewmodels.md` §6 and `ui-components.md` §4.2 (which were extended with matching `CompletionItems`/`HoverInfo`/`QuickFixes` state) and, in this pass, against `FoldRegions`/`LocalDiagnostics` (§2.7–§2.9) — no drift found; `HoverInfo` is confirmed nullable (`null` = no hover), `CompletionItems` is confirmed to be the same `ObservableCollection<CompletionItem>` type, and `FoldRegions`/`LocalDiagnostics` are confirmed to be `ObservableCollection<FoldRegion>`/`ObservableCollection<LocalDiagnostic>` on `EditorViewModel`. These 15 scenarios are the executable spec for the tests in `ui/tests/Edit/EditorViewModelTests.cs` and `ui/tests/Intellisense/` — one test per scenario, per `CLAUDE.md` §6.
+> **Status: §2.5–§2.19 FINAL (implemented).** Authored to close the gap identified when reviewing `spec/cnl-editor-architecture.md`: no BDD source existed anywhere for syntax highlighting migration, folding, hover, or completion before this addition. Cross-checked against `ui-viewmodels.md` §6 and `ui-components.md` §4.2 (which were extended with matching `CompletionItems`/`HoverInfo`/`QuickFixes` state) and, in this pass, against `FoldRegions`/`LocalDiagnostics` (§2.7–§2.9) — no drift found; `HoverInfo` is confirmed nullable (`null` = no hover), `CompletionItems` is confirmed to be the same `ObservableCollection<CompletionItem>` type, and `FoldRegions`/`LocalDiagnostics` are confirmed to be `ObservableCollection<FoldRegion>`/`ObservableCollection<LocalDiagnostic>` on `EditorViewModel`. These 15 scenarios are the executable spec for the tests in `ui/tests/Edit/EditorViewModelTests.cs` and `ui/tests/Intellisense/` — one test per scenario, per `CLAUDE.md` §6.
 >
-> **Amendment (§2.16–§2.19 added):** closes the "VS Code-style editor" gap — squiggly rendering, hover-shows-diagnostic-message, ghost-text suggested fixes, and Tab-to-accept. §2.7's "not a validation‑error style" wording is clarified below to mean the *data-model* separation (`LocalDiagnostics` must never flow into `SyntaxErrors`) — it was never a constraint on visual shape, and `ui-components.md` §4.2 already anticipated an "advisory squiggle." `RefreshDecorations()` is now triggered directly by `OnTextChanged` (§2.7a) rather than being explicit-call-only, since local diagnostics must be visible as the user types, matching the editors this feature is modeled on.
+> **Amendment (§2.16–§2.19 added):** closes the "VS Code-style editor" gap — squiggly rendering, hover-shows-diagnostic-message, ghost-text suggested fixes, and Tab-to-accept. §2.7's "not a validation‑error style" wording is clarified below to mean the *data-model* separation (`LocalDiagnostics` must never flow into any backend-authoritative error state) — it was never a constraint on visual shape, and `ui-components.md` §4.2 already anticipated an "advisory squiggle." `RefreshDecorations()` is now triggered directly by `OnTextChanged` (§2.7a) rather than being explicit-call-only, since local diagnostics must be visible as the user types, matching the editors this feature is modeled on.
 >
-> Scope premise (per `cnl-editor-architecture.md` §1, §5, as clarified): Tree‑sitter is client‑side‑only editor decoration. It never calls, and is never called by, `/src/api` or Rust. It does not participate in validation (`SyntaxErrors`) or execution. Everything below is local computation, keyed off the CST that `spec/parsing/grammer-js.md` produces from `SourceText`.
+> **Amendment (§2.20–§2.29 added, PROPOSED — NOT YET IMPLEMENTED):** backlog scenarios from an IDE-capability gap review, guiding the next phase of IntelliSense work. Unlike §2.5–§2.19, these describe code that does not exist yet (`CompletionService.cs`, `HoverService.cs`, `CompletionItem.cs`, and `ParserHost.cs` are all untouched as of this amendment). Each carries its own **Status**/**Note** line recording exactly what's missing. §2.20–§2.22 close a gap in `ui-intellisense-engine-spec.md` §5.1/§5.3 itself — variable and prompt-template completions were already specified there but never built. §2.23–§2.27 and §2.29 are net-new IDE conveniences (sentence-skeleton snippets, auto-closing pairs, Go to Definition, Find All References, auto-trigger completion) proposed by analogy to mainstream editors, kept inside the existing "CST-only, syntactic, advisory" boundary (§12 Non-Goals) — none of them call `/src/api` or require the AST Normalizer. §2.28 reuses the squiggle/margin-marker/hover-priority rendering §2.16–§2.17 already ship, adding only a new `DiagnosticService` yield condition. Two related capabilities — Rename Symbol and an undefined-variable-reference diagnostic — are deliberately **not** included here because they need a product decision first (Rename mutates document text, the first editor service to do so; the undefined-variable diagnostic brushes against §12's "no semantic diagnostics" boundary) rather than being a spec gap like §2.20–§2.22.
+>
+> Scope premise (per `cnl-editor-architecture.md` §1, §5, as clarified): Tree‑sitter is client‑side‑only editor decoration. It never calls, and is never called by, `/src/api` or Rust. It does not participate in backend validation or execution. Everything below is local computation, keyed off the CST that `spec/parsing/grammer-js.md` produces from `SourceText`.
 
 ## 2.5 Tree‑sitter Highlighting Replaces the Hand‑Coded Tokenizer
 **GIVEN** a `.llx` tab is open  
@@ -90,7 +93,7 @@ All scenarios assume:
 **WHEN** Tree‑sitter reparses  
 **THEN** Tree‑sitter produces an `ERROR`/`MISSING` node scoped to the incomplete region only, and every token it can still classify outside that region keeps its normal highlight color  
 **SO THAT** one incomplete sentence never blanks out highlighting for the rest of the document  
-**AS MEASURED BY** tokens before/after the error region retaining their `TokenKind` color; the error region itself represented as one entry in `EditorViewModel.LocalDiagnostics` (§2.8) — rendered with its own advisory squiggle styling (§2.16), which may visually resemble `SyntaxErrors`' authoritative styling (`ui-error-handling.md` §10.3) without being backed by it; "not a validation‑error style" means `LocalDiagnostics` data never becomes `SyntaxErrors` data (§2.8), not a constraint on how it's drawn
+**AS MEASURED BY** tokens before/after the error region retaining their `TokenKind` color; the error region itself represented as one entry in `EditorViewModel.LocalDiagnostics` (§2.8) — rendered with its own advisory squiggle styling (§2.16), which visually resembles `PipelineExecutionViewModel.ErrorBanner`'s authoritative styling (`ui-error-handling.md` §10.3) by deliberate shared design, without either data source ever writing into the other (§2.8)
 
 ## 2.7a `RefreshDecorations` Runs on Every Text Change
 **GIVEN** a `.llx` tab is open  
@@ -99,12 +102,13 @@ All scenarios assume:
 **SO THAT** squiggles, hover messages (§2.17), and ghost‑text suggestions (§2.18) are never stale relative to what's on screen, the same way a real language editor's diagnostics track keystrokes  
 **AS MEASURED BY** `LocalDiagnostics`/`QuickFixes`/`FoldRegions`/`Outline` reflecting the latest `Text` immediately after `Text` is set, with no separate explicit `RefreshDecorations()` call required by the caller — this supersedes this class's earlier "explicit‑call‑only" scope note, which existed only because no production call site existed yet
 
-## 2.8 Local Error Squiggles Never Replace `/explain` Validation
+## 2.8 Local Diagnostics Are the Editor's Only Error Surface Until Run/Explain Is Clicked
+**Status: FINAL.** Supersedes an earlier scenario ("Local Error Squiggles Never Replace `/explain` Validation") written for the removed Live Validation design, where `EditorViewModel` kept its own `SyntaxErrors`/`ValidationErrors` collection populated by a background `/explain` call running concurrently with Tree‑sitter. That collection no longer exists (§2.2) — there is nothing left to reconcile against.  
 **GIVEN** the user types invalid CNL text  
-**WHEN** Tree‑sitter's next in‑process reparse produces an `ERROR` node, arriving before the debounced `/explain` call returns  
-**THEN** `EditorViewModel.LocalDiagnostics` gains an entry for the `ERROR` node's span immediately, but `EditorViewModel.SyntaxErrors` is unchanged by it  
-**SO THAT** the user gets fast visual feedback without Tree‑sitter becoming a second, possibly‑conflicting source of truth for validation state  
-**AS MEASURED BY** `SyntaxErrors` changing only in response to `/explain`'s streamed events (§2.2), never in response to a Tree‑sitter reparse alone — confirmed by a case where Tree‑sitter shows no error node (`LocalDiagnostics` empty) but `/explain` still returns one (`SyntaxErrors` non-empty), and vice versa, with `SyntaxErrors` reflecting only `/explain`'s answer in both cases and `LocalDiagnostics` reflecting only the current parse's `ERROR`/`MISSING` nodes. This scenario governs *data flow only* — it does not constrain the visual styling of either collection's rendering (see §2.7, §2.16).
+**WHEN** Tree‑sitter's next in‑process reparse produces an `ERROR`/`MISSING` node  
+**THEN** `EditorViewModel.LocalDiagnostics` gains an entry for that node's span immediately, and this remains true for as long as the user keeps editing without clicking Run or Explain  
+**SO THAT** the user gets fast, purely local visual feedback with no backend round‑trip in the loop at all  
+**AS MEASURED BY** `LocalDiagnostics` reflecting only the current parse's `ERROR`/`MISSING` nodes, updating on every keystroke via `RefreshDecorations()` (§2.7a); no other error collection exists on `EditorViewModel` for it to disagree with. Once the user does click Run or Explain, `PipelineExecutionViewModel.ErrorBanner` (§6.1) is the sole authoritative error surface for that execution — it and `LocalDiagnostics` remain independent (Tree‑sitter's grammar and the Rust parser's grammar can still disagree, `cnl-editor-architecture.md` §5), but nothing in the UI attempts to reconcile them.
 
 ## 2.9 Folding: One Region Per Sentence
 **GIVEN** a `.llx` tab contains two or more CNL sentences  
@@ -158,7 +162,7 @@ All scenarios assume:
 ## 2.16 Local Diagnostics Render as a Squiggly Underline with a Margin Marker
 **GIVEN** `EditorViewModel.LocalDiagnostics` contains an entry for an `ERROR` or `MISSING` node's span  
 **WHEN** the editor renders  
-**THEN** `LocalDiagnosticsRenderer` draws a red squiggly (zig‑zag) underline beneath the span, using `SyntaxErrorBrush`, plus a red margin marker glyph on that line — matching `ui-error-handling.md` §10.3's authoritative styling in shape, while remaining backed by `LocalDiagnostics`, not `SyntaxErrors` (§2.8)  
+**THEN** `LocalDiagnosticsRenderer` draws a red squiggly (zig‑zag) underline beneath the span, using `SyntaxErrorBrush`, plus a red margin marker glyph on that line — matching `ui-error-handling.md` §10.3's authoritative styling in shape, while remaining backed by `LocalDiagnostics` only — `EditorViewModel` has no backend-sourced error state to confuse it with (§2.8)  
 **SO THAT** Tree‑sitter‑derived errors read the same way any modern code editor renders a syntax error, instead of the prior translucent background wash  
 **AS MEASURED BY** the renderer producing zig‑zag stroke geometry (not a filled rectangle) for each `LocalDiagnostics` entry's span, plus one margin marker per line containing at least one entry; a zero‑width `MISSING` span (`StartByte == EndByte`) still produces a visible minimum‑width squiggle and marker
 
@@ -182,6 +186,86 @@ All scenarios assume:
 **THEN** `ApplyQuickFixCommand` runs with that `QuickFixItem`, splicing `InsertText` into `Text` at `InsertionByte`, moving the caret to just past the inserted text, and clearing `GhostSuggestion` to `null`  
 **SO THAT** accepting a suggested fix matches the Tab‑to‑accept convention of VS Code / Copilot‑style inline suggestions  
 **AS MEASURED BY** `Text` containing the inserted literal at the expected offset and `GhostSuggestion == null` immediately after commit; a companion case confirms that when `GhostSuggestion` is `null`, the key‑down handler leaves the event unhandled (`e.Handled == false`), so `Tab` falls through to the editor's existing indent‑insert behavior (`ui-accessibility.md` §2) rather than being silently swallowed
+
+## 2.20 Completions Suggest Bound Variable Names Inside Resource Positions
+**Status: PROPOSED — not yet implemented.** `CompletionService.cs`'s own doc comment currently excludes this ("'Variables'/'Prompt templates' are out of scope, nothing exercises them"), even though `ui-intellisense-engine-spec.md` §5.1/§5.2 already call for it ("Inside resource position → Suggest variables and pronouns").  
+**GIVEN** the document contains `Let article be the text from "a.txt".` followed by a new sentence with the cursor inside an `input`/`resource` position  
+**WHEN** the user triggers completion  
+**THEN** `CompletionItems` includes `article` alongside the existing pronoun suggestions  
+**SO THAT** the user can reference a variable they already bound without retyping or memorizing its exact spelling  
+**AS MEASURED BY** `CompletionItems` containing one entry per distinct `bind_stmt` name bound anywhere before the cursor's byte offset, sourced the same way `HoverService.VariableBindingText` already resolves bindings — never a name bound *after* the cursor. This is CST‑only, best‑effort local scanning — the same class of computation §2.13 already blesses for `HoverService`, not a use of the AST Normalizer, so it does not conflict with §12's "no semantic completions" Non‑Goal.
+
+## 2.21 Variable Completions Rank Above Pronoun Completions
+**Status: PROPOSED — not yet implemented; also blocked on a data-shape gap.** `CompletionItem` (`ui/viewmodels/CompletionItem.cs`) currently has only `Text`/`Description` — no `Kind`/`Rank` field to sort by, so this scenario cannot be implemented until one is added.  
+**GIVEN** the cursor is in a position where both a bound variable name and a pronoun are grammar‑valid  
+**WHEN** the user triggers completion  
+**THEN** `CompletionItems` lists the variable name(s) before any pronoun  
+**SO THAT** the most specific, user‑authored reference is easiest to pick  
+**AS MEASURED BY** `CompletionItems` index of any variable entry being lower than the index of any pronoun entry, per `ui-intellisense-engine-spec.md` §5.3 ("Variables rank above pronouns")
+
+## 2.22 Completion Inside `using` Suggests a Prompt‑Hole Skeleton
+**Status: PROPOSED — not yet implemented.** Also specified but unbuilt, per `ui-intellisense-engine-spec.md` §5.1/§5.2 ("Inside prompt hole → Suggest prompt templates").  
+**GIVEN** the cursor is immediately after `using ` in a statement that allows `using_prompt`  
+**WHEN** the user triggers completion  
+**THEN** `CompletionItems` includes a `{{ prompt: "" }}` skeleton entry  
+**SO THAT** the user doesn't have to remember the exact hole syntax  
+**AS MEASURED BY** selecting that item inserting text that reparses with a valid `prompt_hole` node at the insertion point, cursor left between the empty string's quotes — structural skeleton only, no content suggestions, per §5.1
+
+## 2.23 Selecting a Verb Completion Inserts a Sentence Skeleton
+**Status: PROPOSED — not yet implemented; net-new, not previously specified.**  
+**GIVEN** the cursor is at a sentence‑start position  
+**WHEN** the user selects the `Load` completion item  
+**THEN** the editor inserts `Load the  from "".` with the cursor placed inside the first blank (before `from`)  
+**SO THAT** the user is guided through the full sentence shape, not just the next word  
+**AS MEASURED BY** the inserted text reparsing with no `ERROR`/`MISSING` nodes once the blanks are filled, and the cursor's post‑insertion byte offset matching the start of the `resource` span — derived purely from `tree-sitter/grammar.js`'s seven statement rules, no semantics needed
+
+## 2.24 Typing an Opening Quote Auto‑Inserts Its Match
+**Status: PROPOSED — not yet implemented; net-new.** Also has a practical side benefit: it sidesteps `cnl-editor-known-issues.md` §1 in the common case, since a user who never leaves a string unterminated never hits the unreachable `MISSING '"'` diagnostic gap, independent of that GLR recovery issue ever getting root-caused.  
+**GIVEN** the cursor is at any position where a `string` token is grammar‑valid  
+**WHEN** the user types `"`  
+**THEN** the editor inserts a matching `"` immediately after the cursor and leaves the cursor between the two quotes  
+**SO THAT** the user doesn't have to type or align the closing quote manually  
+**AS MEASURED BY** `Editor.Text` gaining exactly two `"` characters and `CaretOffset` sitting between them; typing a `"` immediately afterward moves past the auto‑inserted one instead of inserting a third
+
+## 2.25 Typing `{{` Auto‑Inserts the Matching `}}`
+**Status: PROPOSED — not yet implemented; net-new.** Complements, but is distinct from, the `}}` self‑describing‑fix/ghost‑text path (§2.18): that scenario covers *recovery* after the pair is already unbalanced, this one covers *prevention*.  
+**GIVEN** the cursor is at a position where `using_prompt` is grammar‑valid  
+**WHEN** the user types `{{`  
+**THEN** the editor inserts `}}` immediately after the cursor  
+**SO THAT** prompt holes are never left unclosed by a simple typo  
+**AS MEASURED BY** `Editor.Text` containing a balanced `{{...}}` pair immediately after the keystroke, cursor positioned between them
+
+## 2.26 Go to Definition Jumps From a Reference to Its Binding
+**Status: PROPOSED — not yet implemented; net-new.**  
+**GIVEN** the document contains `Let article be the text from "a.txt".` and a later sentence referencing `article`  
+**WHEN** the user invokes Go to Definition on that later reference  
+**THEN** the caret/selection moves to the `bind_stmt` that bound `article`  
+**SO THAT** the user can find where a name came from without manually scrolling  
+**AS MEASURED BY** `EditorViewModel.CursorPosition` (or `SelectionRange`) landing on the matching `bind_stmt`'s span, using the same nearest‑preceding‑binding resolution `HoverService.VariableBindingText` already implements (CST‑only, best‑effort — see §2.20's Non‑Goals note); no‑op (or a clear "no definition found" state) when no matching `bind_stmt` precedes the reference
+
+## 2.27 Find All References Lists Every Use of a Bound Name
+**Status: PROPOSED — not yet implemented; net-new.**  
+**GIVEN** a document binds `article` once and references it in three later sentences  
+**WHEN** the user invokes Find All References on any one of those four occurrences  
+**THEN** all four spans (the binding plus all three references) are returned  
+**SO THAT** the user can see every place a variable is used before renaming or removing it  
+**AS MEASURED BY** the returned span count and byte ranges matching every `name`/`resource` node whose text equals the target, plus the originating `bind_stmt`
+
+## 2.28 Diagnostic: Pronoun With No Preceding Sentence
+**Status: PROPOSED — not yet implemented, but cheap: the rendering pipeline (§2.16 squiggle/marker, §2.17 hover priority) already exists and needs no changes; only `DiagnosticService` needs a new yield condition.**  
+**GIVEN** a document's first sentence is `Summarize it.`  
+**WHEN** Tree‑sitter reparses  
+**THEN** `EditorViewModel.LocalDiagnostics` gains an advisory entry spanning the pronoun, with `SuggestedFix == null` (there is no literal to insert — this is a message‑only diagnostic, unlike the §2.18 self‑describing cases)  
+**SO THAT** the user notices a pronoun with nothing to refer to before running the pipeline, without Tree‑sitter claiming to know what Rust's normalizer would actually do with it  
+**AS MEASURED BY** one `LocalDiagnostics` entry appearing whenever the same nearest‑preceding‑sentence check `HoverService.PronounReferenceText` already performs returns "no preceding sentence," rendered through the same squiggle + margin‑marker + hover‑priority pipeline §2.16/§2.17 already ship — no backend-sourced error state exists to be affected either way (mirrors §2.8's separation)
+
+## 2.29 Completion Triggers Automatically After a Verb‑Terminating Space
+**Status: PROPOSED — not yet implemented.** `EditorViewModel.RequestCompletionsAt`'s doc comment still reads "explicit, not on every keystroke," unchanged even though `RefreshDecorations()` itself was just promoted from explicit‑only to automatic (§2.7a) for the diagnostics/folds/outline path — this scenario would extend that same promotion to completions.  
+**GIVEN** the cursor is at a sentence‑start position  
+**WHEN** the user types `Load the article ` (a space immediately after a token where the grammar allows exactly one next keyword)  
+**THEN** the completion window opens automatically, without Ctrl+Space  
+**SO THAT** the user is guided proactively rather than only on request  
+**AS MEASURED BY** `CompletionItems` populating and the completion window opening within one debounce cycle of the triggering keystroke, without an explicit `RequestCompletionsAt` call from `CnlEditor`'s key‑down handler
 
 ---
 
@@ -469,7 +553,7 @@ Inspector panels are always present in the layout (`ui-components.md` §5.1); co
 
 ## 10.1 Default Location Write
 **GIVEN** no custom `LogPath` is configured  
-**WHEN** a `UiError` is added to any logged collection (`WorkspaceViewModel.Errors`, a tab's `EditorViewModel.ValidationErrors`, a tab's `PipelineExecutionViewModel.Errors`, `SettingsViewModel.Errors`)  
+**WHEN** a `UiError` is added to any logged collection (`WorkspaceViewModel.Errors`, a tab's `PipelineExecutionViewModel.Errors`, `SettingsViewModel.Errors`)  
 **THEN** an entry is appended to `%APPDATA%\LimelightX\Limelight-x-log.txt`  
 **SO THAT** diagnostics are recoverable without a custom setup  
 **AS MEASURED BY** the file's contents after the error occurs

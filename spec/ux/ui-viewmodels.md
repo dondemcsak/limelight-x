@@ -175,17 +175,16 @@ Each ViewModel is deterministic and state‑derived.
 
 ### Responsibilities
 - Holds CNL text for this tab.
-- Performs live validation via `/explain`.
 - Provides execution commands for this tab.
+- Never calls the backend on its own (`bdd-ui-interactions.md` §2.2) — `RunRequested`/`ExplainRequested`, invoked only by an explicit Run/Explain click, are the sole path to `/src/api`.
 
 ### State
 - `SourceText : string`
-- `SyntaxErrors : ObservableCollection<EditorError>`
 - `CanExecute : bool` (derived: `!IExecutionLockService.IsAnyExecutionRunning && SourceText not empty`)
 - `CompletionItems : ObservableCollection<CompletionItem>` — populated by `CompletionService` (`ui/intellisense/CompletionService.cs`, `spec/ux/ui-editor-services-guide.md` §3.3)
 - `HoverInfo : HoverInfo?` — populated by `HoverService`; `null` means no hover content for the current cursor position
 - `FoldRegions : ObservableCollection<FoldRegion>` — populated by `FoldingService` (`ui/intellisense/FoldingService.cs`, `spec/ux/ui-editor-services-guide.md` §3.6); one entry per CNL sentence (`bdd-ui-interactions.md` §2.9)
-- `LocalDiagnostics : ObservableCollection<LocalDiagnostic>` — populated by `DiagnosticService` (`ui/intellisense/DiagnosticService.cs`, `spec/ux/ui-editor-services-guide.md` §3.4); one entry per Tree‑sitter `ERROR`/`MISSING` node's span, advisory only, never written into `SyntaxErrors` (`bdd-ui-interactions.md` §2.7‑§2.8). Each entry is `LocalDiagnostic(Message, StartByte, EndByte, SuggestedFix)` — `SuggestedFix : string?` is non‑null only for the fixed set of self‑describing `MISSING` literals (`.`, `"`, `}}`; `bdd-ui-interactions.md` §2.18), `null` for every other diagnostic. Rendered as a squiggly underline + margin marker (`bdd-ui-interactions.md` §2.16), and takes priority over grammar hover when hovered (§2.17).
+- `LocalDiagnostics : ObservableCollection<LocalDiagnostic>` — populated by `DiagnosticService` (`ui/intellisense/DiagnosticService.cs`, `spec/ux/ui-editor-services-guide.md` §3.4); one entry per Tree‑sitter `ERROR`/`MISSING` node's span, advisory only. This is `EditorViewModel`'s only error-shaped state (`bdd-ui-interactions.md` §2.2, §2.8) — there is no separate backend-sourced error collection on the editor. Each entry is `LocalDiagnostic(Message, StartByte, EndByte, SuggestedFix)` — `SuggestedFix : string?` is non‑null only for the fixed set of self‑describing `MISSING` literals (`.`, `"`, `}}`; `bdd-ui-interactions.md` §2.18), `null` for every other diagnostic. Rendered as a squiggly underline + margin marker (`bdd-ui-interactions.md` §2.16), and takes priority over grammar hover when hovered (§2.17).
 - `QuickFixes : ObservableCollection<QuickFixItem>` — one entry per `LocalDiagnostics` entry that carries a non‑null `SuggestedFix`, rebuilt alongside `LocalDiagnostics` by `RefreshDecorations()`. `QuickFixItem` is `{ Title : string, InsertionByte : int, InsertText : string }` — `InsertionByte` is the diagnostic's `StartByte` (the fix's insertion point), `InsertText` is the missing literal.
 - `GhostSuggestion : QuickFixItem?` — the `QuickFixes` entry (if any) whose `InsertionByte` equals the current `CursorPosition`, recomputed on every cursor move and after every `RefreshDecorations()`. Drives the inline ghost‑text rendering (`bdd-ui-interactions.md` §2.18) and is the source `ApplyQuickFixCommand` consumes when `Tab` commits it (§2.19).
 
@@ -210,18 +209,11 @@ There is no `TraceCommand`. The Trace button and its distinct trigger are remove
    - `final_result_ready` arrives, or  
    - `pipeline_failed` arrives.
 
-### Live Validation
-- Triggered on text change.
-- Invokes `/explain` and subscribes to its event sequence (`pipeline_started` → `raw_ast_generated` → `normalized_ast_generated`) exactly like any other execution — there is no separate non-streaming mode.
-- Live validation is **exempt from `IExecutionLockService`** — it does not acquire the app‑wide lock and is not blocked by another tab's in‑flight Run/Explain, matching today's behavior where validation is a wholly separate correlation‑id track from the toolbar commands.
-- Does **not** render in this tab's execution panel: this is the one case where a `/explain` execution's events update `SyntaxErrors` in place on the editor instead of driving `PipelineExecutionViewModel`'s inspectors.
-- Updates `SyntaxErrors` as the sequence completes (at `normalized_ast_generated`, or on `pipeline_failed`).
-
 ### IntelliSense (Tree‑sitter)
-- Client‑side only: computed entirely in-process from `SourceText` via `ui/intellisense`'s `ParserHost`/`CompletionService`/`HoverService`/`FoldingService`/`DiagnosticService` (`spec/ux/ui-editor-services-guide.md`, `spec/cnl-editor-architecture.md` §5). Never calls `/src/api`, never blocked by it.
+- Client‑side only: computed entirely in-process from `SourceText` via `ui/intellisense`'s `ParserHost`/`CompletionService`/`HoverService`/`FoldingService`/`DiagnosticService` (`spec/ux/ui-editor-services-guide.md`, `spec/cnl-editor-architecture.md` §5). Never calls `/src/api`, never blocked by it — `EditorViewModel` has no `IPipelineService`/`IEventStreamService` dependency at all (`bdd-ui-interactions.md` §2.2).
 - Trigger points: `CompletionItems` recomputes on text change and on explicit completion invocation; `HoverInfo` recomputes on cursor move (and now also checks `LocalDiagnostics` first — `bdd-ui-interactions.md` §2.17); `FoldRegions`/`LocalDiagnostics`/`QuickFixes`/`Outline` recompute together via `RefreshDecorations()`, called synchronously from `OnTextChanged` (`bdd-ui-interactions.md` §2.7a); `GhostSuggestion` recomputes on cursor move and after `RefreshDecorations()` (§2.18).
-- **Exempt from `IExecutionLockService`**, same reasoning as Live Validation above — this is local computation, not a backend call, so there is nothing to serialize against other tabs' executions.
-- Local diagnostics (Tree‑sitter `ERROR`/`MISSING` nodes, rendered as a squiggly underline + margin marker — `bdd-ui-interactions.md` §2.16) never write to `SyntaxErrors` and never substitute for a Live Validation cycle — see `cnl-editor-architecture.md` §5's "Tree‑sitter's view of 'valid' can disagree with Rust's." The visual resemblance to `SyntaxErrors`' authoritative styling (`ui-error-handling.md` §10.3) is deliberate (§2.7); the two remain data‑model‑separate.
+- **Exempt from `IExecutionLockService`** — this is local computation, not a backend call, so there is nothing to serialize against other tabs' executions.
+- Local diagnostics (Tree‑sitter `ERROR`/`MISSING` nodes, rendered as a squiggly underline + margin marker — `bdd-ui-interactions.md` §2.16) are the editor's only error-shaped state and are never reconciled against backend results — see `cnl-editor-architecture.md` §5's "Tree‑sitter's view of 'valid' can disagree with Rust's." Backend `ERR_CNL_PARSE` errors only ever exist as a result of an explicit Run/Explain click, and surface via `PipelineExecutionViewModel.ErrorBanner` (§7, `ui-error-handling.md` §6.1‑§6.2), not through this ViewModel. The visual resemblance between that banner's styling and `LocalDiagnostics`' squiggle styling (`ui-error-handling.md` §10.3) is deliberate (§2.7); the two remain entirely independent.
 - `CompletionItems`/`HoverInfo` content that references prior bindings or pronoun targets (`ui-intellisense-engine-spec.md` §5.1, §7.1–§7.2) is a syntactic, CST-only, best-effort local echo — never authoritative, always superseded by `/explain`'s response (`cnl-editor-architecture.md` §1.1.3).
 
 ---

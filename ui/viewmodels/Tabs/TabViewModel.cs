@@ -38,8 +38,7 @@ public abstract partial class TabViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Surfaces Open/Save/Save As/Save All failures for this tab
     /// (ui-viewmodels.md §13) - distinct from a CnlTabViewModel's
-    /// Editor.ErrorBanner/PipelineExecution.ErrorBanner, which stay scoped
-    /// to validation/execution only.
+    /// PipelineExecution.ErrorBanner, which stays scoped to execution only.
     /// </summary>
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 

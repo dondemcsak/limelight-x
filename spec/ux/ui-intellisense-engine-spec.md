@@ -118,7 +118,7 @@ OnRunRequested(text):
     display streamed diagnostics/output in the inspector panels (ui-viewmodels.md §7)
 ```
 
-This is the existing, unchanged `/src/api` flow (§3) — it does not go through the IntelliSense Engine. IntelliSense diagnostics (local, advisory) and backend diagnostics (`SyntaxErrors`, authoritative) are **complementary, not interchangeable** — see `cnl-editor-architecture.md` §5's "Tree‑sitter's view of 'valid' can disagree with Rust's."
+This is the existing, unchanged `/src/api` flow (§3) — it does not go through the IntelliSense Engine. IntelliSense diagnostics (local, advisory, always available) and backend diagnostics (`PipelineExecutionViewModel.ErrorBanner`, authoritative, only ever populated after an explicit Run/Explain click) are **complementary, not interchangeable, and never reconciled against each other** — see `cnl-editor-architecture.md` §5's "Tree‑sitter's view of 'valid' can disagree with Rust's."
 
 ---
 
@@ -171,7 +171,7 @@ Diagnostics must:
 - Never override Rust diagnostics  
 - Be displayed immediately  
 - Be cleared when errors resolve  
-- Render as a squiggly underline with a margin marker (`bdd-ui-interactions.md` §2.16), matching `ui-error-handling.md` §10.3's authoritative styling in shape while remaining backed by `LocalDiagnostics`, never `SyntaxErrors`  
+- Render as a squiggly underline with a margin marker (`bdd-ui-interactions.md` §2.16), matching `ui-error-handling.md` §10.3's authoritative styling in shape while remaining backed by `LocalDiagnostics` only — `EditorViewModel` has no backend-sourced error collection to confuse it with (`bdd-ui-interactions.md` §2.2)  
 
 ## 6.1 Self‑Describing Fixes
 

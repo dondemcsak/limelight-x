@@ -40,7 +40,7 @@ public sealed partial class CnlTabViewModel : TabViewModel
         Func<IParserHost> parserHostFactory)
         : base(filePath, Path.GetFileName(filePath))
     {
-        Editor = new EditorViewModel(pipelineService, eventStream, executionLock, parserHostFactory(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService) { Text = initialText };
+        Editor = new EditorViewModel(executionLock, parserHostFactory(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService) { Text = initialText };
         PipelineExecution = new PipelineExecutionViewModel(pipelineService, eventStream, executionLock);
 
         Editor.RunRequested = PipelineExecution.RunPipelineAsync;
@@ -66,7 +66,7 @@ public sealed partial class CnlTabViewModel : TabViewModel
         Func<IParserHost> parserHostFactory)
         : base(null, header)
     {
-        Editor = new EditorViewModel(pipelineService, eventStream, executionLock, parserHostFactory(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService) { Text = string.Empty };
+        Editor = new EditorViewModel(executionLock, parserHostFactory(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService) { Text = string.Empty };
         PipelineExecution = new PipelineExecutionViewModel(pipelineService, eventStream, executionLock);
 
         Editor.RunRequested = PipelineExecution.RunPipelineAsync;

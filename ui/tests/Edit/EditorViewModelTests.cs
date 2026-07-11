@@ -1,30 +1,12 @@
 using LimelightX.UI.Intellisense;
 using LimelightX.UI.Services;
-using LimelightX.UI.Tests.TestDoubles;
 using LimelightX.UI.ViewModels;
-using LimelightX.UI.ViewModels.Errors;
 using Xunit;
 
 namespace LimelightX.UI.Tests.Edit;
 
 public class EditorViewModelTests
 {
-    private sealed class FakePipelineService : IPipelineService
-    {
-        public PipelineStartResult ExplainResultToReturn { get; set; } = new() { Accepted = true, CorrelationId = "corr-0" };
-        public int ExplainCallCount { get; private set; }
-
-        public Task<PipelineStartResult> ExplainAsync(string source)
-        {
-            ExplainCallCount++;
-            return Task.FromResult(ExplainResultToReturn);
-        }
-
-        public Task<PipelineStartResult> RunAsync(string source) => throw new NotImplementedException();
-
-        public Task<PipelineStartResult> TraceAsync(string source) => throw new NotImplementedException();
-    }
-
     /// <summary>Never throws (unlike the real ParserHost stub) - returns a fixed default TSNode that the other fakes below ignore anyway.</summary>
     private sealed class FakeParserHost : IParserHost
     {
@@ -88,14 +70,13 @@ public class EditorViewModelTests
 
     /// <summary>
     /// Constructs a real EditorViewModel with fakes for every collaborator,
-    /// defaulted so each test only names the ones it cares about. Introduced
-    /// alongside the six IntelliSense constructor parameters
-    /// (bdd-ui-interactions.md §2.5-§2.15) so the ten pre-existing call sites
-    /// below didn't need a bespoke fake sextet spelled out individually.
+    /// defaulted so each test only names the ones it cares about.
+    /// EditorViewModel no longer takes IPipelineService/IEventStreamService -
+    /// it never calls the backend on its own (cnl-editor-architecture.md §5);
+    /// the backend is reached only via RunRequested/ExplainRequested, wired
+    /// externally by CnlTabViewModel, which these unit tests don't exercise.
     /// </summary>
     private static EditorViewModel CreateViewModel(
-        IPipelineService? pipeline = null,
-        IEventStreamService? eventStream = null,
         IExecutionLockService? executionLock = null,
         IParserHost? parserHost = null,
         ICompletionService? completionService = null,
@@ -105,8 +86,6 @@ public class EditorViewModelTests
         IStructuralSelectionService? structuralSelectionService = null,
         IOutlineService? outlineService = null) =>
         new(
-            pipeline ?? new FakePipelineService(),
-            eventStream ?? new FakeEventStreamService(),
             executionLock ?? new ExecutionLockService(),
             parserHost ?? new FakeParserHost(),
             completionService ?? new FakeCompletionService(),
@@ -116,129 +95,12 @@ public class EditorViewModelTests
             structuralSelectionService ?? new FakeStructuralSelectionService(),
             outlineService ?? new FakeOutlineService());
 
-    private static async Task WaitForDebounceAsync() => await Task.Delay(700);
-
-    [Fact]
-    public async Task TextChanged_InvalidCnl_AckPhaseFailure_PopulatesValidationErrorsButDoesNotBlockCommands()
-    {
-        var eventStream = new FakeEventStreamService();
-        var pipeline = new FakePipelineService
-        {
-            ExplainResultToReturn = new PipelineStartResult
-            {
-                Accepted = false,
-                Errors =
-                [
-                    new UiError
-                    {
-                        Code = "ERR_CNL_PARSE",
-                        Message = "Missing period.",
-                        Severity = ErrorSeverity.Error,
-                        Category = ErrorCategory.Pipeline,
-                    },
-                ],
-            },
-        };
-        var viewModel = CreateViewModel(pipeline, eventStream);
-
-        viewModel.Text = "Load the article from \"a.txt\"";
-        await WaitForDebounceAsync();
-
-        Assert.Single(viewModel.ValidationErrors);
-        Assert.Equal("ERR_CNL_PARSE", viewModel.ValidationErrors[0].Code);
-
-        // ui-viewmodels.md §6: CanExecute no longer checks ValidationErrors -
-        // known validation errors no longer block Run/Explain client-side
-        // (confirmed decision, see the approved migration plan).
-        Assert.True(viewModel.RunCommand.CanExecute(null));
-        Assert.True(viewModel.ExplainCommand.CanExecute(null));
-
-        // ui-error-handling.md §9: error-or-higher severity also raises the global banner.
-        Assert.Single(viewModel.Errors);
-        Assert.Equal("ERR_CNL_PARSE", viewModel.Errors[0].Code);
-    }
-
-    [Fact]
-    public async Task TextChanged_PipelineFailedEvent_PopulatesValidationErrors()
-    {
-        var eventStream = new FakeEventStreamService();
-        var pipeline = new FakePipelineService
-        {
-            ExplainResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-1" },
-        };
-        var viewModel = CreateViewModel(pipeline, eventStream);
-
-        viewModel.Text = "Summarize them.";
-        await WaitForDebounceAsync();
-
-        eventStream.Raise(FakeEventStreamService.MakeEvent("pipeline_started", "corr-1"));
-        eventStream.Raise(FakeEventStreamService.MakeEvent(
-            "pipeline_failed",
-            "corr-1",
-            success: false,
-            errors: [new UiError { Code = "ERR_CNL_NORMALIZE", Message = "bad pronoun", Severity = ErrorSeverity.Error, Category = ErrorCategory.Pipeline }]));
-
-        Assert.Single(viewModel.ValidationErrors);
-        Assert.Equal("ERR_CNL_NORMALIZE", viewModel.ValidationErrors[0].Code);
-        Assert.False(viewModel.IsValidating);
-    }
-
-    [Fact]
-    public async Task TextChanged_NormalizedAstGeneratedEvent_ClearsValidatingWithNoErrors()
-    {
-        var eventStream = new FakeEventStreamService();
-        var pipeline = new FakePipelineService
-        {
-            ExplainResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-2" },
-        };
-        var viewModel = CreateViewModel(pipeline, eventStream);
-
-        viewModel.Text = "Load the article from \"a.txt\".\nSummarize it.";
-        await WaitForDebounceAsync();
-
-        eventStream.Raise(FakeEventStreamService.MakeEvent("pipeline_started", "corr-2"));
-        eventStream.Raise(FakeEventStreamService.MakeEvent("normalized_ast_generated", "corr-2"));
-
-        Assert.Empty(viewModel.ValidationErrors);
-        Assert.False(viewModel.IsValidating);
-        Assert.True(viewModel.RunCommand.CanExecute(null));
-        Assert.True(viewModel.ExplainCommand.CanExecute(null));
-    }
-
-    [Fact]
-    public async Task TextChanged_EmptyText_DoesNotCallBackend()
-    {
-        var pipeline = new FakePipelineService();
-        var viewModel = CreateViewModel(pipeline);
-
-        viewModel.Text = "   ";
-        await WaitForDebounceAsync();
-
-        Assert.Equal(0, pipeline.ExplainCallCount);
-        Assert.Empty(viewModel.ValidationErrors);
-    }
-
-    [Fact]
-    public async Task TextChanged_RapidTyping_OnlyValidatesOnceAfterDebounceSettles()
-    {
-        var pipeline = new FakePipelineService { ExplainResultToReturn = new PipelineStartResult { Accepted = true, CorrelationId = "corr-3" } };
-        var viewModel = CreateViewModel(pipeline);
-
-        viewModel.Text = "L";
-        viewModel.Text = "Lo";
-        viewModel.Text = "Load the article from \"a.txt\".";
-        await WaitForDebounceAsync();
-
-        Assert.Equal(1, pipeline.ExplainCallCount);
-    }
-
     [Fact]
     public void RunExplainCommands_BlockedWhileAnyTabExecutionRunning()
     {
-        var pipeline = new FakePipelineService();
         var executionLock = new ExecutionLockService();
         executionLock.TryAcquire(new object());
-        var viewModel = CreateViewModel(pipeline, executionLock: executionLock);
+        var viewModel = CreateViewModel(executionLock: executionLock);
         viewModel.Text = "Load the article from \"a.txt\".";
 
         Assert.False(viewModel.RunCommand.CanExecute(null));
@@ -248,8 +110,7 @@ public class EditorViewModelTests
     [Fact]
     public void RunExplainCommands_BlockedWhileTextEmpty()
     {
-        var pipeline = new FakePipelineService();
-        var viewModel = CreateViewModel(pipeline);
+        var viewModel = CreateViewModel();
 
         Assert.False(viewModel.RunCommand.CanExecute(null));
         Assert.False(viewModel.ExplainCommand.CanExecute(null));
@@ -258,11 +119,10 @@ public class EditorViewModelTests
     [Fact]
     public void RunExplainCommands_ReenableWhenExecutionLockReleases()
     {
-        var pipeline = new FakePipelineService();
         var executionLock = new ExecutionLockService();
         var token = new object();
         executionLock.TryAcquire(token);
-        var viewModel = CreateViewModel(pipeline, executionLock: executionLock);
+        var viewModel = CreateViewModel(executionLock: executionLock);
         viewModel.Text = "Load the article from \"a.txt\".";
         Assert.False(viewModel.RunCommand.CanExecute(null));
 
@@ -302,9 +162,9 @@ public class EditorViewModelTests
     // - see the implementation plan). The six below are pure ViewModel-wiring
     // scenarios, testable with fakes with no native dependency.
 
-    /// <summary>bdd-ui-interactions.md §2.8: local diagnostics never touch ValidationErrors (the SyntaxErrors state the scenario names), and vice versa.</summary>
+    /// <summary>bdd-ui-interactions.md §2.7-§2.8: RefreshDecorations populates LocalDiagnostics from DiagnosticService.</summary>
     [Fact]
-    public void RefreshDecorations_LocalDiagnosticFound_PopulatesLocalDiagnosticsWithoutTouchingValidationErrors()
+    public void RefreshDecorations_LocalDiagnosticFound_PopulatesLocalDiagnostics()
     {
         var diagnosticService = new FakeDiagnosticService
         {
@@ -317,7 +177,6 @@ public class EditorViewModelTests
 
         Assert.Single(viewModel.LocalDiagnostics);
         Assert.Equal(new LocalDiagnostic("Unexpected token", 10, 14), viewModel.LocalDiagnostics[0]);
-        Assert.Empty(viewModel.ValidationErrors);
     }
 
     /// <summary>bdd-ui-interactions.md §2.10: ExpandSelection converts SelectionRange to byte offsets, delegates to IStructuralSelectionService, and applies its result back as char offsets.</summary>

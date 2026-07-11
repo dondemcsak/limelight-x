@@ -3,20 +3,22 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LimelightX.UI.Intellisense;
 using LimelightX.UI.Services;
-using LimelightX.UI.Services.Dto;
-using LimelightX.UI.ViewModels.Editor;
-using LimelightX.UI.ViewModels.Errors;
 
 namespace LimelightX.UI.ViewModels;
 
 /// <summary>
 /// Primary ViewModel for CNL editing (ui-viewmodels.md §6), one instance per
-/// open .llx tab (owned by CnlTabViewModel). Live validation calls
-/// PipelineService.ExplainAsync on a debounce timer and subscribes to its own
-/// (independent) slice of the shared event stream, filtered by its own
-/// CorrelationId - it never touches this tab's PipelineExecutionViewModel
-/// state, and is exempt from IExecutionLockService (ui-viewmodels.md §6 Live
-/// Validation).
+/// open .llx tab (owned by CnlTabViewModel). The editor never calls
+/// /src/api on its own - the backend is reached only via RunRequested/
+/// ExplainRequested, wired by CnlTabViewModel to this tab's own
+/// PipelineExecutionViewModel, itself only invoked by an explicit Run/Explain
+/// click (cnl-editor-architecture.md §5). There used to be a separate
+/// "Live Validation" mechanism here that called /explain on a debounce timer
+/// after every keystroke - removed, since real-time syntax feedback now
+/// comes entirely from Tree-sitter's local LocalDiagnostics (squiggle+hover,
+/// bdd-ui-interactions.md §2.16-§2.17), and backend-authoritative errors
+/// already have a home in PipelineExecutionViewModel.ErrorBanner, shown only
+/// when the user actually clicks Run or Explain.
 /// Completion/hover/folding/outline/local-diagnostics (CompletionItems,
 /// HoverInfo, FoldRegions, Outline, LocalDiagnostics and their Request*/
 /// Refresh* triggers below) are wired to the real, Tree-sitter-backed
@@ -34,13 +36,6 @@ namespace LimelightX.UI.ViewModels;
 /// </summary>
 public partial class EditorViewModel : ObservableObject, IDisposable
 {
-    // Live-validation debounce: not specified anywhere in spec/ux/*
-    // (flagged ambiguity) - 450ms is a reasonable editor-validation debounce,
-    // tunable here if it proves wrong in practice.
-    private static readonly TimeSpan ValidationDebounce = TimeSpan.FromMilliseconds(450);
-
-    private readonly IPipelineService _pipelineService;
-    private readonly IEventStreamService _eventStream;
     private readonly IExecutionLockService _executionLock;
     private readonly IParserHost _parserHost;
     private readonly ICompletionService _completionService;
@@ -49,12 +44,8 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     private readonly IFoldingService _foldingService;
     private readonly IStructuralSelectionService _structuralSelectionService;
     private readonly IOutlineService _outlineService;
-    private CancellationTokenSource? _validationDebounceCts;
-    private string? _validationCorrelationId;
 
     public EditorViewModel(
-        IPipelineService pipelineService,
-        IEventStreamService eventStream,
         IExecutionLockService executionLock,
         IParserHost parserHost,
         ICompletionService completionService,
@@ -64,8 +55,6 @@ public partial class EditorViewModel : ObservableObject, IDisposable
         IStructuralSelectionService structuralSelectionService,
         IOutlineService outlineService)
     {
-        _pipelineService = pipelineService;
-        _eventStream = eventStream;
         _executionLock = executionLock;
         _parserHost = parserHost;
         _completionService = completionService;
@@ -74,15 +63,12 @@ public partial class EditorViewModel : ObservableObject, IDisposable
         _foldingService = foldingService;
         _structuralSelectionService = structuralSelectionService;
         _outlineService = outlineService;
-        eventStream.EventReceived += OnValidationEventReceived;
         _executionLock.ExecutionLockChanged += NotifyPipelineCommandsCanExecuteChanged;
     }
 
-    /// <summary>Unsubscribes from the shared event stream/lock, and disposes this tab's IParserHost, so a closed tab's EditorViewModel no longer reacts to anything (ui-viewmodels.md §5.2: disposed alongside its owning CnlTabViewModel).</summary>
+    /// <summary>Unsubscribes from the execution lock, and disposes this tab's IParserHost, so a closed tab's EditorViewModel no longer reacts to anything (ui-viewmodels.md §5.2: disposed alongside its owning CnlTabViewModel).</summary>
     public void Dispose()
     {
-        _validationDebounceCts?.Cancel();
-        _eventStream.EventReceived -= OnValidationEventReceived;
         _executionLock.ExecutionLockChanged -= NotifyPipelineCommandsCanExecuteChanged;
         _parserHost.Dispose();
     }
@@ -93,7 +79,6 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     partial void OnTextChanged(string value)
     {
         RefreshDecorations();
-        QueueValidation();
         NotifyPipelineCommandsCanExecuteChanged();
     }
 
@@ -104,9 +89,6 @@ public partial class EditorViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private (int Start, int End) _selectionRange;
-
-    [ObservableProperty]
-    private bool _isValidating;
 
     [ObservableProperty]
     private bool _isFormatting;
@@ -121,8 +103,6 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private QuickFixItem? _ghostSuggestion;
 
-    public ObservableCollection<ValidationError> ValidationErrors { get; } = [];
-
     public ObservableCollection<CompletionItem> CompletionItems { get; } = [];
 
     public ObservableCollection<QuickFixItem> QuickFixes { get; } = [];
@@ -130,16 +110,11 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     /// <summary>Client-side folding regions, one per CNL sentence (bdd-ui-interactions.md §2.9). Populated by RefreshDecorations.</summary>
     public ObservableCollection<FoldRegion> FoldRegions { get; } = [];
 
-    /// <summary>Advisory, local-only diagnostics from Tree-sitter ERROR/MISSING nodes (bdd-ui-interactions.md §2.7-§2.8) - never authoritative, never written into SyntaxErrors/ValidationErrors. Populated by RefreshDecorations.</summary>
+    /// <summary>Advisory, local-only diagnostics from Tree-sitter ERROR/MISSING nodes (bdd-ui-interactions.md §2.7-§2.8) - the sole real-time syntax-error surface in the editor; never authoritative. Populated by RefreshDecorations.</summary>
     public ObservableCollection<LocalDiagnostic> LocalDiagnostics { get; } = [];
 
     /// <summary>Client-side outline entries, one per CNL sentence (ui-intellisense-engine-spec.md §2.5, §10). Populated by RefreshDecorations.</summary>
     public ObservableCollection<OutlineItem> Outline { get; } = [];
-
-    /// <summary>Error-or-higher validation errors promoted to this tab's banner (ui-error-handling.md §9) - the ErrorBanner component binds directly to this.</summary>
-    public ErrorBannerViewModel ErrorBanner { get; } = new();
-
-    public ObservableCollection<UiError> Errors => ErrorBanner.Errors;
 
     // See EditorAction's doc comment: these stay empty by design. Real
     // undo/redo state lives in AvaloniaEdit's TextDocument, reached via the
@@ -287,7 +262,9 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     /// Wired by the owning CnlTabViewModel to this tab's own
     /// PipelineExecutionViewModel.RunPipelineAsync/ExplainPipelineAsync. Plain
     /// Func delegates rather than a direct reference, keeping EditorViewModel
-    /// free of a compile-time dependency on PipelineExecutionViewModel.
+    /// free of a compile-time dependency on PipelineExecutionViewModel. This
+    /// is the only path by which anything reachable from EditorViewModel ever
+    /// calls the backend - only ever invoked by an explicit Run/Explain click.
     /// </summary>
     public Func<string, Task>? RunRequested { get; set; }
 
@@ -301,11 +278,11 @@ public partial class EditorViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// ui-viewmodels.md §6: Run/Explain are blocked only while any tab's
-    /// execution is in flight app-wide, or the editor is empty. Unlike the
-    /// old page-based model, a known validation error no longer blocks these
-    /// commands client-side - the backend's own pipeline_failed/ERR_CNL_PARSE
-    /// response is now the sole gate for invalid CNL (confirmed decision,
-    /// see the approved migration plan).
+    /// execution is in flight app-wide, or the editor is empty. A known
+    /// validation error never blocks these commands client-side - the
+    /// backend's own pipeline_failed/ERR_CNL_PARSE response, surfaced via
+    /// PipelineExecutionViewModel.ErrorBanner once Run/Explain is actually
+    /// clicked, is the sole gate for invalid CNL.
     /// </summary>
     private bool CanExecutePipelineCommand() => !_executionLock.IsAnyExecutionRunning && !string.IsNullOrWhiteSpace(Text);
 
@@ -314,123 +291,5 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     {
         RunCommand.NotifyCanExecuteChanged();
         ExplainCommand.NotifyCanExecuteChanged();
-    }
-
-    private void QueueValidation()
-    {
-        _validationDebounceCts?.Cancel();
-        _validationCorrelationId = null;
-
-        if (string.IsNullOrWhiteSpace(Text))
-        {
-            ValidationErrors.Clear();
-            ErrorBanner.Clear();
-            return;
-        }
-
-        var cts = new CancellationTokenSource();
-        _validationDebounceCts = cts;
-        _ = ValidateAfterDelayAsync(cts.Token);
-    }
-
-    private async Task ValidateAfterDelayAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            await Task.Delay(ValidationDebounce, cancellationToken);
-        }
-        catch (TaskCanceledException)
-        {
-            return;
-        }
-
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return;
-        }
-
-        IsValidating = true;
-        var result = await _pipelineService.ExplainAsync(Text);
-        if (cancellationToken.IsCancellationRequested)
-        {
-            IsValidating = false;
-            return;
-        }
-
-        ValidationErrors.Clear();
-        ErrorBanner.Clear();
-
-        if (!result.Accepted)
-        {
-            ApplyValidationErrors(result.Errors);
-            IsValidating = false;
-            return;
-        }
-
-        // Stage/failure data arrives via OnValidationEventReceived, filtered
-        // by this correlation_id; IsValidating clears there.
-        _validationCorrelationId = result.CorrelationId;
-    }
-
-    private void OnValidationEventReceived(WsEvent wsEvent)
-    {
-        if (wsEvent.CorrelationId != _validationCorrelationId)
-        {
-            return;
-        }
-
-        switch (wsEvent.EventType)
-        {
-            case "pipeline_started":
-                ValidationErrors.Clear();
-                Errors.Clear();
-                break;
-
-            case "normalized_ast_generated":
-                // /explain's terminal event on success - nothing further to apply.
-                IsValidating = false;
-                _validationCorrelationId = null;
-                break;
-
-            case "pipeline_failed":
-                ApplyValidationErrors(wsEvent.Errors);
-                IsValidating = false;
-                _validationCorrelationId = null;
-                break;
-        }
-    }
-
-    /// <summary>
-    /// ui-error-handling.md §6.2: parser/grammar/hole are all ERR_CNL_PARSE
-    /// at the wire level - classification into a display kind happens purely
-    /// client-side (CnlErrorClassifier), from Text and each error's Location.
-    /// </summary>
-    private void ApplyValidationErrors(IReadOnlyList<UiError> errors)
-    {
-        foreach (var error in errors)
-        {
-            var kind = error.Code == "ERR_CNL_PARSE"
-                ? CnlErrorClassifier.Classify(Text, error.Location, error.Message)
-                : CnlErrorKind.Parser;
-
-            var validationError = new ValidationError
-            {
-                Code = error.Code,
-                Message = error.Message,
-                Severity = error.Severity,
-                Category = error.Category,
-                Location = error.Location,
-                Kind = kind,
-            };
-
-            ValidationErrors.Add(validationError);
-
-            // ui-error-handling.md §9: validation errors also show a global
-            // banner when severity is error-or-higher (info/warning stay inline-only).
-            if (error.Severity is ErrorSeverity.Error or ErrorSeverity.Fatal)
-            {
-                ErrorBanner.Show(validationError);
-            }
-        }
     }
 }

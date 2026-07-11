@@ -85,7 +85,6 @@ public partial class App : Application
 
                 if (tab is CnlTabViewModel cnl)
                 {
-                    SubscribeLogging(cnl.Editor.ValidationErrors, () => logger);
                     SubscribeLogging(cnl.PipelineExecution.Errors, () => logger);
                 }
             };

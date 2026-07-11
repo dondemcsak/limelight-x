@@ -81,9 +81,9 @@ All scenarios assume:
 ## 3.2 Missing `source` Field
 **GIVEN** the user triggers execution with empty text  
 **WHEN** backend returns `ERR_MISSING_FIELD`  
-**THEN** inline editor error appears  
+**THEN** that tab's error banner appears (`ui-error-handling.md` §7.1's ack-phase-failure path)  
 **SO THAT** the user sees missing input  
-**AS MEASURED BY** `SyntaxErrors.Count > 0`
+**AS MEASURED BY** `PipelineExecutionViewModel.ErrorBanner.IsVisible == true`
 
 ## 3.3 Backend Startup Failure
 **GIVEN** the user opens the Settings modal  
@@ -160,26 +160,10 @@ All scenarios assume:
 
 # 6. Editor Error Scenarios
 
-## 6.1 Inline Parser Error
-**GIVEN** user edits CNL  
-**WHEN** `/explain` returns parser error  
-**THEN** inline error appears  
-**SO THAT** user sees grammar issue  
-**AS MEASURED BY** red underline + margin marker
+**Status: superseded.** The three scenarios that used to live here (Inline Parser/Grammar/Hole Error) described `/explain` errors rendering inline in the editor as the user typed — a design this repo no longer has. Full detail lives in `bdd-ui-interactions.md` §2.2/§2.8/§2.16–§2.17 and `cnl-editor-architecture.md` §5; this section is a pointer, not a duplicate:
 
-## 6.2 Inline Grammar Error
-**GIVEN** user edits CNL  
-**WHEN** `/explain` returns grammar error  
-**THEN** inline error appears  
-**SO THAT** user sees grammar issue  
-**AS MEASURED BY** updated `SyntaxErrors`
-
-## 6.3 Inline Expression Hole Error
-**GIVEN** user edits CNL  
-**WHEN** `/explain` returns hole error  
-**THEN** inline error appears  
-**SO THAT** user sees missing expression  
-**AS MEASURED BY** error marker at hole location
+- **Real-time inline errors** (red underline + margin marker + hover tooltip) come entirely from Tree‑sitter's local `LocalDiagnostics` — client-side only, no backend call, no distinction between "parser"/"grammar"/"hole" kinds (`bdd-ui-interactions.md` §2.16–§2.17).
+- **Backend errors** (`ERR_CNL_PARSE` or otherwise) never render inline in the editor. They only ever occur as a result of an explicit Run or Explain click and surface via `PipelineExecutionViewModel.ErrorBanner` in the execution panel (§2 above, `ui-error-handling.md` §6.1‑§6.2).
 
 ---
 

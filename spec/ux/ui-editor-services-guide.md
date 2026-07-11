@@ -122,7 +122,7 @@ The Editor Services Layer orchestrates all IntelliSense features.
 - Detects `MISSING` nodes, and for a fixed set of self‑describing literals (`.`, `"`, `}}`) derives both a specific message and a `SuggestedFix` (`ui-intellisense-engine-spec.md` §6.1) — every other `MISSING`/`ERROR` case keeps a generic message with no fix  
 - Detects malformed prompt holes  
 - Detects unknown verbs  
-- Produces non‑blocking, advisory diagnostics — never authoritative; `/explain`'s `SyntaxErrors` remain the source of truth (`cnl-editor-architecture.md` §5)  
+- Produces non‑blocking, advisory diagnostics — never authoritative; `/explain`/`/trace` (only ever called on an explicit Run/Explain click, `bdd-ui-interactions.md` §2.2) remain the source of truth (`cnl-editor-architecture.md` §5)  
 - Rendered in the editor as a squiggly underline + margin marker, and drives ghost‑text suggestions when `SuggestedFix` is present (`bdd-ui-interactions.md` §2.16, §2.18)  
 
 ## 3.5 HoverService

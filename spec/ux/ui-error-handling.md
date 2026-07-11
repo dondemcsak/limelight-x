@@ -67,7 +67,7 @@ These arrive via `pipeline_failed` events.
 - editor validation errors  
 
 ### 2.5 Persistent Logging
-Every `UiError` surfaced through §2.1-2.4 — i.e. everything added to `WorkspaceViewModel.Errors`, a tab's `EditorViewModel.ValidationErrors`, a tab's `PipelineExecutionViewModel.Errors`, and `SettingsViewModel.Errors` — is also logged via `Microsoft.Extensions.Logging`'s `ILogger`, at the `LogLevel` mapped from the error's `Severity` (`Info`→`Information`, `Warning`→`Warning`, `Error`→`Error`, `Fatal`→`Critical`), to the file described in `ui-deployment.md` §4.3.
+Every `UiError` surfaced through §2.1-2.4 — i.e. everything added to `WorkspaceViewModel.Errors`, a tab's `PipelineExecutionViewModel.Errors`, and `SettingsViewModel.Errors` — is also logged via `Microsoft.Extensions.Logging`'s `ILogger`, at the `LogLevel` mapped from the error's `Severity` (`Info`→`Information`, `Warning`→`Warning`, `Error`→`Error`, `Fatal`→`Critical`), to the file described in `ui-deployment.md` §4.3. `EditorViewModel` has no error collection of its own to log (`bdd-ui-interactions.md` §2.2) — its only state is `LocalDiagnostics`, which is advisory Tree‑sitter output, not a `UiError`.
 
 This is purely additive to the existing UI surfacing rules above — it never changes what the user sees or where. A failure to write the log entry itself (unwritable directory, disk full, etc.) must not surface as a `UiError`, must not crash the app, and must not block the original error from reaching its normal UI surface (banner/inline/inspector) — logging failures fail silently.
 
@@ -142,19 +142,8 @@ Errors must appear in the following locations:
 - Dismissible.
 
 ### 6.2 Inline Editor Errors
-- Parser/grammar errors from `/explain`.  
-- Highlighted in the editor.  
-- Displayed in the margin and error list.
-
-All inline editor errors arrive over the wire as a single code/category: `ERR_CNL_PARSE`/`pipeline` (see `api.md` §10). The UI nonetheless distinguishes three presentation kinds, derived client-side from the error's `message` and `location` — there is no separate wire code for each:
-
-| Kind | How the UI recognizes it |
-|------|---------------------------|
-| Parser error | Default: any `ERR_CNL_PARSE` error whose `location` does not fall inside a `{{ prompt: "..." }}` span. |
-| Grammar error | An `ERR_CNL_PARSE` error whose `message` identifies a specific grammar-rule violation (e.g. an unexpected token type named in `cnl-grammar.md`). |
-| Hole error | An `ERR_CNL_PARSE` error whose `location` falls inside a `{{ prompt: "..." }}` expression-hole span, per the `PromptHole` grammar in `cnl-grammar.md` §4. |
-
-This classification only affects which marker/message the editor shows; it does not change the error's `code`, `category`, or `severity`.
+- The editor's only error surface while the user is typing is Tree‑sitter's local `LocalDiagnostics` (advisory, `cnl-editor-architecture.md` §5, `bdd-ui-interactions.md` §2.16–§2.17) — the squiggly-underline-plus-hover-tooltip experience. There is no backend call, and no separate editor-level error collection, while no Run/Explain click is in flight (`bdd-ui-interactions.md` §2.2) — `EditorViewModel` has no `IPipelineService`/`IEventStreamService` dependency at all.
+- `/explain`'s `ERR_CNL_PARSE` errors (`pipeline`/`ERR_CNL_PARSE`, see `api.md` §10) are only ever produced by an explicit Run or Explain click, and surface exclusively through `PipelineExecutionViewModel.ErrorBanner` (§6.1) in the execution panel — the same path, and the same styling, as any other pipeline error. Nothing reconciles them against `LocalDiagnostics`; the two remain independent, per `cnl-editor-architecture.md` §5's "two independent parsers" model.
 
 ### 6.3 Inspector Errors
 - If an inspector’s data cannot be rendered, show an inline error panel.  
@@ -275,11 +264,11 @@ State:
 - Red margin marker  
 - Tooltip with error message
 
-This styling is shared by two data-model-separate sources, per `bdd-ui-interactions.md` §2.7/§2.16:
-- **Authoritative**: `EditorViewModel.SyntaxErrors`, sourced from `/explain`.
-- **Advisory**: `EditorViewModel.LocalDiagnostics`, sourced from Tree‑sitter `ERROR`/`MISSING` nodes, rendered by `LocalDiagnosticsRenderer` with the same red‑underline‑plus‑margin‑marker‑plus‑tooltip shape.
+This styling is shared by two data-model-separate, independently-triggered sources, per `bdd-ui-interactions.md` §2.7/§2.16:
+- **Authoritative**: `PipelineExecutionViewModel.ErrorBanner`, populated only as a result of an explicit Run/Explain click (§6.1) — never inline in the editor.
+- **Advisory**: `EditorViewModel.LocalDiagnostics`, sourced from Tree‑sitter `ERROR`/`MISSING` nodes as the user types, rendered by `LocalDiagnosticsRenderer` with the same red‑underline‑plus‑margin‑marker‑plus‑tooltip shape.
 
-Sharing the visual style is deliberate (a Tree‑sitter error should read exactly like any other error to the user); the two collections never merge and `LocalDiagnostics` never writes into `SyntaxErrors` (`bdd-ui-interactions.md` §2.8).
+Sharing the visual style is deliberate (a Tree‑sitter error should read exactly like any other error to the user); the two never merge, and `EditorViewModel` has no backend-sourced error collection for `LocalDiagnostics` to write into (`bdd-ui-interactions.md` §2.2, §2.8).
 
 ---
 

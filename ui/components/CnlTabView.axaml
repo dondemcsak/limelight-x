@@ -34,10 +34,7 @@
                                       VerticalAlignment="Center" />
       </StackPanel>
 
-      <components:ErrorBanner DataContext="{Binding Editor.ErrorBanner}" Margin="0,0,0,12" />
       <components:ErrorBanner DataContext="{Binding PipelineExecution.ErrorBanner}" Margin="0,0,0,12" />
-
-      <components:ValidationOverlay Errors="{Binding Editor.ValidationErrors}" />
     </StackPanel>
 
     <Grid Grid.Row="1" x:Name="SplitGrid">
