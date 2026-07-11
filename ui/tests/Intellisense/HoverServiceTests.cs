@@ -7,7 +7,7 @@ namespace LimelightX.UI.Tests.Intellisense;
 /// Real Tree-sitter-backed tests - no fakes, exercises the concrete
 /// HoverService against the actual grammar/DLLs.
 /// </summary>
-[Trait("Category", "NativeArm64")]
+[Trait("Category", "NativeTreeSitter")]
 public class HoverServiceTests
 {
     /// <summary>ui-intellisense-engine-spec.md §7.3: hovering a verb reports its description, matching the spec's own example text.</summary>

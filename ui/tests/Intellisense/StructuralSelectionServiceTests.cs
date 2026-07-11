@@ -7,7 +7,7 @@ namespace LimelightX.UI.Tests.Intellisense;
 /// Real Tree-sitter-backed tests - no fakes, exercises the concrete
 /// StructuralSelectionService against the actual grammar/DLLs.
 /// </summary>
-[Trait("Category", "NativeArm64")]
+[Trait("Category", "NativeTreeSitter")]
 public class StructuralSelectionServiceTests
 {
     /// <summary>

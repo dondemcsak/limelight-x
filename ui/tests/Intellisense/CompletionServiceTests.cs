@@ -9,7 +9,7 @@ namespace LimelightX.UI.Tests.Intellisense;
 /// Real Tree-sitter-backed tests - no fakes, exercises the concrete
 /// CompletionService against the actual grammar/DLLs.
 /// </summary>
-[Trait("Category", "NativeArm64")]
+[Trait("Category", "NativeTreeSitter")]
 public class CompletionServiceTests
 {
     /// <summary>

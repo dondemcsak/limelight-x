@@ -7,18 +7,20 @@ This is a build guide only — it does not define the runtime architecture. See 
 Assumptions:
 
 - You have a folder named `tree-sitter/` at the repo root containing the four Tree‑sitter grammar files (`grammar.js`, `highlights.scm`, `injections.scm`, `folds.scm`) plus the `package.json`/`tree-sitter.json` config `tree-sitter init`/`tree-sitter generate` produce.
-- You want to produce `tree-sitter-limelightx.dll` and copy it into `ui/native/`.
+- You want to produce `tree-sitter-limelightx.dll` and copy it into `ui/native/win-arm64/` or `ui/native/win-x64/`, depending which architecture you're building.
 
 ---
 
-## 0. Build Target: ARM64 Now, x64 Later (Staged)
+## 0. Build Target: Split by Architecture (win-arm64 / win-x64)
 
-**Current status: ARM64 only.** The DLL committed today is built for ARM64 (matching the primary dev machine, a Copilot+ PC). This section documents that build.
+`ui/native/` is split per-RID: `ui/native/win-arm64/` and `ui/native/win-x64/`, mirroring `LimelightX.UI.csproj`'s `RuntimeIdentifiers=win-x64;win-arm64` list. `LimelightX.UI.csproj` resolves which folder to copy from automatically — the explicit publish RID when one is pinned (`dotnet publish -r win-x64`/`-r win-arm64`), otherwise the host machine's own OS architecture (see `spec/ux/ui-build-pipeline.md` §7.1) — so dropping a DLL pair into the matching folder is the only step required; no `.csproj` change is needed.
 
-**A `win-x64` build is separate, deferred future work — not yet done.** `spec/ux/ui-build-pipeline.md` §7.1 pins `LimelightX.UI.csproj` to `RuntimeIdentifier=win-x64` (matching the `windows-latest` CI runner) for a deliberate, documented reason (MSIX size). An ARM64 `tree-sitter-limelightx.dll` P/Invoked from that x64 process throws `BadImageFormatException` at load time. Until the x64 build exists (§9 below is a placeholder for it):
+**Current status: only `ui/native/win-arm64/` is populated.** The DLL pair committed today is built for ARM64 (matching the primary dev machine, a Copilot+ PC) — §§1-8 below document that build. `ui/native/win-x64/` exists (with a placeholder `README.md`) but has no DLLs yet; building them is separate, not-yet-done work — §9 gives the concrete steps.
 
-- Any code path or test that loads `tree-sitter-limelightx.dll` must be skippable/gated on CI (which runs `windows-latest`, i.e. x64).
-- Local development and manual testing of the Tree‑sitter integration happens on ARM64 hardware only.
+Until `ui/native/win-x64/` is populated:
+
+- Any code path or test that loads `tree-sitter-limelightx.dll` must be skippable/gated on CI (which runs `windows-latest`, i.e. x64) — currently done via the `NativeTreeSitter` xUnit trait and `.github/workflows/ui-ci.yml`'s `--filter "Category!=NativeTreeSitter"`.
+- Local development and manual testing of the Tree‑sitter integration on x64 hardware will run but silently skip Tree‑sitter-backed features (`LimelightX.UI.csproj`'s `Exists()` guard means no DLL is copied at all, rather than a wrong-architecture one that would throw `BadImageFormatException`) until `ui/native/win-x64/` is populated.
 
 This staging is intentional (see `CLAUDE.md` §3.5's "Also explicitly approved for `/ui`" entry) — it is not an oversight to "fix" by rebuilding for x64 as part of a routine grammar change.
 
@@ -119,11 +121,15 @@ If successful, `tree-sitter-limelightx.dll` (plus `.exp`/`.lib`/`.obj` build byp
 
 ## 7. Copy the DLL to the Avalonia Project
 
+For the current ARM64 build:
+
 ```
-ui/native/tree-sitter-limelightx.dll
+ui/native/win-arm64/tree-sitter-limelightx.dll
 ```
 
-This is the path `LimelightX.UI.csproj` references (see `spec/parsing/tree-sitter-integration.md` §8).
+(A future x64 build copies to `ui/native/win-x64/tree-sitter-limelightx.dll` instead — see §9.)
+
+`LimelightX.UI.csproj` resolves the matching per-RID folder automatically at build/publish time (see `spec/parsing/tree-sitter-integration.md` §8).
 
 ---
 
@@ -180,13 +186,13 @@ The full binding surface (query engine, node accessors, memory management) is do
 
 ---
 
-## 9. Future: `win-x64` Build (Not Yet Done)
+## 9. `win-x64` Build (Layout Decided, Binary Not Yet Built)
 
-Placeholder for when the x64 build is added:
+The layout is decided (§0): both architectures coexist side by side under `ui/native/win-x64/` and `ui/native/win-arm64/`, and `LimelightX.UI.csproj` already selects the right one automatically per `$(RuntimeIdentifier)` (falling back to host OS architecture when unset). What's still pending is actually building the x64 binary:
 
 - Repeat §§4–6 from an **`x64 Native Tools Command Prompt for VS 2022`** instead of the ARM64 one.
-- The resulting DLL is a *different* binary than the ARM64 one — both may need to coexist (e.g. `ui/native/win-x64/tree-sitter-limelightx.dll` vs. `ui/native/win-arm64/tree-sitter-limelightx.dll`), with the `.csproj` selecting the right one per `$(RuntimeIdentifier)`. Exact layout is undecided — do not implement this section speculatively; it needs its own explicit instruction when the work is actually scheduled.
-- Once it exists, remove the CI-gating language in §0 for the `windows-latest` (x64) runner.
+- The resulting DLL is a *different* binary than the ARM64 one — copy it to `ui/native/win-x64/tree-sitter-limelightx.dll` (replacing the placeholder `README.md`'s spot). No further `.csproj`, CI, or script change is needed — §0's resolution logic picks it up automatically.
+- Once it exists and is committed, delete the `NativeTreeSitter` CI-gating language in §0 and in `.github/workflows/ui-ci.yml`'s Test /ui step: CI (`windows-latest`, x64) will then run those tests for real instead of excluding them.
 
 ---
 
@@ -199,7 +205,7 @@ Steps to build the Tree‑sitter DLL (current: ARM64):
 3. Run `tree-sitter generate`.
 4. Open **ARM64 Native Tools Command Prompt for VS 2022**.
 5. Build the DLL: `cl /LD /I .. parser.c /Fe:tree-sitter-limelightx.dll`
-6. Copy the DLL into `ui/native/tree-sitter-limelightx.dll`.
+6. Copy the DLL into `ui/native/win-arm64/tree-sitter-limelightx.dll` (or `ui/native/win-x64/tree-sitter-limelightx.dll` for the x64 build — see §9).
 7. Load it via raw P/Invoke (§8) — never TreeSitterSharp or any other third-party binding.
 
 This DLL powers the editor‑side IntelliSense and syntax features for Limelight‑X CNL, client‑side only, per `spec/cnl-editor-architecture.md` §5.

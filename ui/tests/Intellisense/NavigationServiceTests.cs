@@ -7,7 +7,7 @@ namespace LimelightX.UI.Tests.Intellisense;
 /// Real Tree-sitter-backed tests - no fakes, exercises the concrete
 /// NavigationService against the actual grammar/DLLs.
 /// </summary>
-[Trait("Category", "NativeArm64")]
+[Trait("Category", "NativeTreeSitter")]
 public class NavigationServiceTests
 {
     /// <summary>bdd-ui-interactions.md §2.26: a reference to a bound name resolves to that name's bind_stmt span.</summary>

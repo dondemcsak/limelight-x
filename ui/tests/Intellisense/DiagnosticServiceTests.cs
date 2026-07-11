@@ -19,7 +19,7 @@ namespace LimelightX.UI.Tests.Intellisense;
 /// spec/parsing/tree-sitter-build-guide.md) and re-verification before a
 /// GetDiagnostics_MissingClosingQuote_... test can be added here.
 /// </summary>
-[Trait("Category", "NativeArm64")]
+[Trait("Category", "NativeTreeSitter")]
 public class DiagnosticServiceTests
 {
     /// <summary>bdd-ui-interactions.md §2.18, ui-intellisense-engine-spec.md §6.1: a MISSING "." node produces a specific message and SuggestedFix.</summary>

@@ -7,7 +7,7 @@ namespace LimelightX.UI.Tests.Intellisense;
 /// Real Tree-sitter-backed test - no fakes, exercises the concrete
 /// FoldingService against the actual grammar/queries.
 /// </summary>
-[Trait("Category", "NativeArm64")]
+[Trait("Category", "NativeTreeSitter")]
 public class FoldingServiceTests
 {
     /// <summary>

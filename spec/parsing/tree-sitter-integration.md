@@ -5,17 +5,18 @@ This document describes the architecture for integrating the Limelight‑X Tree�
 (`tree-sitter-limelightx.dll`) directly into the Avalonia editor.  
 It is intended for Coding Assistants and future maintainers of the Limelight‑X CNL editor.
 
-This document is subordinate to `spec/cnl-editor-architecture.md`, the parent authority for the Tree‑sitter integration (two-independent-parsers model, client‑side‑only scope, three-tier file model). Where this document and that one would otherwise conflict, `spec/cnl-editor-architecture.md` wins. `ui/native/tree-sitter-limelightx.dll` and `ui/queries/*.scm` are tier 3 of that document's §3.1 three-tier file model; the DLL is currently built ARM64‑only (`spec/parsing/tree-sitter-build-guide.md` §0, `CLAUDE.md` §3.5).
+This document is subordinate to `spec/cnl-editor-architecture.md`, the parent authority for the Tree‑sitter integration (two-independent-parsers model, client‑side‑only scope, three-tier file model). Where this document and that one would otherwise conflict, `spec/cnl-editor-architecture.md` wins. `ui/native/<rid>/tree-sitter-limelightx.dll` (`<rid>` = `win-x64` or `win-arm64`) and `ui/queries/*.scm` are tier 3 of that document's §3.1 three-tier file model; only the `win-arm64` DLL is currently built (`spec/parsing/tree-sitter-build-guide.md` §0, `CLAUDE.md` §3.5).
 
 ---
 
 # 1. Overview
 
 Tree‑sitter provides incremental parsing, syntax trees, error nodes, and query execution.  
-The Limelight‑X grammar is compiled into a **self‑contained native DLL**:
+The Limelight‑X grammar is compiled into a **self‑contained native DLL**, one per architecture:
 
 ```
-ui/native/tree-sitter-limelightx.dll
+ui/native/win-arm64/tree-sitter-limelightx.dll
+ui/native/win-x64/tree-sitter-limelightx.dll   (pending - see tree-sitter-build-guide.md §9)
 ```
 
 This DLL contains:
@@ -237,17 +238,14 @@ Rust is **compiler‑only**.
 
 # 8. Packaging the DLL
 
-Place the DLL in:
+Place the DLL in the folder matching its architecture:
 
 ```
-ui/native/tree-sitter-limelightx.dll
+ui/native/win-arm64/tree-sitter-limelightx.dll
+ui/native/win-x64/tree-sitter-limelightx.dll
 ```
 
-Add to `.csproj`:
-
-```xml
-<None Include="native\\tree-sitter-limelightx.dll" CopyToOutputDirectory="Always" />
-```
+`LimelightX.UI.csproj` resolves the matching folder automatically (the explicit publish RID when pinned, otherwise the host machine's own OS architecture) and copies it, flattened, into the output root - see `spec/parsing/tree-sitter-build-guide.md` §0 and `LimelightX.UI.csproj`'s `<None Include="native\$(_TreeSitterRid)\...">` items.
 
 Avalonia loads it at runtime via P/Invoke.
 

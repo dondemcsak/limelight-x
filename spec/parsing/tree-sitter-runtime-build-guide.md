@@ -67,13 +67,15 @@ Add a symbol here whenever `NativeMethods.cs` gains a new `[DllImport("tree-sitt
 
 ---
 
-## 3. Build (ARM64, current target — see `tree-sitter-build-guide.md` §0 for the ARM64-now/x64-later staging, which applies identically here)
+## 3. Build (ARM64, current target — see `tree-sitter-build-guide.md` §0 for the win-arm64/win-x64 per-RID folder split, which applies identically here)
 
 Open **ARM64 Native Tools Command Prompt for VS 2022** (or run via `vcvarsarm64.bat`), then from the directory containing `ts-runtime.def`:
 
 ```bash
 cl /LD /O2 /std:c17 /I "ts-core\lib\include" /I "ts-core\lib\src" "ts-core\lib\src\lib.c" /Fe:tree-sitter-runtime.dll /link /DEF:ts-runtime.def
 ```
+
+Copy the result to `ui/native/win-arm64/tree-sitter-runtime.dll`. For a future win-x64 build, repeat from an **x64 Native Tools Command Prompt for VS 2022** instead and copy to `ui/native/win-x64/tree-sitter-runtime.dll` — `LimelightX.UI.csproj` picks the matching folder up automatically (`tree-sitter-build-guide.md` §0/§9); no other change is needed.
 
 Notes:
 - `/std:c17` is required — `tree_cursor.c` uses `_Static_assert`, which MSVC's default (pre‑C11) mode rejects with `error C2143`/`C2059`.
@@ -85,10 +87,10 @@ Notes:
 ## 4. Copy to the Avalonia Project
 
 ```
-ui/native/tree-sitter-runtime.dll
+ui/native/win-arm64/tree-sitter-runtime.dll
 ```
 
-Alongside `ui/native/tree-sitter-limelightx.dll`. `LimelightX.UI.csproj` copies both (see its `native\*.dll` `<None Include>` items).
+Alongside `ui/native/win-arm64/tree-sitter-limelightx.dll` (or the `win-x64` equivalents for a future x64 build — §3). `LimelightX.UI.csproj` resolves and copies whichever per-RID folder matches the current build/publish (see its `native\$(_TreeSitterRid)\*.dll` `<None Include>` items).
 
 ---
 
@@ -192,7 +194,7 @@ Re‑verified after rebuild:
 1. Clone `tree-sitter/tree-sitter` (core) — separate from this repo's own `tree-sitter/` (the CNL grammar).
 2. Write `ts-runtime.def` listing every P/Invoked `ts_*` symbol.
 3. `cl /LD /O2 /std:c17 ... lib.c /Fe:tree-sitter-runtime.dll /link /DEF:ts-runtime.def`
-4. Copy to `ui/native/tree-sitter-runtime.dll`.
+4. Copy to `ui/native/win-arm64/tree-sitter-runtime.dll` (or `ui/native/win-x64/tree-sitter-runtime.dll` for the x64 build).
 5. Load both DLLs; the grammar DLL's `TSLanguage*` feeds the runtime DLL's `ts_parser_set_language`.
 
-This is a one‑time build (the runtime doesn't change when the CNL grammar changes) — re‑run only if the set of P/Invoked `ts_*` functions grows, or if a `win-x64` build is added later (see `tree-sitter-build-guide.md` §9's staging note, which applies to this DLL too).
+This is a one‑time build per architecture (the runtime doesn't change when the CNL grammar changes) — re‑run only if the set of P/Invoked `ts_*` functions grows, or to add the still-pending `win-x64` build (see `tree-sitter-build-guide.md` §9, which applies to this DLL too).

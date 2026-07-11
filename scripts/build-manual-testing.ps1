@@ -18,11 +18,15 @@
       (same configuration) for /ui, producing LimelightX.UI.exe plus all
       managed dependencies (DLLs, .deps.json, .runtimeconfig.json). <rid>
       defaults to the host's own architecture (win-arm64 on an ARM64 dev
-      machine, win-x64 elsewhere) rather than being hardcoded, since this
-      repo's native Tree-sitter DLLs (ui/native/*.dll) are currently
-      ARM64-only (CLAUDE.md §3.5) - publishing win-x64 on an ARM64 dev
-      machine would ship an architecture mismatch that throws the moment any
-      Tree-sitter-backed editor feature runs. Override with -Rid if needed.
+      machine, win-x64 elsewhere) rather than being hardcoded. This repo's
+      native Tree-sitter DLLs live under ui/native/win-x64/ and
+      ui/native/win-arm64/ (CLAUDE.md §3.5); LimelightX.UI.csproj picks the
+      matching folder for whichever -Rid is passed automatically. Only the
+      win-arm64 folder is actually populated today - a win-x64 publish will
+      succeed but ship without Tree-sitter support until those binaries are
+      built (spec/parsing/tree-sitter-build-guide.md §9) and committed; this
+      script warns if that's the case (see below). Override with -Rid if
+      needed.
     - Both are staged together into target/manual-testing/ so the app can be
       run from a single folder
 
@@ -81,6 +85,11 @@ if (Test-Path $outDir) {
     Remove-Item $outDir -Recurse -Force
 }
 New-Item -ItemType Directory -Path $outDir | Out-Null
+
+$nativeDir = "$RepoRoot/ui/native/$Rid"
+if (-not (Test-Path "$nativeDir/tree-sitter-limelightx.dll") -or -not (Test-Path "$nativeDir/tree-sitter-runtime.dll")) {
+    Write-Warning "ui/native/$Rid is missing the Tree-sitter DLLs - this build will run, but Tree-sitter-backed editor features (highlighting, folding, completion, hover) will throw DllNotFoundException. See spec/parsing/tree-sitter-build-guide.md §9."
+}
 
 dotnet publish "$RepoRoot/ui/LimelightX.UI.csproj" -c $Configuration -r $Rid --self-contained false -o $outDir
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE." }

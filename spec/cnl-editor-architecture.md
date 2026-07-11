@@ -173,7 +173,7 @@ Two independent parsers exist side by side. They are never bridged to each other
 
 Tree‑sitter's tree feeds only the left‑hand column (highlighting, folding, hover, completion, structural selection, local error squiggles). It never reaches, and is never derived from, the Rust pipeline on the right — that flow is `ui-architecture.md` §6, unchanged by this document.
 
-Note: the `spec/parsing/*.md` paths shown in the Tree‑sitter box above are the tier‑1 documentation copies (§3.1). At runtime the app actually loads tier 3: `ui/native/tree-sitter-limelightx.dll` + `ui/queries/*.scm`.
+Note: the `spec/parsing/*.md` paths shown in the Tree‑sitter box above are the tier‑1 documentation copies (§3.1). At runtime the app actually loads tier 3: `ui/native/<rid>/tree-sitter-limelightx.dll` + `ui/queries/*.scm`.
 
 ---
 
@@ -205,7 +205,7 @@ The grammar and its query files exist in three places on disk, each with a disti
 
 1. **`spec/parsing/*.md`** (`grammer-js.md`, `highlights-scm.md`, `folds-scm.md`, `injections-scm.md`, `peg-grammar.md`) — the **documentation / source-of-truth copies**. Read by Coding Assistants at development/generation time (§1.1.1). Not read by the running app.
 2. **`tree-sitter/`** (repo root) — the **build scaffold**: `grammar.js` and the three `.scm` files, plus the tree-sitter-cli-generated `package.json`, `tree-sitter.json`, and (after `tree-sitter generate`) `src/parser.c`, `src/grammar.json`, `src/node-types.json`. This is what `tree-sitter generate` and MSVC (`cl /LD ...`) actually consume to produce the DLL — see `spec/parsing/tree-sitter-build-guide.md`.
-3. **`ui/native/tree-sitter-limelightx.dll`** + **`ui/queries/{highlights,folds,injections}.scm`** — the **runtime artifacts** the shipped Avalonia app actually loads (via P/Invoke and `File.ReadAllText`, respectively). These are build outputs/copies of tier 2, wired into `LimelightX.UI.csproj` (see `spec/parsing/tree-sitter-integration.md` §8).
+3. **`ui/native/<rid>/tree-sitter-limelightx.dll`** (`<rid>` = `win-x64` or `win-arm64`) + **`ui/queries/{highlights,folds,injections}.scm`** — the **runtime artifacts** the shipped Avalonia app actually loads (via P/Invoke and `File.ReadAllText`, respectively). The DLLs are split per-RID (`spec/parsing/tree-sitter-build-guide.md` §0); `LimelightX.UI.csproj` resolves the matching folder automatically (the explicit publish RID when pinned, otherwise the host's own OS architecture) and copies it, flattened, into the output root — see `spec/parsing/tree-sitter-integration.md` §8. Only `win-arm64` is populated today; `win-x64` is a placeholder pending a build (`tree-sitter-build-guide.md` §9).
 
 Whoever edits the grammar is responsible for updating all three tiers in the same change: `spec/parsing/grammer-js.md` and the three `-scm.md` files (tier 1), `tree-sitter/grammar.js` and its three `.scm` files (tier 2, then re-run `tree-sitter generate` and rebuild the DLL), and the resulting `ui/native/`/`ui/queries/` copies (tier 3). A grammar change that touches only one tier should be treated as incomplete in review.
 
@@ -215,7 +215,7 @@ Whoever edits the grammar is responsible for updating all three tiers in the sam
 
 Avalonia integrates Tree‑sitter via:
 
-- A native Tree‑sitter runtime, embedded in the `/ui` process only (not `/src`) — approved per `CLAUDE.md` §3.5 ("Also explicitly approved for `/ui`"): the compiled `tree-sitter-limelightx.dll`, loaded via raw `[DllImport]` P/Invoke, no third-party binding package. See `spec/parsing/tree-sitter-integration.md` and `tree-sitter-build-guide.md` for the binding surface and build steps, and CLAUDE.md §3.5 for the current ARM64-only staging (a `win-x64` build is separate, deferred work)  
+- A native Tree‑sitter runtime, embedded in the `/ui` process only (not `/src`) — approved per `CLAUDE.md` §3.5 ("Also explicitly approved for `/ui`"): the compiled `tree-sitter-limelightx.dll`, loaded via raw `[DllImport]` P/Invoke, no third-party binding package. See `spec/parsing/tree-sitter-integration.md` and `tree-sitter-build-guide.md` for the binding surface and build steps, and CLAUDE.md §3.5 for the current win-arm64-only staging (`ui/native/win-x64/` is the decided location for a future win-x64 build, not yet populated)  
 - A text‑change event pipeline  
 - A syntax tree update loop  
 - A highlight mapping layer  
@@ -291,7 +291,7 @@ spec/parsing/
 They are not embedded in this document.  
 Coding Assistants must read them from disk when generating editor features.
 
-This is tier 1 of the three-tier file model (§3.1) — the documentation copies. Runtime code loads tier 3 (`ui/native/tree-sitter-limelightx.dll`, `ui/queries/*.scm`) instead; do not point runtime code at `spec/parsing/`.
+This is tier 1 of the three-tier file model (§3.1) — the documentation copies. Runtime code loads tier 3 (`ui/native/<rid>/tree-sitter-limelightx.dll`, `ui/queries/*.scm`) instead; do not point runtime code at `spec/parsing/`.
 
 ---
 

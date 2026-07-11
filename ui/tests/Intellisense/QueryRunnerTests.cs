@@ -7,7 +7,7 @@ namespace LimelightX.UI.Tests.Intellisense;
 /// Real Tree-sitter-backed tests against the actual highlights/injections
 /// .scm queries (spec/parsing/tree-sitter-runtime-build-guide.md).
 /// </summary>
-[Trait("Category", "NativeArm64")]
+[Trait("Category", "NativeTreeSitter")]
 public class QueryRunnerTests
 {
     /// <summary>

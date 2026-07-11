@@ -45,16 +45,21 @@
   </ItemGroup>
 
   <!-- Tree-sitter runtime artifacts (tier 3 of cnl-editor-architecture.md §3.1's
-       three-tier file model). Both DLLs are currently built ARM64-only
-       (tree-sitter-build-guide.md §0, tree-sitter-runtime-build-guide.md;
-       CLAUDE.md §3.5) - this copies them unconditionally today because the
-       dev machine is ARM64 (see the RuntimeIdentifiers comment above for the
-       prior incident pinning win-x64 caused here). Once a win-x64 build
-       exists, this must become RID-conditional (e.g. two Include items
-       guarded by $(RuntimeIdentifier)) so a win-x64 publish never ships the
-       ARM64 binaries.
+       three-tier file model), split per-RID under native\win-x64\ and
+       native\win-arm64\ (tree-sitter-build-guide.md §0/§9). Resolve which
+       folder to copy from: the explicit publish RID when one is pinned
+       (dotnet publish -r win-x64/-r win-arm64); otherwise (plain dotnet
+       build/dotnet test - RuntimeIdentifiers is plural and intentionally
+       unpinned, see the RuntimeIdentifiers comment above) fall back to the
+       host machine's own OS architecture, since that's what the built/tested
+       binary actually runs as. -->
+  <PropertyGroup>
+    <_TreeSitterRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_TreeSitterRid>
+    <_TreeSitterRid Condition="'$(RuntimeIdentifier)' == '' AND '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'Arm64'">win-arm64</_TreeSitterRid>
+    <_TreeSitterRid Condition="'$(_TreeSitterRid)' == ''">win-x64</_TreeSitterRid>
+  </PropertyGroup>
 
-       Two separate native DLLs, not one: tree-sitter-limelightx.dll is the
+  <!-- Two separate native DLLs, not one: tree-sitter-limelightx.dll is the
        grammar-only shared library (exports just tree_sitter_limelightx());
        tree-sitter-runtime.dll is the actual Tree-sitter parsing/tree/node/
        query engine (ts_parser_*/ts_node_*/ts_query_* - built from
@@ -63,18 +68,26 @@
        not the other way around - see tree-sitter-runtime-build-guide.md for
        why a single self-contained DLL isn't how Tree-sitter's C API works.
 
+       Exists() guard: win-x64 binaries don't exist yet (ui/native/win-x64/
+       is currently just a README placeholder - tree-sitter-build-guide.md §9
+       is still pending the actual x64 compile). Without the guard, a plain
+       build/publish resolving to win-x64 would fail trying to copy a file
+       that isn't there. Once the win-x64 DLLs are committed, this activates
+       automatically with no further csproj change.
+
        Link="%(Filename)%(Extension)" is required, not decorative: without
-       it, CopyToOutputDirectory preserves the native\ subfolder from the
-       Include path (-> $(OutDir)\native\tree-sitter-runtime.dll), but a bare
-       [DllImport("tree-sitter-runtime.dll")] only searches the output root
-       (and a few OS-standard locations) - never a subfolder. Confirmed by
-       running the actual P/Invoke code: without this, ts_parser_new() throws
-       DllNotFoundException even though the file is sitting right there one
-       folder down. native\ stays the source-tree location (matches
-       CLAUDE.md §1's /ui layout); Link flattens only the copied output. -->
+       it, CopyToOutputDirectory preserves the native\<rid>\ subfolder from
+       the Include path (-> $(OutDir)\native\win-arm64\tree-sitter-runtime.dll),
+       but a bare [DllImport("tree-sitter-runtime.dll")] only searches the
+       output root (and a few OS-standard locations) - never a subfolder.
+       Confirmed by running the actual P/Invoke code: without this,
+       ts_parser_new() throws DllNotFoundException even though the file is
+       sitting right there one folder down. native\<rid>\ stays the
+       source-tree location (matches CLAUDE.md §1's /ui layout); Link
+       flattens only the copied output. -->
   <ItemGroup>
-    <None Include="native\tree-sitter-limelightx.dll" CopyToOutputDirectory="Always" Link="%(Filename)%(Extension)" />
-    <None Include="native\tree-sitter-runtime.dll" CopyToOutputDirectory="Always" Link="%(Filename)%(Extension)" />
+    <None Include="native\$(_TreeSitterRid)\tree-sitter-limelightx.dll" Condition="Exists('native\$(_TreeSitterRid)\tree-sitter-limelightx.dll')" CopyToOutputDirectory="Always" Link="%(Filename)%(Extension)" />
+    <None Include="native\$(_TreeSitterRid)\tree-sitter-runtime.dll" Condition="Exists('native\$(_TreeSitterRid)\tree-sitter-runtime.dll')" CopyToOutputDirectory="Always" Link="%(Filename)%(Extension)" />
     <None Include="queries\*.scm" CopyToOutputDirectory="Always" />
   </ItemGroup>
 

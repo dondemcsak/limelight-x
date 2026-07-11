@@ -9,7 +9,7 @@ namespace LimelightX.UI.Tests.Intellisense;
 /// ParserHost against the actual tree-sitter-limelightx.dll and
 /// tree-sitter-runtime.dll (spec/parsing/tree-sitter-runtime-build-guide.md).
 /// </summary>
-[Trait("Category", "NativeArm64")]
+[Trait("Category", "NativeTreeSitter")]
 public class ParserHostTests
 {
     /// <summary>bdd-ui-interactions.md §2.7: an incomplete sentence produces at least one ERROR/MISSING descendant, while a token it can still classify (the leading "Load the" keyword) remains its own, correctly-spanned node.</summary>

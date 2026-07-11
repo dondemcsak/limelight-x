@@ -6,7 +6,7 @@ namespace LimelightX.UI.Tests.TestDoubles;
 /// No-op IQueryRunner for tests that need a valid FoldingService dependency
 /// but don't exercise IntelliSense behavior (e.g. TabFactory wiring in
 /// Workspace/Execution tests) - avoids pulling in the real, native-DLL-backed
-/// QueryRunner (ui/intellisense/QueryRunner.cs) outside the NativeArm64-gated
+/// QueryRunner (ui/intellisense/QueryRunner.cs) outside the NativeTreeSitter-gated
 /// suite.
 /// </summary>
 public sealed class FakeQueryRunner : IQueryRunner

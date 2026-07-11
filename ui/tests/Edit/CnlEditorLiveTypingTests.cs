@@ -24,7 +24,7 @@ namespace LimelightX.UI.Tests.Edit;
 /// UI-wiring/auto-trigger-completion interaction, not DiagnosticService
 /// itself.
 /// </summary>
-[Trait("Category", "NativeArm64")]
+[Trait("Category", "NativeTreeSitter")]
 public class CnlEditorLiveTypingTests
 {
     [AvaloniaFact]
