@@ -64,6 +64,26 @@ public class InspectorViewModelTests
     }
 
     [Fact]
+    public void RawAstViewModel_SettingTree_PopulatesRootNodeWithRootExpanded()
+    {
+        var viewModel = new RawAstViewModel { Tree = MakeNode() };
+
+        Assert.NotNull(viewModel.RootNode);
+        Assert.True(viewModel.RootNode!.IsExpanded);
+    }
+
+    [Fact]
+    public void RawAstViewModel_Reset_ClearsRootNode()
+    {
+        var viewModel = new RawAstViewModel { Tree = MakeNode() };
+        Assert.NotNull(viewModel.RootNode);
+
+        viewModel.Reset();
+
+        Assert.Null(viewModel.RootNode);
+    }
+
+    [Fact]
     public void NormalizedAstViewModel_DefaultsToCollapsed()
     {
         var viewModel = new NormalizedAstViewModel();
@@ -78,6 +98,26 @@ public class InspectorViewModelTests
         viewModel.Reset();
 
         Assert.True(viewModel.IsCollapsed);
+    }
+
+    [Fact]
+    public void NormalizedAstViewModel_SettingTree_PopulatesRootNodeWithRootExpanded()
+    {
+        var viewModel = new NormalizedAstViewModel { Tree = MakeNode() };
+
+        Assert.NotNull(viewModel.RootNode);
+        Assert.True(viewModel.RootNode!.IsExpanded);
+    }
+
+    [Fact]
+    public void NormalizedAstViewModel_Reset_ClearsRootNode()
+    {
+        var viewModel = new NormalizedAstViewModel { Tree = MakeNode() };
+        Assert.NotNull(viewModel.RootNode);
+
+        viewModel.Reset();
+
+        Assert.Null(viewModel.RootNode);
     }
 
     [Fact]

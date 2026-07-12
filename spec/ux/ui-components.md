@@ -48,6 +48,7 @@ The UI defines the following components:
 - `Editor`
 - `PlainTextEditor`
 - `LoadingIndicator`
+- `AstTreeView`
 - `InspectorPanel`
 - `RawAstPanel`
 - `NormalizedAstPanel`
@@ -303,6 +304,24 @@ Execution Panel                │
 
 ---
 
+## 4.6 AstTreeView
+
+### Responsibilities
+- Reusable recursive tree control used by both RawAstPanel (§5.2) and NormalizedAstPanel (§5.3) to render an `AstNode` tree (`ui-data-contracts.md` §4) with chevron expanders, indentation, and a `type`/`value` display per node.
+
+### Bindings
+- `RootNode : AstNode?` — the single root node supplied by the hosting panel's ViewModel (`RawAstViewModel.AstNodes`/`NormalizedAstViewModel.NormalizedNodes`, `ui-viewmodels.md` §11.1/§11.2); `null` before the corresponding `*_generated` event arrives.
+- Per-node `IsExpanded : bool` (`ui-viewmodels.md` §11.1/§11.2) — same naming precedent as `FileTreeNodeViewModel.IsExpanded` (`ui-viewmodels.md` §4), but lives directly on the bound `AstNode` object rather than a separate per-node wrapper ViewModel.
+
+### Streaming Rules
+- When `RootNode` transitions from `null` to a populated node, that root node's `IsExpanded` is set `true`; every other node in the tree defaults to `IsExpanded == false`.
+
+### Rules
+- Clicking a node's chevron toggles only that node's own `IsExpanded` — it never affects sibling or ancestor nodes.
+- Deterministic: the root ends up expanded exactly once per populate, regardless of how the tree was left expanded/collapsed on a prior run (the whole panel's content, including `IsExpanded`, resets on `pipeline_started`, `ui-viewmodels.md` §11 Rules).
+
+---
+
 # 5. Inspector Components
 
 Each inspector is a collapsible panel, scoped to a single `.llx` tab, always rendered from the moment the tab opens (starting `IsCollapsed = true`), that auto-expands when its first relevant event arrives.
@@ -326,6 +345,8 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, always ren
 - Has an implementation-chosen default `Height` when expanded (exact value left to implementation, not fixed by this spec — see `ui-architecture.md` §7 Resize Behavior).
 - Exposes a `SplitterControl` (§4.5) on its lower edge; dragging it trades height only with its immediate next-neighbor panel below (classic two-panel splitter behavior) — other panels are unaffected in size and simply reposition as the stack reflows.
 - Its content area scrolls vertically (scrollbar on the right edge) when content exceeds the panel's current `Height`.
+- The panel's inner content scroll viewport's scrollable extent must always reflect each entry's true final rendered height — including content whose layout requires more than one pass (e.g. wrapped Markdown, §5.5–§5.6) — before any auto-scroll action (§5.5, §5.6) is computed against it, so no entry's trailing content is ever left unreachable by the panel's own scrollbar (regression: `bdd-ui-interactions.md` §4.17–§4.18).
+- The space allocated to this panel in the tab's accordion layout (`ui-architecture.md` §7) must fit the panel's *entire* rendered height when expanded — header plus the content area's `Height` — not the content area's `Height` alone; under-allocating by the header's own height clips the bottom of the content area (including part of its own scrollbar) regardless of whether the content area's scroll extent/offset are themselves correct.
 
 ### Streaming Rules
 - Inspector auto-expands (`IsCollapsed` → `false`) only when its ViewModel receives its first relevant data for the current execution.  
@@ -344,6 +365,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, always ren
 
 ### Streaming Rules
 - Auto-expands (`IsCollapsed` → `false`) on `raw_ast_generated`. The panel itself is always rendered, starting collapsed (§5.1).
+- Renders its tree via `AstTreeView` (§4.6); the root `Program` node is always shown already expanded the moment the panel receives its data — the user never has to click to open it (`bdd-ui-interactions.md` §4.14).
 
 ---
 
@@ -358,6 +380,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, always ren
 
 ### Streaming Rules
 - Auto-expands (`IsCollapsed` → `false`) on `normalized_ast_generated`. The panel itself is always rendered, starting collapsed (§5.1).
+- Renders its tree via `AstTreeView` (§4.6); the root `Program` node is always shown already expanded the moment the panel receives its data — the user never has to click to open it (`bdd-ui-interactions.md` §4.15).
 
 ---
 
@@ -386,7 +409,8 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, always ren
 
 ### Streaming Rules
 - Auto-expands (`IsCollapsed` → `false`) on the first `prompt_generated` event; subsequent `prompt_generated` events append to `PromptViewModel.Prompts` without re-collapsing or re-expanding the panel. The panel itself is always rendered, starting collapsed (§5.1), and simply stays collapsed if the trace has zero model-calling operations. Reachable only via Run.
-- On every appended entry (including the one that triggers the first auto-expand), the panel scrolls its content to reveal the newest entry, unconditionally — no scroll-position tracking (see `ui-architecture.md` §7 Auto-Scroll Behavior).
+- On every appended entry (including the one that triggers the first auto-expand), the panel scrolls its content so the newest entry's top edge lands at the top of the panel's own inner content viewport, unconditionally — no scroll-position tracking (`ui-architecture.md` §7 Auto-Scroll Behavior, `bdd-ui-interactions.md` §4.12).
+- On the first `prompt_generated` event only (the same event that triggers auto-expand above), if the panel is not fully visible within the outer bottom-panel scroll viewport, the outer scroll viewer additionally scrolls the panel stack so this panel's top edge aligns with the outer viewport's top edge (`ui-architecture.md` §7 "Outer Scroll Behavior", `bdd-ui-interactions.md` §4.16). This is a one-time-per-run outer scroll, separate from the inner per-entry scroll above, and applies only to this panel.
 
 ---
 
@@ -402,7 +426,7 @@ Each inspector is a collapsible panel, scoped to a single `.llx` tab, always ren
 
 ### Streaming Rules
 - Auto-expands (`IsCollapsed` → `false`) on the first `model_output_generated` event; subsequent `model_output_generated` events append to `ModelOutputViewModel.Outputs` without re-collapsing or re-expanding the panel. The panel itself is always rendered, starting collapsed (§5.1), and simply stays collapsed if the trace has zero model-calling operations. Reachable only via Run.
-- On every appended entry (including the one that triggers the first auto-expand), the panel scrolls its content to reveal the newest entry, unconditionally — no scroll-position tracking (see `ui-architecture.md` §7 Auto-Scroll Behavior).
+- On every appended entry (including the one that triggers the first auto-expand), the panel scrolls its content so the newest entry's top edge lands at the top of the panel's own inner content viewport, unconditionally — no scroll-position tracking (`ui-architecture.md` §7 Auto-Scroll Behavior, `bdd-ui-interactions.md` §4.13).
 
 ---
 

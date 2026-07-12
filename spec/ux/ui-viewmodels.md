@@ -388,17 +388,21 @@ Each is instantiated once per `.llx` tab (owned by that tab's `PipelineExecution
 
 ### 11.1 RawAstViewModel
 State:
-- `AstNodes : ObservableCollection<AstNode>`
+- `AstNodes : ObservableCollection<AstNode>` — populated as a single-element collection holding the synthetic `Program` root returned by `raw_ast_generated` (`ui-data-contracts.md` §4); the tree itself is walked via each node's `Children`, not by further top-level siblings here.
 - `IsCollapsed : bool = true` — default on tab open; reset to `true` on every `pipeline_started` (§7)
 - `Height : double` — this panel's current expanded height, adjusted via its `SplitterControl` (`ui-components.md` §4.5, §5.1); default left to implementation
 - `HasErrors : bool` — set when this inspector's data fails to render; backs `InspectorErrorPanel` (`ui-components.md` §6.2) via an `InspectorErrorViewModel`
 
+Each `AstNode` reachable from `AstNodes` (the root and every descendant) additionally carries a client-side-only `IsExpanded : bool` field — **not** part of the wire contract (`ui-data-contracts.md` §4). Immediately after `AstNodes` is populated, the root node (`Depth == 0`) has `IsExpanded == true`; every other node defaults to `IsExpanded == false` until the user manually expands it via `AstTreeView` (`ui-components.md` §4.6).
+
 ### 11.2 NormalizedAstViewModel
 State:
-- `NormalizedNodes : ObservableCollection<NormalizedAstNode>`
+- `NormalizedNodes : ObservableCollection<AstNode>` — same single-element, root-plus-`Children` shape as `AstNodes` above, populated from `normalized_ast_generated` (`ui-data-contracts.md` §5). Reuses the identical `AstNode` node object as §11.1 — there is no distinct `NormalizedAstNode` type.
 - `IsCollapsed : bool = true`
 - `Height : double`
 - `HasErrors : bool`
+
+`NormalizedNodes` nodes carry the same client-side-only `IsExpanded` field, with the same root-defaults-to-`true` / descendants-default-to-`false` rule as §11.1.
 
 ### 11.3 IrViewModel
 State:
@@ -435,6 +439,7 @@ State:
 - `HasErrors` is set locally by the inspector when it fails to render its own data (e.g. a malformed node it cannot display) — it is independent of `PipelineExecutionViewModel.HasErrors`, which reflects a `pipeline_failed` event. An inspector can have `HasErrors = true` from a local rendering failure even on an otherwise-successful pipeline run.
 - `IsCollapsed` starts `true` when the tab opens and resets to `true` on every `pipeline_started`; it becomes `false` only via the auto-expand rule tied to that inspector's own event (§7) or an explicit user expand/collapse action — never merely because the panel exists in the layout.
 - `Height` is adjusted only by dragging that panel's `SplitterControl` (`ui-components.md` §4.5), which trades height only with the immediate next-neighbor panel below (classic two-panel splitter behavior, `ui-architecture.md` §7) — it is independent of `IsCollapsed` and of every other panel's `Height` beyond that one immediate neighbor.
+- Each AST node's `IsExpanded` (§11.1, §11.2) resets along with the rest of the tree's content when the panel clears on `pipeline_started` — there is no cross-run persistence of a node's manual expand/collapse choice.
 
 ---
 

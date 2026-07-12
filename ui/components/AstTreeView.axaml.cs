@@ -1,31 +1,31 @@
 using Avalonia;
 using Avalonia.Controls;
-using LimelightX.UI.Services.Dto;
+using LimelightX.UI.ViewModels.Inspectors;
 
 namespace LimelightX.UI.Components;
 
 public partial class AstTreeView : UserControl
 {
-    public static readonly StyledProperty<AstNode?> TreeProperty =
-        AvaloniaProperty.Register<AstTreeView, AstNode?>(nameof(Tree));
+    public static readonly StyledProperty<AstNodeViewModel?> RootNodeProperty =
+        AvaloniaProperty.Register<AstTreeView, AstNodeViewModel?>(nameof(RootNode));
 
-    public static readonly DirectProperty<AstTreeView, IReadOnlyList<AstNode>> RootItemsProperty =
-        AvaloniaProperty.RegisterDirect<AstTreeView, IReadOnlyList<AstNode>>(nameof(RootItems), o => o.RootItems);
+    public static readonly DirectProperty<AstTreeView, IReadOnlyList<AstNodeViewModel>> RootItemsProperty =
+        AvaloniaProperty.RegisterDirect<AstTreeView, IReadOnlyList<AstNodeViewModel>>(nameof(RootItems), o => o.RootItems);
 
-    private IReadOnlyList<AstNode> _rootItems = [];
+    private IReadOnlyList<AstNodeViewModel> _rootItems = [];
 
     public AstTreeView()
     {
         InitializeComponent();
     }
 
-    public AstNode? Tree
+    public AstNodeViewModel? RootNode
     {
-        get => GetValue(TreeProperty);
-        set => SetValue(TreeProperty, value);
+        get => GetValue(RootNodeProperty);
+        set => SetValue(RootNodeProperty, value);
     }
 
-    public IReadOnlyList<AstNode> RootItems
+    public IReadOnlyList<AstNodeViewModel> RootItems
     {
         get => _rootItems;
         private set => SetAndRaise(RootItemsProperty, ref _rootItems, value);
@@ -35,10 +35,10 @@ public partial class AstTreeView : UserControl
     {
         base.OnPropertyChanged(change);
 
-        if (change.Property == TreeProperty)
+        if (change.Property == RootNodeProperty)
         {
-            var tree = change.GetNewValue<AstNode?>();
-            RootItems = tree is null ? [] : [tree];
+            var root = change.GetNewValue<AstNodeViewModel?>();
+            RootItems = root is null ? [] : [root];
         }
     }
 }

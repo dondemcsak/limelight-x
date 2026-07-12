@@ -12,6 +12,9 @@ public partial class NormalizedAstViewModel : ObservableObject, IResizablePanelV
     private AstNode? _tree;
 
     [ObservableProperty]
+    private AstNodeViewModel? _rootNode;
+
+    [ObservableProperty]
     private string _rawText = string.Empty;
 
     [ObservableProperty]
@@ -30,6 +33,8 @@ public partial class NormalizedAstViewModel : ObservableObject, IResizablePanelV
     {
         Errors.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasErrors));
     }
+
+    partial void OnTreeChanged(AstNode? value) => RootNode = AstNodeViewModel.FromDto(value);
 
     /// <summary>Set when this inspector's own data fails to render (ui-error-handling.md §6.3).</summary>
     public bool HasErrors => Errors.Count > 0;

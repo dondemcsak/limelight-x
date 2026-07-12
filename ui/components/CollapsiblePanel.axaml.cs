@@ -15,6 +15,19 @@ namespace LimelightX.UI.Components;
 /// </summary>
 public partial class CollapsiblePanel : UserControl
 {
+    /// <summary>
+    /// Rendered height of the header button (Classes="icon", cardHeader text,
+    /// PaddingMediumThickness), empirically measured via a headless render
+    /// (constant across all six panel titles - only text width varies, not
+    /// height). CnlTabView's accordion Grid row must reserve this on top of
+    /// PanelHeight when expanded, or the panel's total rendered height
+    /// (header + ContentScrollViewer) overflows the row and the bottom of
+    /// the content - including part of its own scrollbar - gets clipped by
+    /// the Grid cell, independent of whether ContentScrollViewer's own
+    /// Extent/Offset are correct (ui-components.md §5.1 Layout Rules).
+    /// </summary>
+    public const double HeaderHeight = 42.0;
+
     public static readonly StyledProperty<string> TitleProperty =
         AvaloniaProperty.Register<CollapsiblePanel, string>(nameof(Title), string.Empty);
 
@@ -90,13 +103,34 @@ public partial class CollapsiblePanel : UserControl
     private void Toggle() => IsCollapsed = !IsCollapsed;
 
     /// <summary>
-    /// Scrolls this panel's own content area to its end (ui-components.md
-    /// §5.5-§5.6: PromptPanel/ModelOutputPanel scroll to reveal each newly
-    /// appended entry, unconditionally). The panel's content is the thing
-    /// that actually scrolls (Height-bound ScrollViewer, above) - callers
-    /// (e.g. PromptPanel) never need their own nested ScrollViewer.
+    /// Scrolls this panel's own content area so entryContainer's top edge
+    /// lands at the top of the panel's visible viewport (ui-components.md
+    /// §5.5-§5.6, bdd-ui-interactions.md §4.12-§4.13: PromptPanel/
+    /// ModelOutputPanel position each newly appended entry at the top,
+    /// unconditionally). The panel's content is the thing that actually
+    /// scrolls (Height-bound ScrollViewer, above) - callers (e.g.
+    /// PromptPanel) never need their own nested ScrollViewer.
     /// </summary>
-    public void ScrollContentToEnd() => ContentScrollViewer.ScrollToEnd();
+    public void ScrollContentToTopOf(Control entryContainer)
+    {
+        var topLeft = entryContainer.TranslatePoint(new Point(0, 0), ContentScrollViewer) ?? default;
+        var target = Math.Max(0, ContentScrollViewer.Offset.Y + topLeft.Y);
+        ContentScrollViewer.Offset = new Vector(ContentScrollViewer.Offset.X, target);
+    }
+
+    /// <summary>Read-only scroll-state accessors for tests asserting bdd-ui-interactions.md §4.12-§4.13, §4.17-§4.18.</summary>
+    public Size ContentExtent => ContentScrollViewer.Extent;
+
+    public Size ContentViewport => ContentScrollViewer.Viewport;
+
+    public Vector ContentOffset
+    {
+        get => ContentScrollViewer.Offset;
+        set => ContentScrollViewer.Offset = value;
+    }
+
+    /// <summary>Position of the given descendant relative to this panel's content viewport - e.g. (0, 0) means its top-left is exactly at the top of the visible area.</summary>
+    public Point TranslateToViewport(Control descendant) => descendant.TranslatePoint(new Point(0, 0), ContentScrollViewer) ?? default;
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {

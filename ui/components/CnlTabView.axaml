@@ -58,7 +58,7 @@
                     ResizeDirection="Rows" VerticalAlignment="Stretch"
                     AutomationProperties.Name="Resize editor and results panel" />
 
-      <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+      <ScrollViewer Grid.Row="2" x:Name="PanelStackScrollViewer" VerticalScrollBarVisibility="Auto">
         <Grid x:Name="PanelStack">
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -92,7 +92,7 @@
                         IsVisible="{Binding !PipelineExecution.IrViewModel.IsCollapsed}"
                         AutomationProperties.Name="Resize IR panel" />
 
-          <components:PromptPanel Grid.Row="6" DataContext="{Binding PipelineExecution.PromptViewModel}" />
+          <components:PromptPanel Grid.Row="6" x:Name="PromptPanelView" DataContext="{Binding PipelineExecution.PromptViewModel}" />
           <GridSplitter Grid.Row="7" Classes="rowSplitter"
                         ResizeDirection="Rows" VerticalAlignment="Stretch"
                         IsVisible="{Binding !PipelineExecution.PromptViewModel.IsCollapsed}"

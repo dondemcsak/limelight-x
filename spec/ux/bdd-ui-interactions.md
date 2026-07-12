@@ -467,19 +467,54 @@ All six panels are rendered from the moment the tab opens, starting `IsCollapsed
 **SO THAT** every run repeats the same closed→auto-expand reveal, regardless of how the previous run left the panels  
 **AS MEASURED BY** `IsCollapsed == true` on all six inspector ViewModels at the moment `pipeline_started` is processed, before any subsequent event arrives
 
-## 4.12 Prompt Panel Auto-Scrolls to the Newest Entry
+## 4.12 Prompt Panel Auto-Scrolls the Newest Entry to the Top
 **GIVEN** the Prompt panel is expanded and showing one or more prior prompts  
 **WHEN** a new `prompt_generated` event appends another entry  
-**THEN** the panel's content scrolls to reveal the newly appended entry  
-**SO THAT** the user doesn't have to manually scroll to see the latest prompt in a multi-step trace  
-**AS MEASURED BY** the panel's scroll position placing the newest `PromptViewModel.Prompts` entry within the visible viewport immediately after the append, unconditionally (no dependency on prior scroll position)
+**THEN** the panel's content scrolls so the newly appended entry's operation block is positioned at the top of the panel's own (inner) content viewport — not merely somewhere within it  
+**SO THAT** the user always finds the latest prompt in the same, predictable place instead of hunting for wherever the previous scroll position happened to land it  
+**AS MEASURED BY** the panel's inner `ScrollViewer`'s scroll position placing the newest `PromptViewModel.Prompts` entry's top edge at (or within a negligible sub-pixel tolerance of) the top edge of the panel's visible content viewport immediately after the append, unconditionally (no dependency on prior scroll position); this applies identically to the first-ever entry (which also triggers the §4.4 auto-expand) and to every subsequent entry
 
-## 4.13 Model Output Panel Auto-Scrolls to the Newest Entry
+## 4.13 Model Output Panel Auto-Scrolls the Newest Entry to the Top
 **GIVEN** the Model Output panel is expanded and showing one or more prior outputs  
 **WHEN** a new `model_output_generated` event appends another entry  
-**THEN** the panel's content scrolls to reveal the newly appended entry  
-**SO THAT** the user doesn't have to manually scroll to see the latest output in a multi-step trace  
-**AS MEASURED BY** the panel's scroll position placing the newest `ModelOutputViewModel.Outputs` entry within the visible viewport immediately after the append, unconditionally (no dependency on prior scroll position)
+**THEN** the panel's content scrolls so the newly appended entry's operation block is positioned at the top of the panel's own (inner) content viewport — not merely somewhere within it  
+**SO THAT** the user always finds the latest output in the same, predictable place, consistent with the Prompt panel's behavior (§4.12)  
+**AS MEASURED BY** the panel's inner `ScrollViewer`'s scroll position placing the newest `ModelOutputViewModel.Outputs` entry's top edge at (or within a negligible sub-pixel tolerance of) the top edge of the panel's visible content viewport immediately after the append, unconditionally (no dependency on prior scroll position); this applies identically to the first-ever entry (which also triggers the §4.5 auto-expand) and to every subsequent entry
+
+## 4.14 Raw AST Tree Auto-Expands Its Root Node
+**GIVEN** `raw_ast_generated` has just arrived and RawAstPanel has auto-expanded (§4.1)  
+**WHEN** the Raw AST tree (`AstTreeView`, `ui-components.md` §4.6) renders its root node  
+**THEN** the root `Program` node is shown already expanded, with its depth‑1 children visible without any user interaction  
+**SO THAT** the user sees the parsed statements immediately, instead of a single collapsed "Program" node they must click open  
+**AS MEASURED BY** the root `AstNode`'s `IsExpanded == true` immediately after `RawAstViewModel.AstNodes` is populated, with every other node in the tree defaulting to `IsExpanded == false` until the user manually expands it
+
+## 4.15 Normalized AST Tree Auto-Expands Its Root Node
+**GIVEN** `normalized_ast_generated` has just arrived and NormalizedAstPanel has auto-expanded (§4.2)  
+**WHEN** the Normalized AST tree (`AstTreeView`, `ui-components.md` §4.6) renders its root node  
+**THEN** the root `Program` node is shown already expanded, with its depth‑1 children visible without any user interaction  
+**SO THAT** the user sees the normalized statements immediately, matching the Raw AST tree's behavior  
+**AS MEASURED BY** the root `AstNode`'s `IsExpanded == true` immediately after `NormalizedAstViewModel.NormalizedNodes` is populated, with every other node in the tree defaulting to `IsExpanded == false` until the user manually expands it
+
+## 4.16 Bottom Panel Region Scrolls to Reveal the Prompt Panel on the First Prompt Event
+**GIVEN** execution is running and the outer bottom-panel scroll viewport is currently scrolled such that PromptPanel is not visible (e.g. the tall Raw/Normalized AST panels have pushed it below the viewport)  
+**WHEN** the first `prompt_generated` event of this run arrives  
+**THEN** the outer scroll viewer scrolls the panel stack so PromptPanel's top edge is aligned with the top of the outer viewport, in addition to PromptPanel auto-expanding (§4.4)  
+**SO THAT** the user doesn't have to manually scroll down to discover that prompts have started streaming in  
+**AS MEASURED BY** the outer `ScrollViewer`'s vertical offset, immediately after the first `prompt_generated` event is processed, placing PromptPanel's top edge at the top of the outer viewport's visible bounds; if PromptPanel was already fully visible, the offset is unchanged; a second and subsequent `prompt_generated` event in the same run never re-triggers this outer scroll (only the panel's own inner auto-scroll, §4.12, fires for those)
+
+## 4.17 Prompt Panel Reveals the Newest Entry's Full Content After Layout Settles (Regression)
+**GIVEN** the user runs `examples/summarize-for-slack.llx` (Load → Extract → Summarize → Rewrite, where the Rewrite operation's prompt embeds a long custom instruction verbatim: `Rewrite the summary using {{ prompt: "Rewrite in a friendly, conversational tone suitable for a Slack update." }}`) and the Prompt panel has already received the entries for the Extract and Summarize operations  
+**WHEN** the `prompt_generated` event for the Rewrite operation (`operation_index == 2`) arrives and is appended to `PromptViewModel.Prompts`, scrolling its top edge into view per §4.12  
+**THEN** once the Rewrite entry's card completes layout (including any wrapped Markdown content), the panel's own inner scrollbar makes the entry's last line reachable by scrolling — the card is never left permanently clipped at a stale scroll extent computed before its final height was known  
+**SO THAT** a long or heavily-wrapped prompt is never partially hidden with no way to scroll the rest of it into view  
+**AS MEASURED BY** after the Rewrite entry's layout pass(es) settle, the inner `ScrollViewer`'s `Extent.Height` reflects the Rewrite card's true final rendered height (not a pre-final-layout snapshot), and scrolling the inner `ScrollViewer` to `Extent.Height - Viewport.Height` brings the Rewrite card's last rendered line within the viewport
+
+## 4.18 Model Output Panel Reveals the Newest Entry's Full Content After Layout Settles (Regression)
+**GIVEN** the user runs `examples/summarize-for-slack.llx` and the Model Output panel has already received the entries for the Extract and Summarize operations  
+**WHEN** the `model_output_generated` event for the Rewrite operation (`operation_index == 2`) arrives and is appended to `ModelOutputViewModel.Outputs`, scrolling its top edge into view per §4.13  
+**THEN** once the Rewrite output's card completes layout, the panel's own inner scrollbar makes the entry's last line reachable by scrolling, the same as §4.17 for the Prompt panel  
+**SO THAT** a long or heavily-wrapped model response is never partially hidden with no way to scroll the rest of it into view  
+**AS MEASURED BY** the same `Extent.Height`-reflects-final-layout assertion as §4.17, applied to the Model Output panel's inner `ScrollViewer` and `ModelOutputViewModel.Outputs`
 
 ---
 
@@ -691,7 +726,7 @@ These interactions do **not** cover:
 - cancellation  
 - plugin inspectors  
 - nondeterministic animations  
-- "stick to bottom unless scrolled up" auto-scroll tracking for Prompts/Model Outputs (auto-scroll is always unconditional, see §4.12–§4.13)  
+- "stick to bottom unless scrolled up" auto-scroll tracking for Prompts/Model Outputs (auto-scroll to the top of the newest entry is always unconditional and never depends on, or tracks, prior scroll position — see §4.12–§4.13)  
 - Tree‑sitter (or any client‑side parser) participating in validation or execution — it is advisory/decoration‑only, `/explain`/`/trace` remain the sole source of truth (§2.5–§2.15, `cnl-editor-architecture.md` §1, §5)  
 - semantic (cross‑reference / normalization‑aware) completions or hover — both are syntactic only (§2.11, §2.13)  
 - sending a Tree‑sitter CST, or anything derived from it, to `/src/api` or Rust by any channel

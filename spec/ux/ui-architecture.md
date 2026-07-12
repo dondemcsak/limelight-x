@@ -283,7 +283,13 @@ Final Result
 
 ### Auto-Scroll Behavior
 
-- The Prompts and Model Output panels scroll their content to reveal the newest appended entry every time a `prompt_generated`/`model_output_generated` event appends a new item — unconditionally, with no tracking of prior scroll position (see `ui-components.md` §5.5–§5.6).
+- The Prompts and Model Output panels scroll their content so the newest appended entry's top edge lands at the top of the panel's own inner viewport every time a `prompt_generated`/`model_output_generated` event appends a new item — unconditionally, with no tracking of prior scroll position (see `ui-components.md` §5.5–§5.6, `bdd-ui-interactions.md` §4.12–§4.13). This is distinct from, and additional to, the "Outer Scroll Behavior" below, which fires at most once per run and targets the Prompt panel's position within the *outer* viewport, not any entry's position within an *inner* viewport.
+
+### Outer Scroll Behavior
+
+- Separately from the inner per-panel auto-scroll above, the outer scroll viewer hosting the six-panel stack (`CnlTabView`'s panel-stack `ScrollViewer`, `ui-components.md` §4.1) auto-scrolls **exactly once per execution**: when the first `prompt_generated` event of a run arrives, if PromptPanel is not currently fully visible within the outer scroll viewport, the outer scroll viewer scrolls so PromptPanel's top edge aligns with the top of the outer viewport. If PromptPanel is already fully visible at that moment, the outer scroll offset is unchanged.
+- "Not visible" means any part of PromptPanel's bounds lies outside the outer `ScrollViewer`'s current viewport rectangle at the moment the event is processed.
+- This is additive to, and independent from, PromptPanel's own `IsCollapsed → false` auto-expand (`ui-components.md` §5.5, `bdd-ui-interactions.md` §4.4) and from PromptPanel's own inner per-entry auto-scroll (above) — it never fires again for subsequent `prompt_generated` events in the same run, and never fires for any other panel's first event.
 
 ### Rules
 

@@ -12,7 +12,7 @@
     <components:CollapsiblePanel.PanelContent>
       <StackPanel Spacing="8">
         <components:ValidationOverlay Errors="{Binding Errors}" />
-        <components:AstTreeView Tree="{Binding Tree}" MinHeight="80" />
+        <components:AstTreeView RootNode="{Binding RootNode}" MinHeight="80" />
       </StackPanel>
     </components:CollapsiblePanel.PanelContent>
   </components:CollapsiblePanel>

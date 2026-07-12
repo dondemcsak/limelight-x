@@ -135,60 +135,125 @@ Errors follow the same structure defined in `api.md`:
 
 # 4. AST Node Contract (Raw AST)
 
-Used in `raw_ast_generated` events.
+Used in `raw_ast_generated` events. The wire schema is a **single-rooted tree**,
+not a flat array: the pipeline's raw AST is a flat statement list, so
+statements become depth‑1 children of a synthetic `Program` root node.
 
 ```json
 {
   "data": {
-    "raw_ast": [
-      {
-        "node_type": "Command",
-        "text": "Load the article from \"article.txt\".",
-        "children": [ ... ],
-        "span": { "start": 0, "end": 42 }
-      }
-    ]
+    "raw_ast": {
+      "root": {
+        "type": "Program",
+        "value": "",
+        "children": [
+          {
+            "type": "Load",
+            "value": "Load { resource: \"article.txt\" }",
+            "children": [],
+            "span": { "start": 0, "end": 0 },
+            "depth": 1,
+            "metadata": { "resource": "article.txt", "expression_hole": false, "normalized": false }
+          },
+          {
+            "type": "Summarize",
+            "value": "Summarize { input: PreviousResult }",
+            "children": [],
+            "span": { "start": 0, "end": 0 },
+            "depth": 1,
+            "metadata": { "pronoun": "it", "expression_hole": false, "normalized": false }
+          }
+        ],
+        "span": { "start": 0, "end": 0 },
+        "depth": 0,
+        "metadata": { "expression_hole": false, "normalized": false }
+      },
+      "raw_text": "[Load { .. }, Summarize { .. }]",
+      "metadata": { "node_count": 3, "max_depth": 1, "source_length": 52 }
+    }
   }
 }
 ```
 
-### Fields
+### Fields (`data.raw_ast`)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `node_type` | string | AST node type |
-| `text` | string | Original text |
-| `children` | array | Child AST nodes |
-| `span.start` | number | Start offset |
-| `span.end` | number | End offset |
+| `root` | `AstNode` | The single synthetic `Program` root — see Node Fields below |
+| `raw_text` | string | Debug-formatted dump of the whole raw AST, for display/fallback |
+| `metadata.node_count` | number | Total node count, including the synthetic root |
+| `metadata.max_depth` | number | Deepest node depth in the tree (`0` for an empty program) |
+| `metadata.source_length` | number | Length in bytes of the original CNL source |
+
+### Node Fields (`AstNode`, recursive — reused unchanged by §5)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | AST node type (e.g. `Program`, `Load`, `Summarize`) |
+| `value` | string | Debug-formatted node value; render as-is, not structured fields |
+| `children` | array of `AstNode` | Child nodes, in source order |
+| `span.start` / `span.end` | number | Byte offsets (currently always `0`/`0` — spans are not yet tracked) |
+| `depth` | number | `0` for the root, `1` for its direct (statement) children |
+| `metadata.resource` | string, omitted if none | Resource name this node references, if any |
+| `metadata.pronoun` | string, omitted if none | Unresolved pronoun text (raw AST only — never present when `metadata.normalized == true`) |
+| `metadata.expression_hole` | boolean | Whether this node contains a `{{ prompt: ... }}` expression hole |
+| `metadata.normalized` | boolean | `false` for raw AST nodes, `true` for normalized AST nodes (§5) |
 
 ---
 
 # 5. Normalized AST Contract
 
-Used in `normalized_ast_generated` events.
+Used in `normalized_ast_generated` events. Reuses the identical single-rooted
+`AstNode` shape defined in §4 (same synthetic `Program` root wrapping
+depth‑1 children) — there is no separate node type for the normalized tree.
 
 ```json
 {
   "data": {
-    "normalized_ast": [
-      {
-        "node_type": "LoadResource",
-        "resource": "article.txt",
-        "children": []
+    "normalized_ast": {
+      "root": {
+        "type": "Program",
+        "value": "",
+        "children": [
+          {
+            "type": "LoadResource",
+            "value": "Load { resource: \"article.txt\" }",
+            "children": [],
+            "span": { "start": 0, "end": 0 },
+            "depth": 1,
+            "metadata": { "resource": "article.txt", "expression_hole": false, "normalized": true }
+          }
+        ],
+        "span": { "start": 0, "end": 0 },
+        "depth": 0,
+        "metadata": { "expression_hole": false, "normalized": true }
+      },
+      "raw_text": "[Load { .. }]",
+      "metadata": {
+        "node_count": 2,
+        "max_depth": 1,
+        "normalization_steps": 1,
+        "removed_named_variables": 0,
+        "added_input_refs": 1
       }
-    ]
+    }
   }
 }
 ```
 
-### Fields
+### Fields (`data.normalized_ast`)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `node_type` | string | Normalized AST node type |
-| `resource` | string or null | Resource name (if applicable) |
-| `children` | array | Child normalized nodes |
+| `root` | `AstNode` | The single synthetic `Program` root; every descendant has `metadata.normalized == true` and `metadata.pronoun` always absent (the normalizer resolves all pronouns) |
+| `raw_text` | string | Debug-formatted dump of the normalized AST |
+| `metadata.node_count` | number | Total node count, including the synthetic root |
+| `metadata.max_depth` | number | Deepest node depth in the tree |
+| `metadata.normalization_steps` | number | `removed_named_variables + added_input_refs` |
+| `metadata.removed_named_variables` | number | Count of raw `Bind`/`BindLoad` nodes the normalizer removed |
+| `metadata.added_input_refs` | number | Count of normalized nodes whose input was rewritten to refer to the previous result |
+
+Node object fields are identical to §4's `AstNode` table and are not repeated here.
 
 ---
 
