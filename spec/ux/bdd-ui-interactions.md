@@ -39,6 +39,27 @@ All scenarios assume:
 **SO THAT** the UI reflects the new content  
 **AS MEASURED BY** syntax highlighting and updated validation state
 
+## 2.1a Undo Reverts the Most Recent Edit
+**GIVEN** the user has typed text into a `.llx` tab's editor  
+**WHEN** they press `Ctrl+Z`  
+**THEN** the editor's text reverts to what it was immediately before that edit — CnlEditor's own AvaloniaEdit-backed text buffer performs the revert; `EditorViewModel.Text` updates to match via the same sync path used for ordinary typing  
+**SO THAT** the user can back out of a mistake the same way they would in any text editor  
+**AS MEASURED BY** `EditorViewModel.UndoCommand.Execute(null)` raising `UndoRequested`, which the owning `CnlTabView` forwards to `CnlEditor.Undo()`, and the editor's text (both the AvaloniaEdit buffer and `EditorViewModel.Text`) matching the pre-edit content afterward
+
+## 2.1b Redo Reapplies an Undone Edit
+**GIVEN** the user has just undone an edit (§2.1a) and has not typed anything since  
+**WHEN** they press `Ctrl+Y`  
+**THEN** the edit that was undone is reapplied  
+**SO THAT** Undo is not a one-way, unrecoverable action  
+**AS MEASURED BY** `EditorViewModel.RedoCommand.Execute(null)` raising `RedoRequested`, forwarded to `CnlEditor.Redo()`, with the editor's text matching the pre-undo content afterward
+
+## 2.1c Each Tab's Undo/Redo Is Independent
+**GIVEN** two `.llx` tabs are open, each with its own edit history  
+**WHEN** the user presses `Ctrl+Z` while one tab is active  
+**THEN** only that tab's text reverts — the other (inactive) tab's text and edit history are completely unaffected  
+**SO THAT** undo/redo behaves like any per-document editor feature, never crossing tab boundaries  
+**AS MEASURED BY** the inactive tab's `EditorViewModel.Text` and `CnlTabViewModel.IsDirty` unchanged after the active tab's Undo, since `MainWindow`'s `Ctrl+Z`/`Ctrl+Y` keybindings route through `WorkspaceViewModel.ActiveCnlEditor`, and each tab owns its own `EditorViewModel`/`CnlEditor` instance (`ui-viewmodels.md` §5 Rules)
+
 ## 2.2 The Editor Never Calls the Backend on Its Own
 **Status: FINAL.** Supersedes an earlier "Live Validation" design that called `/explain` on a debounce timer after every keystroke, populating `EditorViewModel.ValidationErrors`/`ErrorBanner` above the editor — removed entirely (`EditorViewModel` no longer takes `IPipelineService`/`IEventStreamService` at all).  
 **GIVEN** the user modifies CNL text in a `.llx` tab  
@@ -614,6 +635,13 @@ Inspector panels are always present in the layout (`ui-components.md` §5.1); co
 **THEN** Save All becomes enabled  
 **SO THAT** the menu always reflects current save‑pending state  
 **AS MEASURED BY** `SaveAllCommand.CanExecute == true` once any open tab has `IsDirty == true`
+
+## 7.6 Undoing Back to the Original or Saved Content Clears the Dirty Flag
+**GIVEN** a `.llx` tab is dirty because the user edited its text away from the tab's baseline (the text as of tab‑open, or the most recent successful save)  
+**WHEN** the user presses `Ctrl+Z` enough times that the editor's text returns to exactly that baseline  
+**THEN** the tab's `IsDirty` becomes `false` again, with no explicit Save required  
+**SO THAT** undoing a change and re-saving it aren't treated as two different ways of reaching "nothing to save" — the dirty indicator always reflects whether the current text actually differs from what's on disk (or was last opened)  
+**AS MEASURED BY** `CnlTabViewModel.IsDirty == false` the moment `Editor.Text` equals the baseline, without any `SaveCommand`/`SaveAsCommand`/`SaveAllCommand` invocation; also holds after a Save moves the baseline forward — undoing past that save back to the newly‑saved text clears `IsDirty` too, not just undoing all the way to the original tab‑open content
 
 ---
 

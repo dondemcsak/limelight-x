@@ -337,6 +337,156 @@ public class CnlEditorTests
         Assert.Empty(tab.Editor.CompletionItems);
     }
 
+    /// <summary>bdd-ui-interactions.md §2.1a: CnlEditor.Undo() forwards to the real AvaloniaEdit TextEditor's own undo stack.</summary>
+    [AvaloniaFact]
+    public void Undo_RevertsInnerTextEditorAndViewModelText()
+    {
+        var cnlEditor = new CnlEditor();
+        var window = new Window { Content = cnlEditor, Width = 800, Height = 600 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var innerEditor = GetInnerTextEditor(cnlEditor);
+        innerEditor.TextArea.Focus();
+        Dispatcher.UIThread.RunJobs();
+
+        window.KeyTextInput("Load the article.");
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("Load the article.", innerEditor.Text);
+
+        cnlEditor.Undo();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(string.Empty, innerEditor.Text);
+        Assert.Equal(string.Empty, cnlEditor.Text);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.1b: CnlEditor.Redo() reapplies an edit just undone via CnlEditor.Undo().</summary>
+    [AvaloniaFact]
+    public void Redo_ReappliesUndoneEdit()
+    {
+        var cnlEditor = new CnlEditor();
+        var window = new Window { Content = cnlEditor, Width = 800, Height = 600 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var innerEditor = GetInnerTextEditor(cnlEditor);
+        innerEditor.TextArea.Focus();
+        Dispatcher.UIThread.RunJobs();
+
+        window.KeyTextInput("Load the article.");
+        Dispatcher.UIThread.RunJobs();
+
+        cnlEditor.Undo();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(string.Empty, innerEditor.Text);
+
+        cnlEditor.Redo();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal("Load the article.", innerEditor.Text);
+        Assert.Equal("Load the article.", cnlEditor.Text);
+    }
+
+    /// <summary>
+    /// bdd-ui-interactions.md §7.6: undoing back to the tab's original
+    /// content clears IsDirty, without any Save. Hosts the real CnlTabView
+    /// (not a bare CnlEditor) so both the compiled Text binding and the
+    /// UndoRequested/RedoRequested bridge (CnlTabView.axaml.cs's
+    /// BindUndoRedo) are actually wired, and drives Undo through
+    /// EditorViewModel.UndoCommand - the same path Ctrl+Z takes.
+    /// </summary>
+    [AvaloniaFact]
+    public void Undo_BackToOriginalContent_ClearsIsDirty()
+    {
+        var tab = CreateTab();
+        var tabView = new CnlTabView { DataContext = tab };
+        var window = new Window { Content = tabView, Width = 800, Height = 600 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var innerEditor = tabView.GetVisualDescendants().OfType<TextEditor>().First();
+        innerEditor.TextArea.Focus();
+        Dispatcher.UIThread.RunJobs();
+
+        window.KeyTextInput("x");
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(tab.IsDirty);
+
+        tab.Editor.UndoCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(string.Empty, tab.Editor.Text);
+        Assert.False(tab.IsDirty);
+    }
+
+    /// <summary>bdd-ui-interactions.md §7.6: undoing back to the most recently saved content (not just the original tab-open content) also clears IsDirty.</summary>
+    [AvaloniaFact]
+    public void Undo_BackToSavedContent_ClearsIsDirty()
+    {
+        var tab = CreateTab();
+        var tabView = new CnlTabView { DataContext = tab };
+        var window = new Window { Content = tabView, Width = 800, Height = 600 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var innerEditor = tabView.GetVisualDescendants().OfType<TextEditor>().First();
+        innerEditor.TextArea.Focus();
+        Dispatcher.UIThread.RunJobs();
+
+        window.KeyTextInput("x");
+        Dispatcher.UIThread.RunJobs();
+        tab.MarkAsSaved();
+        Assert.False(tab.IsDirty);
+
+        window.KeyTextInput("y");
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(tab.IsDirty);
+
+        tab.Editor.UndoCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal("x", tab.Editor.Text);
+        Assert.False(tab.IsDirty);
+    }
+
+    /// <summary>bdd-ui-interactions.md §2.1c: undo in one tab never affects another open tab's text or dirty state - each CnlTabView/CnlEditor pair is unique to its own CnlTabViewModel.</summary>
+    [AvaloniaFact]
+    public void Undo_InOneTab_DoesNotAffectAnotherTab()
+    {
+        var tabA = CreateTab();
+        var tabB = CreateTab();
+        var viewA = new CnlTabView { DataContext = tabA };
+        var viewB = new CnlTabView { DataContext = tabB };
+        var window = new Window { Content = new StackPanel { Children = { viewA, viewB } }, Width = 800, Height = 900 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var innerA = viewA.GetVisualDescendants().OfType<TextEditor>().First();
+        var innerB = viewB.GetVisualDescendants().OfType<TextEditor>().First();
+
+        innerA.TextArea.Focus();
+        Dispatcher.UIThread.RunJobs();
+        window.KeyTextInput("a");
+        Dispatcher.UIThread.RunJobs();
+
+        innerB.TextArea.Focus();
+        Dispatcher.UIThread.RunJobs();
+        window.KeyTextInput("b");
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(tabA.IsDirty);
+        Assert.True(tabB.IsDirty);
+
+        tabA.Editor.UndoCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(tabA.IsDirty);
+        Assert.Equal(string.Empty, tabA.Editor.Text);
+        Assert.True(tabB.IsDirty);
+        Assert.Equal("b", tabB.Editor.Text);
+    }
+
     private static TextEditor GetInnerTextEditor(CnlEditor cnlEditor)
     {
         var textEditor = cnlEditor.GetVisualDescendants().OfType<TextEditor>().FirstOrDefault();

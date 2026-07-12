@@ -326,7 +326,7 @@ public partial class WorkspaceViewModel : ObservableObject
         }
 
         tab.AssignFilePath(path);
-        tab.IsDirty = false;
+        tab.MarkAsSaved();
         return true;
     }
 

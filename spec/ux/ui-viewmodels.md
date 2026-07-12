@@ -168,6 +168,7 @@ Each ViewModel is deterministic and state‑derived.
 ### Rules
 - `EditorViewModel` and `PipelineExecutionViewModel` are **per‑tab instances**, not composition‑root singletons — each `.llx` tab gets its own pair, constructed when the tab opens.
 - A tab's own inspector/result state is retained across the tab's lifetime and is unaffected by other tabs' executions.
+- **`CnlTabViewModel.IsDirty`** is a live diff against a baseline (the text as of tab‑open, or the most recent successful save), not a one‑way latch: it is `true` whenever `Editor.Text` differs from that baseline, and becomes `false` again the instant the text returns to exactly that baseline — whether by Undo/Redo (`ui-components.md` §4.2, `bdd-ui-interactions.md` §7.6) or any other edit that happens to reproduce it. `SaveCommand`/`SaveAsCommand`/`SaveAllCommand` re‑anchor the baseline to the just‑written text at the same moment they clear `IsDirty` (§3 Rules). `PlainTextTabViewModel.IsDirty` does **not** have this baseline‑comparison behavior — it remains a plain latch (any edit sets it `true`; only Save clears it) — Undo/Redo is CNL‑editor‑only.
 
 ---
 
@@ -197,6 +198,7 @@ Each ViewModel is deterministic and state‑derived.
 - `ExplainCommand` — invokes `POST /explain`.
 - `SelectCompletionItemCommand(CompletionItem)` — inserts the selected item's `Text` at the current cursor position; local-only, no backend call.
 - `ApplyQuickFixCommand(QuickFixItem)` — splices `item.InsertText` into `Text` at `item.InsertionByte`, moves `CursorPosition` to just past the inserted text, and clears `GhostSuggestion` to `null` (`bdd-ui-interactions.md` §2.19). Invoked either by `Tab` when `GhostSuggestion` is active, or by any future explicit quick‑fix UI.
+- `UndoCommand` (`Ctrl+Z`), `RedoCommand` (`Ctrl+Y`) — raise `UndoRequested`/`RedoRequested`, which the owning `CnlTabView` forwards to this tab's own `CnlEditor.Undo()`/`Redo()` (`ui-components.md` §4.2 Rules, `bdd-ui-interactions.md` §2.1a–§2.1b). Undo/redo history itself lives in the editor's underlying AvaloniaEdit text buffer, not in `EditorViewModel` — reimplementing a parallel ViewModel‑level undo stack would just be duplicate, divergent state (§8's determinism rules).
 
 There is no `TraceCommand`. The Trace button and its distinct trigger are removed entirely; Run now performs what Trace previously did.
 

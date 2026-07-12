@@ -45,7 +45,8 @@
       </Grid.RowDefinitions>
 
       <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
-        <components:CnlEditor Text="{Binding Editor.Text}"
+        <components:CnlEditor x:Name="CnlEditorView"
+                               Text="{Binding Editor.Text}"
                                CursorPosition="{Binding Editor.CursorPosition}"
                                SelectionRange="{Binding Editor.SelectionRange}"
                                LocalDiagnostics="{Binding Editor.LocalDiagnostics}"

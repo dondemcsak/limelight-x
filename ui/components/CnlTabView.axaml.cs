@@ -50,6 +50,59 @@ public partial class CnlTabView : UserControl
         BindPanelRow(PanelStack.RowDefinitions[8], viewModel.PipelineExecution.ModelOutputViewModel);
         BindPanelRow(PanelStack.RowDefinitions[10], viewModel.PipelineExecution.FinalResultViewModel);
         BindOuterPromptScroll(viewModel);
+        BindUndoRedo(viewModel);
+        BindEditorTextSync(viewModel);
+    }
+
+    /// <summary>
+    /// Forwards EditorViewModel.UndoRequested/RedoRequested (raised by
+    /// Ctrl+Z/Ctrl+Y via EditorViewModel.UndoCommand/RedoCommand) into this
+    /// tab's own CnlEditor, which owns the actual AvaloniaEdit-backed undo
+    /// history (ui-components.md §4.2). Per-tab by construction: each
+    /// CnlTabView/CnlEditor pair is unique to its own CnlTabViewModel.
+    /// </summary>
+    private void BindUndoRedo(CnlTabViewModel viewModel)
+    {
+        void OnUndoRequested() => CnlEditorView.Undo();
+        void OnRedoRequested() => CnlEditorView.Redo();
+
+        viewModel.Editor.UndoRequested += OnUndoRequested;
+        viewModel.Editor.RedoRequested += OnRedoRequested;
+        _unsubscribers.Add(() => viewModel.Editor.UndoRequested -= OnUndoRequested);
+        _unsubscribers.Add(() => viewModel.Editor.RedoRequested -= OnRedoRequested);
+    }
+
+    /// <summary>
+    /// Explicit, supplementary sync from CnlEditorView.Text into
+    /// viewModel.Editor.Text, on top of the compiled TwoWay Text="{Binding
+    /// Editor.Text}" binding above (in the .axaml). That compiled binding
+    /// reliably pushes insertion-driven changes (ordinary typing) back to
+    /// the ViewModel, but does not reliably push deletion-driven changes
+    /// (Backspace/Delete, and - critically for Undo/Redo, which are
+    /// themselves document-removal-shaped operations - Ctrl+Z/Ctrl+Y) - a
+    /// pre-existing gap in how Avalonia's compiled TwoWay binding reacts to
+    /// SetCurrentValue for this control, unrelated to undo/redo specifically
+    /// (confirmed by reproducing it with a plain Backspace keystroke).
+    /// CnlEditorView.Text (the StyledProperty) itself reliably raises its
+    /// own AvaloniaPropertyChanged for both insertions and deletions, so
+    /// mirroring it here directly is a safe, always-correct guarantee -
+    /// redundant with the compiled binding for insertions (CommunityToolkit's
+    /// generated setter no-ops when the incoming value already matches), and
+    /// the only thing that actually propagates deletions.
+    /// </summary>
+    private void BindEditorTextSync(CnlTabViewModel viewModel)
+    {
+        void OnCnlEditorTextChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+        {
+            if (e.Property == CnlEditor.TextProperty)
+            {
+                viewModel.Editor.Text = CnlEditorView.Text;
+                viewModel.RecomputeIsDirty();
+            }
+        }
+
+        CnlEditorView.PropertyChanged += OnCnlEditorTextChanged;
+        _unsubscribers.Add(() => CnlEditorView.PropertyChanged -= OnCnlEditorTextChanged);
     }
 
     /// <summary>

@@ -122,13 +122,6 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     /// <summary>Client-side outline entries, one per CNL sentence (ui-intellisense-engine-spec.md §2.5, §10). Populated by RefreshDecorations.</summary>
     public ObservableCollection<OutlineItem> Outline { get; } = [];
 
-    // See EditorAction's doc comment: these stay empty by design. Real
-    // undo/redo state lives in AvaloniaEdit's TextDocument, reached via the
-    // Undo/RedoRequested bridge below.
-    public Stack<EditorAction> UndoStack { get; } = new();
-
-    public Stack<EditorAction> RedoStack { get; } = new();
-
     /// <summary>CnlEditor subscribes and forwards to its TextEditor.Undo().</summary>
     public event Action? UndoRequested;
 

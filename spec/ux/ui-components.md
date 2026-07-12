@@ -232,7 +232,12 @@ Execution Panel                │
 - `GhostSuggestion` — rendered inline by `GhostTextElementGenerator` as non‑editable, semi‑transparent text at the caret when set; committed to real text by `Tab` via `ApplyQuickFixCommand` (`bdd-ui-interactions.md` §2.18–§2.19)  
 - `RunCommand` (invokes `/trace`)
 - `ExplainCommand` (invokes `/explain`)
+- `UndoCommand` (`Ctrl+Z`), `RedoCommand` (`Ctrl+Y`) — operate on this editor's own text buffer
 - `IExecutionLockService.IsAnyExecutionRunning` → disable both buttons (does **not** disable completion/hover/highlighting/folding — those are local, per Streaming Rules below)
+
+### Rules
+- Undo/Redo operate on this editor's own AvaloniaEdit-backed text buffer, independently per open tab — undoing in one tab never affects any other tab's content (`bdd-ui-interactions.md` §2.1a–§2.1b). `EditorViewModel.UndoCommand`/`RedoCommand` raise `UndoRequested`/`RedoRequested`; the owning `CnlTabView` forwards these to this editor's `Undo()`/`Redo()`.
+- Any edit — including one made by Undo/Redo — that brings the text back to exactly the tab's baseline (the text as of tab-open, or the most recent successful save) clears that tab's `IsDirty` (`ui-viewmodels.md` §5.1, `bdd-ui-interactions.md` §7.6).
 
 ### Streaming Rules
 - There is no `TraceCommand` binding; the Trace trigger is removed entirely.

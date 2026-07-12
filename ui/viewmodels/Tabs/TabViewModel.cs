@@ -56,5 +56,8 @@ public abstract partial class TabViewModel : ObservableObject, IDisposable
         IsUntitled = false;
     }
 
+    /// <summary>Called by WorkspaceViewModel's save flow once the tab's content has been written to disk. CnlTabViewModel overrides this to also re-anchor its dirty-flag baseline to the just-saved text.</summary>
+    internal virtual void MarkAsSaved() => IsDirty = false;
+
     public abstract void Dispose();
 }

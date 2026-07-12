@@ -25,6 +25,14 @@ namespace LimelightX.UI.ViewModels.Tabs;
 /// </summary>
 public sealed partial class CnlTabViewModel : TabViewModel
 {
+    /// <summary>
+    /// The text as of tab-open, or the most recent successful save -
+    /// IsDirty (ui-viewmodels.md §5.1) is a live diff against this, not a
+    /// one-way latch, so undoing (or otherwise editing) back to exactly
+    /// this text clears IsDirty automatically.
+    /// </summary>
+    private string _originalText;
+
     public CnlTabViewModel(
         string filePath,
         string initialText,
@@ -44,6 +52,7 @@ public sealed partial class CnlTabViewModel : TabViewModel
     {
         Editor = new EditorViewModel(executionLock, parserHostFactory(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService, autoPairService, navigationService) { Text = initialText };
         PipelineExecution = new PipelineExecutionViewModel(pipelineService, eventStream, executionLock);
+        _originalText = initialText;
 
         Editor.RunRequested = PipelineExecution.RunPipelineAsync;
         Editor.ExplainRequested = PipelineExecution.ExplainPipelineAsync;
@@ -72,6 +81,7 @@ public sealed partial class CnlTabViewModel : TabViewModel
     {
         Editor = new EditorViewModel(executionLock, parserHostFactory(), completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService, autoPairService, navigationService) { Text = string.Empty };
         PipelineExecution = new PipelineExecutionViewModel(pipelineService, eventStream, executionLock);
+        _originalText = string.Empty;
 
         Editor.RunRequested = PipelineExecution.RunPipelineAsync;
         Editor.ExplainRequested = PipelineExecution.ExplainPipelineAsync;
@@ -95,8 +105,28 @@ public sealed partial class CnlTabViewModel : TabViewModel
     {
         if (e.PropertyName == nameof(EditorViewModel.Text))
         {
-            IsDirty = true;
+            RecomputeIsDirty();
         }
+    }
+
+    /// <summary>
+    /// Re-derives IsDirty from the current Editor.Text vs. baseline, reading
+    /// Text fresh rather than trusting any particular change-notification to
+    /// have fired. CnlTabView also calls this directly after syncing
+    /// CnlEditorView.Text into Editor.Text (ui-components.md §4.2 Rules) -
+    /// insertion-driven edits (ordinary typing) reliably raise
+    /// EditorViewModel.Text's own PropertyChanged via the compiled binding,
+    /// but deletion-driven edits (Backspace/Delete, and Undo/Redo, which are
+    /// themselves document-removal-shaped) do not reliably do so - a
+    /// pre-existing Avalonia binding gap unrelated to undo/redo specifically.
+    /// Calling this twice for the same edit is harmless (idempotent).
+    /// </summary>
+    internal void RecomputeIsDirty() => IsDirty = Editor.Text != _originalText;
+
+    internal override void MarkAsSaved()
+    {
+        _originalText = Editor.Text;
+        IsDirty = false;
     }
 
     public override void Dispose()

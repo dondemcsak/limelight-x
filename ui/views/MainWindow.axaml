@@ -22,6 +22,8 @@
   <Window.KeyBindings>
     <KeyBinding Gesture="Ctrl+R" Command="{Binding ActiveCnlEditor.RunCommand}" />
     <KeyBinding Gesture="Ctrl+E" Command="{Binding ActiveCnlEditor.ExplainCommand}" />
+    <KeyBinding Gesture="Ctrl+Z" Command="{Binding ActiveCnlEditor.UndoCommand}" />
+    <KeyBinding Gesture="Ctrl+Y" Command="{Binding ActiveCnlEditor.RedoCommand}" />
     <KeyBinding Gesture="Ctrl+N" Command="{Binding NewLlxFileCommand}" />
     <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveAsCommand}" />
