@@ -91,7 +91,7 @@ if (-not (Test-Path "$nativeDir/tree-sitter-limelightx.dll") -or -not (Test-Path
     Write-Warning "ui/native/$Rid is missing the Tree-sitter DLLs - this build will run, but Tree-sitter-backed editor features (highlighting, folding, completion, hover) will throw DllNotFoundException. See spec/parsing/tree-sitter-build-guide.md §9."
 }
 
-dotnet publish "$RepoRoot/ui/LimelightX.UI.csproj" -c $Configuration -r $Rid --self-contained false -o $outDir
+dotnet publish "$RepoRoot/ui/LimelightX.UI.csproj" -c $Configuration -r $Rid --self-contained false -p:RuntimeIdentifiers=$Rid -o $outDir
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE." }
 
 # dotnet publish already staged LimelightX.UI.exe plus every managed

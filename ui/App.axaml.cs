@@ -50,15 +50,15 @@ public partial class App : Application
             // (ui/intellisense/QueryRunner.cs) - every service below that
             // needs a .scm query shares this instance rather than each
             // loading/compiling its own copy.
-            var queryRunner = new QueryRunner();
-            var completionService = new CompletionService();
-            var diagnosticService = new DiagnosticService();
-            var hoverService = new HoverService();
-            var foldingService = new FoldingService(queryRunner);
-            var structuralSelectionService = new StructuralSelectionService();
-            var outlineService = new OutlineService();
-            var autoPairService = new AutoPairService();
-            var navigationService = new NavigationService();
+            var queryRunner = new Lazy<IQueryRunner>(() => new QueryRunner());
+            var completionService = new Lazy<ICompletionService>(() => new CompletionService());
+            var diagnosticService = new Lazy<IDiagnosticService>(() => new DiagnosticService());
+            var hoverService = new Lazy<IHoverService>(() => new HoverService());
+            var foldingService = new Lazy<IFoldingService>(() => new FoldingService(queryRunner.Value));
+            var structuralSelectionService = new Lazy<IStructuralSelectionService>(() => new StructuralSelectionService());
+            var outlineService = new Lazy<IOutlineService>(() => new OutlineService());
+            var autoPairService = new Lazy<IAutoPairService>(() => new AutoPairService());
+            var navigationService = new Lazy<INavigationService>(() => new NavigationService());
 
             var tabFactory = new TabFactory(pipelineService, eventStream, executionLock, completionService, diagnosticService, hoverService, foldingService, structuralSelectionService, outlineService, autoPairService, navigationService);
             var workspace = new WorkspaceViewModel(tabFactory, filePicker, modal, executionLock);
@@ -137,7 +137,10 @@ public partial class App : Application
             {
                 pipelineService.Dispose();
                 eventStream.Dispose();
-                queryRunner.Dispose();
+                if (queryRunner.IsValueCreated)
+                {
+                    queryRunner.Value.Dispose();
+                }
                 loggerFactory.Dispose();
                 _ = llxProcessService.StopAsync();
             };
