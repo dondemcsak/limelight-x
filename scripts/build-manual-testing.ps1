@@ -21,12 +21,10 @@
       machine, win-x64 elsewhere) rather than being hardcoded. This repo's
       native Tree-sitter DLLs live under ui/native/win-x64/ and
       ui/native/win-arm64/ (CLAUDE.md §3.5); LimelightX.UI.csproj picks the
-      matching folder for whichever -Rid is passed automatically. Only the
-      win-arm64 folder is actually populated today - a win-x64 publish will
-      succeed but ship without Tree-sitter support until those binaries are
-      built (spec/parsing/tree-sitter-build-guide.md §9) and committed; this
-      script warns if that's the case (see below). Override with -Rid if
-      needed.
+      matching folder for whichever -Rid is passed automatically. Both
+      folders are populated (spec/parsing/tree-sitter-build-guide.md §9), so
+      either RID publishes with full Tree-sitter support. Override with -Rid
+      if needed.
     - Both are staged together into target/manual-testing/ so the app can be
       run from a single folder
 

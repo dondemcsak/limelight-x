@@ -98,26 +98,17 @@ jobs:
       # NativeTreeSitter-tagged tests P/Invoke tree-sitter-limelightx.dll /
       # tree-sitter-runtime.dll. ui/native/ is split per-RID (ui/native/win-x64/,
       # ui/native/win-arm64/ - LimelightX.UI.csproj resolves the right one
-      # automatically), but only the win-arm64 binaries are actually built
-      # today (spec/parsing/tree-sitter-build-guide.md §0/§9; CLAUDE.md §3.5).
-      # This windows-latest runner is x64, so those tests are excluded here
-      # until win-x64 binaries are committed to ui/native/win-x64/. Once they
-      # are, delete the --filter flag entirely (dotnet test ui/LimelightX.slnx
-      # -c Release --no-build) so CI runs them for real against the x64
-      # binaries - no other workflow change is needed. Run them locally on
-      # ARM64 hardware in the meantime (dotnet test ui/LimelightX.slnx --filter "Category=NativeTreeSitter").
+      # automatically). Both RIDs' binaries are committed (win-x64 as of
+      # spec/parsing/tree-sitter-build-guide.md §9's completed steps), so this
+      # windows-latest (x64) runner now exercises the NativeTreeSitter tests
+      # for real against the win-x64 binaries - no filter needed.
       - name: Test /ui
-        run: dotnet test ui/LimelightX.slnx -c Release --no-build --filter "Category!=NativeTreeSitter"
+        run: dotnet test ui/LimelightX.slnx -c Release --no-build
 
       - name: Test /src
         run: cargo test --release --locked
 
       # --- Package stage (§3.5) ---
-      # Until win-x64 tree-sitter binaries are committed (see the Test /ui
-      # step above), this publish ships without any Tree-sitter DLL at all
-      # (LimelightX.UI.csproj's Exists() guard) rather than the
-      # wrong-architecture one it would otherwise silently bundle - a known,
-      # accepted gap during this transition, not a regression.
       - name: Publish LimelightX.UI
         run: dotnet publish ui/LimelightX.UI.csproj -c Release -r win-x64 --self-contained false
 

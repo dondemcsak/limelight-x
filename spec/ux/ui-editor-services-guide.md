@@ -191,7 +191,8 @@ Avalonia UI consumes these via:
 ## 5.1 DLL Placement
 
 ```
-ui/native/win-arm64/tree-sitter-limelightx.dll   (win-x64 pending, see tree-sitter-build-guide.md §9)
+ui/native/win-arm64/tree-sitter-limelightx.dll
+ui/native/win-x64/tree-sitter-limelightx.dll
 ```
 
 ## 5.2 `.scm` Placement

@@ -15,14 +15,9 @@ Assumptions:
 
 `ui/native/` is split per-RID: `ui/native/win-arm64/` and `ui/native/win-x64/`, mirroring `LimelightX.UI.csproj`'s `RuntimeIdentifiers=win-x64;win-arm64` list. `LimelightX.UI.csproj` resolves which folder to copy from automatically — the explicit publish RID when one is pinned (`dotnet publish -r win-x64`/`-r win-arm64`), otherwise the host machine's own OS architecture (see `spec/ux/ui-build-pipeline.md` §7.1) — so dropping a DLL pair into the matching folder is the only step required; no `.csproj` change is needed.
 
-**Current status: only `ui/native/win-arm64/` is populated.** The DLL pair committed today is built for ARM64 (matching the primary dev machine, a Copilot+ PC) — §§1-8 below document that build. `ui/native/win-x64/` exists (with a placeholder `README.md`) but has no DLLs yet; building them is separate, not-yet-done work — §9 gives the concrete steps.
+**Current status: both `ui/native/win-arm64/` and `ui/native/win-x64/` are populated.** The ARM64 DLL pair (matching the primary dev machine, a Copilot+ PC) was built first — §§1-8 below document that build. The win-x64 pair was built afterward per §9's steps and is now committed.
 
-Until `ui/native/win-x64/` is populated:
-
-- Any code path or test that loads `tree-sitter-limelightx.dll` must be skippable/gated on CI (which runs `windows-latest`, i.e. x64) — currently done via the `NativeTreeSitter` xUnit trait and `.github/workflows/ui-ci.yml`'s `--filter "Category!=NativeTreeSitter"`.
-- Local development and manual testing of the Tree‑sitter integration on x64 hardware will run but silently skip Tree‑sitter-backed features (`LimelightX.UI.csproj`'s `Exists()` guard means no DLL is copied at all, rather than a wrong-architecture one that would throw `BadImageFormatException`) until `ui/native/win-x64/` is populated.
-
-This staging is intentional (see `CLAUDE.md` §3.5's "Also explicitly approved for `/ui`" entry) — it is not an oversight to "fix" by rebuilding for x64 as part of a routine grammar change.
+Since both RIDs' binaries exist, `.github/workflows/ui-ci.yml`'s `windows-latest` (x64) runner exercises the `NativeTreeSitter`-tagged tests for real, unfiltered, against the win-x64 binaries. The `NativeTreeSitter` xUnit trait remains on those tests for local ad-hoc filtering (e.g. running just the native-backed subset on a given machine), but CI no longer excludes them.
 
 ---
 
@@ -186,13 +181,13 @@ The full binding surface (query engine, node accessors, memory management) is do
 
 ---
 
-## 9. `win-x64` Build (Layout Decided, Binary Not Yet Built)
+## 9. `win-x64` Build (Complete)
 
-The layout is decided (§0): both architectures coexist side by side under `ui/native/win-x64/` and `ui/native/win-arm64/`, and `LimelightX.UI.csproj` already selects the right one automatically per `$(RuntimeIdentifier)` (falling back to host OS architecture when unset). What's still pending is actually building the x64 binary:
+The layout decided in §0 — both architectures coexisting side by side under `ui/native/win-x64/` and `ui/native/win-arm64/`, with `LimelightX.UI.csproj` selecting the right one automatically per `$(RuntimeIdentifier)` (falling back to host OS architecture when unset) — is now fully populated for both RIDs. The win-x64 binary was built by:
 
-- Repeat §§4–6 from an **`x64 Native Tools Command Prompt for VS 2022`** instead of the ARM64 one.
-- The resulting DLL is a *different* binary than the ARM64 one — copy it to `ui/native/win-x64/tree-sitter-limelightx.dll` (replacing the placeholder `README.md`'s spot). No further `.csproj`, CI, or script change is needed — §0's resolution logic picks it up automatically.
-- Once it exists and is committed, delete the `NativeTreeSitter` CI-gating language in §0 and in `.github/workflows/ui-ci.yml`'s Test /ui step: CI (`windows-latest`, x64) will then run those tests for real instead of excluding them.
+- Repeating §§4–6 from an **`x64 Native Tools Command Prompt for VS 2022`** instead of the ARM64 one.
+- Copying the resulting DLL (a *different* binary than the ARM64 one) to `ui/native/win-x64/tree-sitter-limelightx.dll`. No further `.csproj`, CI, or script change was needed — §0's resolution logic picks it up automatically.
+- Deleting the `NativeTreeSitter` CI-gating language in `.github/workflows/ui-ci.yml`'s Test /ui step: CI (`windows-latest`, x64) now runs those tests for real instead of excluding them.
 
 ---
 

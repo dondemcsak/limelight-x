@@ -215,7 +215,8 @@ Memory leaks in native code will destabilize Avalonia.
 Coding Assistants must follow (per `CLAUDE.md` §1's `/ui` layout):
 
 ```
-ui/native/win-arm64/tree-sitter-limelightx.dll   (win-x64 pending, see tree-sitter-build-guide.md §9)
+ui/native/win-arm64/tree-sitter-limelightx.dll
+ui/native/win-x64/tree-sitter-limelightx.dll
 ui/queries/highlights.scm
 ui/queries/folds.scm
 ui/queries/injections.scm

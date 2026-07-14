@@ -15,9 +15,8 @@
     <!-- ui-build-pipeline.md §7.1: Windows-only, win-x64 CI runners; win-arm64
          added alongside it so `dotnet restore` also captures win-arm64 assets
          into packages.lock.json - needed for scripts/build-manual-testing.ps1
-         to publish a working build on an ARM64 dev machine (matching this
-         repo's current native Tree-sitter DLLs, which are ARM64-only per
-         CLAUDE.md §3.5; a win-x64 native build is deferred future work).
+         to publish a working build on an ARM64 dev machine. Native Tree-sitter
+         DLLs are now committed for both RIDs (CLAUDE.md §3.5).
          Listing RIDs here (plural form) does NOT pin `dotnet build`/`dotnet
          test` to either - those keep running against whatever RID the host
          actually is. The singular <RuntimeIdentifier> form was tried first
@@ -72,12 +71,11 @@
        not the other way around - see tree-sitter-runtime-build-guide.md for
        why a single self-contained DLL isn't how Tree-sitter's C API works.
 
-       Exists() guard: win-x64 binaries don't exist yet (ui/native/win-x64/
-       is currently just a README placeholder - tree-sitter-build-guide.md §9
-       is still pending the actual x64 compile). Without the guard, a plain
-       build/publish resolving to win-x64 would fail trying to copy a file
-       that isn't there. Once the win-x64 DLLs are committed, this activates
-       automatically with no further csproj change.
+       Exists() guard: kept so a plain build/publish resolving to an RID
+       whose native\<rid>\ folder isn't populated fails gracefully (no copy)
+       rather than erroring on a missing file. Both win-x64 and win-arm64 are
+       populated today (tree-sitter-build-guide.md §9), so this activates
+       for either RID with no further csproj change.
 
        Link="%(Filename)%(Extension)" is required, not decorative: without
        it, CopyToOutputDirectory preserves the native\<rid>\ subfolder from

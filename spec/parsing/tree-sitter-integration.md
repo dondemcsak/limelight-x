@@ -16,7 +16,7 @@ The Limelight‑X grammar is compiled into a **self‑contained native DLL**, on
 
 ```
 ui/native/win-arm64/tree-sitter-limelightx.dll
-ui/native/win-x64/tree-sitter-limelightx.dll   (pending - see tree-sitter-build-guide.md §9)
+ui/native/win-x64/tree-sitter-limelightx.dll
 ```
 
 This DLL contains:
