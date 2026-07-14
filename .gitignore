@@ -37,3 +37,4 @@ tree-sitter/.gitignore
 tree-sitter/src/tree-sitter-limelightx.dll
 tree-sitter/src/tree-sitter-limelightx.exp
 tree-sitter/src/tree-sitter-limelightx.lib
+*.log

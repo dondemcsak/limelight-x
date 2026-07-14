@@ -65,7 +65,19 @@ public class CrossTabExecutionLockTests
         {
             var lockService = new ExecutionLockService();
             var eventStream = new FakeEventStreamService();
-            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService, new TestDoubles.FakeCompletionService(), new TestDoubles.FakeDiagnosticService(), new TestDoubles.FakeHoverService(), new TestDoubles.FakeFoldingService(), new TestDoubles.FakeStructuralSelectionService(), new TestDoubles.FakeOutlineService(), new TestDoubles.FakeAutoPairService(), new TestDoubles.FakeNavigationService(), () => new TestDoubles.FakeParserHost());
+            var tabFactory = new TabFactory(
+                new FakePipelineService(),
+                eventStream,
+                lockService,
+                new Lazy<ICompletionService>(() => new TestDoubles.FakeCompletionService()),
+                new Lazy<IDiagnosticService>(() => new TestDoubles.FakeDiagnosticService()),
+                new Lazy<IHoverService>(() => new TestDoubles.FakeHoverService()),
+                new Lazy<IFoldingService>(() => new TestDoubles.FakeFoldingService()),
+                new Lazy<IStructuralSelectionService>(() => new TestDoubles.FakeStructuralSelectionService()),
+                new Lazy<IOutlineService>(() => new TestDoubles.FakeOutlineService()),
+                new Lazy<IAutoPairService>(() => new TestDoubles.FakeAutoPairService()),
+                new Lazy<INavigationService>(() => new TestDoubles.FakeNavigationService()),
+                () => new TestDoubles.FakeParserHost());
             var workspace = new WorkspaceViewModel(tabFactory, new FakeFilePickerService(), new FakeModalService(), lockService);
             workspace.OpenRoot(root);
 
@@ -103,7 +115,19 @@ public class CrossTabExecutionLockTests
         {
             var lockService = new ExecutionLockService();
             var eventStream = new FakeEventStreamService();
-            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService, new TestDoubles.FakeCompletionService(), new TestDoubles.FakeDiagnosticService(), new TestDoubles.FakeHoverService(), new TestDoubles.FakeFoldingService(), new TestDoubles.FakeStructuralSelectionService(), new TestDoubles.FakeOutlineService(), new TestDoubles.FakeAutoPairService(), new TestDoubles.FakeNavigationService(), () => new TestDoubles.FakeParserHost());
+            var tabFactory = new TabFactory(
+                new FakePipelineService(),
+                eventStream,
+                lockService,
+                new Lazy<ICompletionService>(() => new TestDoubles.FakeCompletionService()),
+                new Lazy<IDiagnosticService>(() => new TestDoubles.FakeDiagnosticService()),
+                new Lazy<IHoverService>(() => new TestDoubles.FakeHoverService()),
+                new Lazy<IFoldingService>(() => new TestDoubles.FakeFoldingService()),
+                new Lazy<IStructuralSelectionService>(() => new TestDoubles.FakeStructuralSelectionService()),
+                new Lazy<IOutlineService>(() => new TestDoubles.FakeOutlineService()),
+                new Lazy<IAutoPairService>(() => new TestDoubles.FakeAutoPairService()),
+                new Lazy<INavigationService>(() => new TestDoubles.FakeNavigationService()),
+                () => new TestDoubles.FakeParserHost());
             var workspace = new WorkspaceViewModel(tabFactory, new FakeFilePickerService(), new FakeModalService(), lockService);
             workspace.OpenRoot(root);
 
@@ -142,7 +166,19 @@ public class CrossTabExecutionLockTests
         {
             var lockService = new ExecutionLockService();
             var eventStream = new FakeEventStreamService();
-            var tabFactory = new TabFactory(new FakePipelineService(), eventStream, lockService, new TestDoubles.FakeCompletionService(), new TestDoubles.FakeDiagnosticService(), new TestDoubles.FakeHoverService(), new TestDoubles.FakeFoldingService(), new TestDoubles.FakeStructuralSelectionService(), new TestDoubles.FakeOutlineService(), new TestDoubles.FakeAutoPairService(), new TestDoubles.FakeNavigationService(), () => new TestDoubles.FakeParserHost());
+            var tabFactory = new TabFactory(
+                new FakePipelineService(),
+                eventStream,
+                lockService,
+                new Lazy<ICompletionService>(() => new TestDoubles.FakeCompletionService()),
+                new Lazy<IDiagnosticService>(() => new TestDoubles.FakeDiagnosticService()),
+                new Lazy<IHoverService>(() => new TestDoubles.FakeHoverService()),
+                new Lazy<IFoldingService>(() => new TestDoubles.FakeFoldingService()),
+                new Lazy<IStructuralSelectionService>(() => new TestDoubles.FakeStructuralSelectionService()),
+                new Lazy<IOutlineService>(() => new TestDoubles.FakeOutlineService()),
+                new Lazy<IAutoPairService>(() => new TestDoubles.FakeAutoPairService()),
+                new Lazy<INavigationService>(() => new TestDoubles.FakeNavigationService()),
+                () => new TestDoubles.FakeParserHost());
             var workspace = new WorkspaceViewModel(tabFactory, new FakeFilePickerService(), new FakeModalService(), lockService);
             workspace.OpenRoot(root);
 
