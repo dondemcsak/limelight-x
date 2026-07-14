@@ -71,6 +71,8 @@ This workflow is local‑only, is never invoked by CI, and is not a substitute f
 
 # 3. CI Build Workflow (GitHub Actions)
 
+Runs as a `win-x64` / `win-arm64` matrix — two legs of the same job, one on the `windows-latest` (x64) runner and one on `windows-11-arm` (GitHub-hosted, free for public repos). Every stage below (§3.2–§3.6) runs independently and completely on each leg; there's no cross-compilation, so `cargo build --release` always produces the runner's own host-architecture `llx.exe`, and each leg's `NativeTreeSitter`-tagged `/ui` tests exercise that architecture's own Tree-sitter DLLs (`ui/native/win-x64/` or `ui/native/win-arm64/`) for real.
+
 ## 3.1. Trigger Conditions
 - Push to `main`  
 - Pull request targeting `main`  
@@ -106,6 +108,7 @@ This workflow is local‑only, is never invoked by CI, and is not a substitute f
 - Upload CLI server binary  
 - Upload MSIX installer  
 - Mark artifacts as stable‑channel builds
+- Each matrix leg uploads its own RID-suffixed artifact names (`limelight-x-bundle-stable-<rid>`, `limelight-x-msix-stable-<rid>`) — GitHub Actions requires unique artifact names across matrix legs within one workflow run
 
 ---
 
@@ -124,7 +127,7 @@ This workflow is local‑only, is never invoked by CI, and is not a substitute f
 
 ## 4.3. Publish Stage
 - Publish artifacts to GitHub Releases  
-- Include UI executable, CLI server binary, MSIX installer  
+- Include both architectures: `LimelightX-win-x64.zip`/`LimelightX-win-arm64.zip` (UI executable + CLI server binary, unmodified) and `LimelightX-win-x64.msix`/`LimelightX-win-arm64.msix` — RID-suffixed since release assets must have unique filenames  
 - Include release notes  
 - Mark release as stable channel
 
@@ -174,7 +177,7 @@ This workflow is local‑only, is never invoked by CI, and is not a substitute f
 - `LimelightX.UI` targets Windows (`net8.0-windows` or later) and produces `LimelightX.exe`  
 - Avalonia build uses Windows runtime  
 - No macOS or Linux UI builds  
-- `LimelightX.UI.csproj` lists `RuntimeIdentifiers=win-x64;win-arm64` and pins `SelfContained=false`. Without a pinned RID, `dotnet build`/`publish` stages a `runtimes/{RID}/native/` folder for *every* platform each native-asset package supports (Avalonia, SkiaSharp, HarfBuzzSharp, Tmds.DBus, etc.) — Linux, macOS, and all three Windows architectures — even though only one RID is ever actually shipped at a time. The commands that produce shipped output pass an explicit `-r <rid>` (CI's publish step always uses `win-x64`, matching the `windows-latest` runner; `scripts/build-manual-testing.ps1` defaults to the host machine's own architecture — `win-arm64` on an ARM64 dev machine, `win-x64` elsewhere, overridable via `-Rid`) to confine native assets to just that one RID, flattened directly into the output root instead of a `runtimes/` subfolder; this cut the MSIX from ~195 MB to ~45 MB. Passing `-r` also inserts a `<rid>` segment into the build/publish output path (`ui/bin/<Configuration>/net8.0-windows/<rid>/...`), which `ui/packaging/build-msix.ps1` and `scripts/build-manual-testing.ps1` account for. `win-arm64` exists in the RID list so `dotnet restore` captures its native assets too — this repo's Tree-sitter DLLs live under `ui/native/win-x64/` and `ui/native/win-arm64/` (CLAUDE.md §3.5, `spec/parsing/tree-sitter-build-guide.md` §0), one folder per RID, auto-selected by `LimelightX.UI.csproj`. `win-x64` alone would make manual testing on an ARM64 dev machine impossible for exactly this reason. Both `win-arm64` and the genuine `win-x64` *native Tree-sitter* build are now populated (`tree-sitter-build-guide.md` §9) — this RID list is a separate concern regardless, since it only governs Avalonia/managed-dependency native assets, not the Tree-sitter DLLs.
+- `LimelightX.UI.csproj` lists `RuntimeIdentifiers=win-x64;win-arm64` and pins `SelfContained=false`. Without a pinned RID, `dotnet build`/`publish` stages a `runtimes/{RID}/native/` folder for *every* platform each native-asset package supports (Avalonia, SkiaSharp, HarfBuzzSharp, Tmds.DBus, etc.) — Linux, macOS, and all three Windows architectures — even though only one RID is ever actually shipped at a time. The commands that produce shipped output pass an explicit `-r <rid>` (CI's publish step runs once per matrix leg — `-r win-x64` on `windows-latest`, `-r win-arm64` on `windows-11-arm`, §3; `scripts/build-manual-testing.ps1` defaults to the host machine's own architecture — `win-arm64` on an ARM64 dev machine, `win-x64` elsewhere, overridable via `-Rid`) to confine native assets to just that one RID, flattened directly into the output root instead of a `runtimes/` subfolder; this cut the MSIX from ~195 MB to ~45 MB. Passing `-r` also inserts a `<rid>` segment into the build/publish output path (`ui/bin/<Configuration>/net8.0-windows/<rid>/...`), which `ui/packaging/build-msix.ps1` and `scripts/build-manual-testing.ps1` account for. `win-arm64` exists in the RID list so `dotnet restore` captures its native assets too — this repo's Tree-sitter DLLs live under `ui/native/win-x64/` and `ui/native/win-arm64/` (CLAUDE.md §3.5, `spec/parsing/tree-sitter-build-guide.md` §0), one folder per RID, auto-selected by `LimelightX.UI.csproj`. `win-x64` alone would make manual testing on an ARM64 dev machine impossible for exactly this reason. Both `win-arm64` and the genuine `win-x64` *native Tree-sitter* build are now populated (`tree-sitter-build-guide.md` §9) — this RID list is a separate concern regardless, since it only governs Avalonia/managed-dependency native assets, not the Tree-sitter DLLs.
 - `ui/packages.lock.json` must be regenerated (`dotnet restore --force-evaluate`) whenever the RID list changes, since the lock file records RID-specific package assets.
 
 ## 7.2. CLI/Server Build

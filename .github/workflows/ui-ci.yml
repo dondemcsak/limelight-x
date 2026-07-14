@@ -4,6 +4,16 @@ name: CI
 # covering both components (Cargo for /src, dotnet for /ui) in one workflow -
 # ui-build-pipeline.md §1 describes CI building both components together, not
 # /ui in isolation.
+#
+# Runs as a win-x64/win-arm64 matrix (ui-build-pipeline.md §3, §7.1): cargo
+# build --release has no --target pin, so it always builds for the runner's
+# own host triple - there's no cross-compilation here, meaning an ARM64
+# llx.exe (and a real exercise of the NativeTreeSitter-tagged tests against
+# ui/native/win-arm64/'s DLLs) requires actually running on ARM64 hardware,
+# not just a separate packaging step. windows-11-arm is GitHub-hosted and
+# free for public repos (currently public preview) but does not work on
+# private repos - moot for this repo, which doesn't have Actions enabled at
+# all; these workflows are prepared for the public repo this ships to.
 
 on:
   push:
@@ -19,7 +29,19 @@ env:
 
 jobs:
   build-test-package:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            runner: windows-latest
+            msix_arch: x64
+          - rid: win-arm64
+            runner: windows-11-arm
+            msix_arch: arm64
+    runs-on: ${{ matrix.runner }}
+    env:
+      MSIX_ARCH: ${{ matrix.msix_arch }}
     steps:
       # --- Prepare stage (§3.2) ---
       - name: Checkout
@@ -39,7 +61,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('ui/packages.lock.json', 'ui/tests/packages.lock.json') }}
+          key: nuget-${{ runner.os }}-${{ matrix.rid }}-${{ hashFiles('ui/packages.lock.json', 'ui/tests/packages.lock.json') }}
 
       - name: Cache Cargo registry
         uses: actions/cache@v4
@@ -47,7 +69,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          key: cargo-${{ runner.os }}-${{ matrix.rid }}-${{ hashFiles('Cargo.lock') }}
 
       - name: Validate lockfiles are present and committed
         shell: bash
@@ -98,10 +120,10 @@ jobs:
       # NativeTreeSitter-tagged tests P/Invoke tree-sitter-limelightx.dll /
       # tree-sitter-runtime.dll. ui/native/ is split per-RID (ui/native/win-x64/,
       # ui/native/win-arm64/ - LimelightX.UI.csproj resolves the right one
-      # automatically). Both RIDs' binaries are committed (win-x64 as of
-      # spec/parsing/tree-sitter-build-guide.md §9's completed steps), so this
-      # windows-latest (x64) runner now exercises the NativeTreeSitter tests
-      # for real against the win-x64 binaries - no filter needed.
+      # automatically, falling back to host OS architecture when no RID is
+      # pinned, which is the case here). Both RIDs' binaries are committed, so
+      # each matrix leg exercises the NativeTreeSitter tests for real against
+      # its own architecture's binaries - no filter needed.
       - name: Test /ui
         run: dotnet test ui/LimelightX.slnx -c Release --no-build
 
@@ -110,17 +132,17 @@ jobs:
 
       # --- Package stage (§3.5) ---
       - name: Publish LimelightX.UI
-        run: dotnet publish ui/LimelightX.UI.csproj -c Release -r win-x64 --self-contained false
+        run: dotnet publish ui/LimelightX.UI.csproj -c Release -r ${{ matrix.rid }} --self-contained false
 
       - name: Build MSIX package
         shell: pwsh
-        run: ./ui/packaging/build-msix.ps1
+        run: ./ui/packaging/build-msix.ps1 -Rid ${{ matrix.rid }}
 
       - name: Validate MSIX structure (unpack + inspect manifest)
         shell: pwsh
         run: |
           $makeAppx = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter "makeappx.exe" -Recurse |
-            Where-Object { $_.FullName -match "\\x64\\" } | Sort-Object FullName -Descending | Select-Object -First 1
+            Where-Object { $_.FullName -match "\\$env:MSIX_ARCH\\" } | Sort-Object FullName -Descending | Select-Object -First 1
           $unpackDir = "ui/packaging/out/unpacked"
           & $makeAppx.FullName unpack /p ui/packaging/out/LimelightX.msix /d $unpackDir /o
           if ($LASTEXITCODE -ne 0) { throw "makeappx unpack (structure validation) failed" }
@@ -130,10 +152,12 @@ jobs:
           Write-Host "MSIX structure validated: manifest, LimelightX.exe, and llx.exe all present."
 
       # --- Artifact publishing stage (§3.6) ---
+      # Artifact names carry a per-RID suffix - GitHub Actions requires unique
+      # artifact names across matrix legs within one workflow run.
       - name: Upload LimelightX.exe + llx.exe bundle (stable channel)
         uses: actions/upload-artifact@v4
         with:
-          name: limelight-x-bundle-stable
+          name: limelight-x-bundle-stable-${{ matrix.rid }}
           path: |
             ui/packaging/layout/**
           if-no-files-found: error
@@ -141,6 +165,6 @@ jobs:
       - name: Upload MSIX installer (stable channel)
         uses: actions/upload-artifact@v4
         with:
-          name: limelight-x-msix-stable
+          name: limelight-x-msix-stable-${{ matrix.rid }}
           path: ui/packaging/out/LimelightX.msix
           if-no-files-found: error

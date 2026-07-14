@@ -19,33 +19,40 @@ jobs:
     needs: ci
     runs-on: ubuntu-latest
     steps:
-      - name: Download bundle artifact
+      # ui-ci.yml's build-test-package job runs as a win-x64/win-arm64 matrix,
+      # so each artifact name carries a per-RID suffix - download both.
+      - name: Download bundle artifacts
         uses: actions/download-artifact@v4
         with:
-          name: limelight-x-bundle-stable
+          pattern: limelight-x-bundle-stable-*
           path: dist/bundle
 
-      - name: Download MSIX artifact
+      - name: Download MSIX artifacts
         uses: actions/download-artifact@v4
         with:
-          name: limelight-x-msix-stable
+          pattern: limelight-x-msix-stable-*
           path: dist/msix
 
+      # Release assets must have unique filenames, so each RID's bundle is
+      # zipped as-is (LimelightX.exe/llx.exe keep their original names inside)
+      # and each MSIX is renamed with its RID.
       - name: Stage release assets
         shell: bash
         run: |
           mkdir -p dist/release
-          cp dist/bundle/LimelightX.exe dist/release/LimelightX.exe
-          cp dist/bundle/llx.exe dist/release/llx.exe
-          cp dist/msix/LimelightX.msix dist/release/LimelightX.msix
+          for rid in win-x64 win-arm64; do
+            (cd "dist/bundle/limelight-x-bundle-stable-$rid" && zip -r "$OLDPWD/dist/release/LimelightX-$rid.zip" .)
+            cp "dist/msix/limelight-x-msix-stable-$rid/LimelightX.msix" "dist/release/LimelightX-$rid.msix"
+          done
 
       - name: Create GitHub Release (stable channel)
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/release/LimelightX.exe
-            dist/release/llx.exe
-            dist/release/LimelightX.msix
+            dist/release/LimelightX-win-x64.zip
+            dist/release/LimelightX-win-arm64.zip
+            dist/release/LimelightX-win-x64.msix
+            dist/release/LimelightX-win-arm64.msix
           generate_release_notes: true
           prerelease: false
           draft: false

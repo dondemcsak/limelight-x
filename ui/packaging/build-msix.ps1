@@ -11,6 +11,11 @@
   This script only stages and packs; it does not build either component,
   keeping it usable identically from a developer machine or CI.
 
+.PARAMETER Rid
+  Runtime identifier to package: "win-x64" or "win-arm64". Determines which
+  publish output folder is staged and which architecture's makeappx.exe is
+  used to pack it.
+
 .PARAMETER LlxExePath
   Path to the built llx.exe (default: cargo's release output).
 
@@ -20,6 +25,8 @@
 param(
     [string]$RepoRoot = (Resolve-Path "$PSScriptRoot/../..").Path,
     [string]$Configuration = "Release",
+    [ValidateSet("win-x64", "win-arm64")]
+    [string]$Rid = "win-x64",
     [string]$LlxExePath = "$RepoRoot/target/release/llx.exe",
     [string]$OutputMsixPath = "$RepoRoot/ui/packaging/out/LimelightX.msix"
 )
@@ -28,9 +35,10 @@ $ErrorActionPreference = "Stop"
 
 $packagingDir = "$RepoRoot/ui/packaging"
 $layoutDir = "$packagingDir/layout"
-# ui-build-pipeline.md §7.1: LimelightX.UI.csproj pins RuntimeIdentifier=win-x64,
-# which inserts a RID segment into the publish output path.
-$publishDir = "$RepoRoot/ui/bin/$Configuration/net8.0-windows/win-x64/publish"
+# ui-build-pipeline.md §7.1: publishing with "-r <rid>" inserts a RID segment
+# into the publish output path. CI runs this once per matrix leg (-Rid
+# win-x64 and -Rid win-arm64); the default here is for ad hoc local use.
+$publishDir = "$RepoRoot/ui/bin/$Configuration/net8.0-windows/$Rid/publish"
 
 if (-not (Test-Path $LlxExePath)) {
     throw "llx.exe not found at '$LlxExePath' - build /src first (cargo build --release)."
@@ -81,8 +89,11 @@ if (-not (Test-Path "$layoutDir/LimelightX.UI.exe")) {
 }
 Move-Item "$layoutDir/LimelightX.UI.exe" "$layoutDir/LimelightX.exe" -Force
 
+# Use the makeappx.exe matching -Rid's architecture (native tool, not x64
+# emulation) so a native ARM64 machine packages with its own SDK tool.
+$msixArch = if ($Rid -eq "win-arm64") { "arm64" } else { "x64" }
 $makeAppx = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter "makeappx.exe" -Recurse -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -match "\\x64\\" } |
+    Where-Object { $_.FullName -match "\\$msixArch\\" } |
     Sort-Object FullName -Descending |
     Select-Object -First 1
 
