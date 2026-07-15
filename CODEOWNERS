@@ -5,12 +5,17 @@
 # Global ownership — all files
 * @DonDemcsak
 
-# Core DSL and evaluator
-src/dsl/ @DonDemcsak
+# Core pipeline (/src)
+src/parser/ @DonDemcsak
+src/normalizer/ @DonDemcsak
+src/ir/ @DonDemcsak
 src/evaluator/ @DonDemcsak
+src/model/ @DonDemcsak
+src/api/ @DonDemcsak
+src/cli/ @DonDemcsak
 
-# Documentation and examples
-docs/ @DonDemcsak
+# Specs and examples
+spec/ @DonDemcsak
 examples/ @DonDemcsak
 
 # GitHub configuration and community health files

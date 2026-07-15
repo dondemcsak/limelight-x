@@ -91,7 +91,10 @@ pub fn compile(ast: &NormalizedAst) -> Result<Ir, Error> {
 // ---------------------------------------------------------------------------
 
 fn reverse_lookup(resource_index: &HashMap<String, usize>, idx: usize) -> Option<String> {
-    resource_index.iter().find(|(_, &v)| v == idx).map(|(k, _)| k.clone())
+    resource_index
+        .iter()
+        .find(|(_, &v)| v == idx)
+        .map(|(k, _)| k.clone())
 }
 
 fn resolve(
@@ -107,9 +110,10 @@ fn resolve(
             Ok(IrRef(idx))
         }
         InputRef::Resource(name) => {
-            let idx = resource_index.get(name).copied().ok_or_else(|| {
-                Error::IrError(format!("undefined resource reference '{name}'"))
-            })?;
+            let idx = resource_index
+                .get(name)
+                .copied()
+                .ok_or_else(|| Error::IrError(format!("undefined resource reference '{name}'")))?;
             Ok(IrRef(idx))
         }
     }
@@ -145,7 +149,12 @@ mod tests {
             },
         ]);
         let ir = compile(&ast).unwrap();
-        assert_eq!(ir.0[0], IrOp::Load { path: "article.txt".to_string() });
+        assert_eq!(
+            ir.0[0],
+            IrOp::Load {
+                path: "article.txt".to_string()
+            }
+        );
         assert_eq!(
             ir.0[1],
             IrOp::Summarize {
@@ -202,8 +211,20 @@ mod tests {
             },
         ]);
         let ir = compile(&ast).unwrap();
-        assert_eq!(ir.0[1], IrOp::Extract { target: "entities".to_string(), input: IrRef(0) });
-        assert_eq!(ir.0[2], IrOp::Summarize { input: IrRef(1), prompt: None });
+        assert_eq!(
+            ir.0[1],
+            IrOp::Extract {
+                target: "entities".to_string(),
+                input: IrRef(0)
+            }
+        );
+        assert_eq!(
+            ir.0[2],
+            IrOp::Summarize {
+                input: IrRef(1),
+                prompt: None
+            }
+        );
     }
 
     // BDD: Compile Rewrite and Format
@@ -225,8 +246,20 @@ mod tests {
             },
         ]);
         let ir = compile(&ast).unwrap();
-        assert_eq!(ir.0[1], IrOp::Rewrite { input: IrRef(0), prompt: None });
-        assert_eq!(ir.0[2], IrOp::Format { input: IrRef(1), target: "JSON".to_string() });
+        assert_eq!(
+            ir.0[1],
+            IrOp::Rewrite {
+                input: IrRef(0),
+                prompt: None
+            }
+        );
+        assert_eq!(
+            ir.0[2],
+            IrOp::Format {
+                input: IrRef(1),
+                target: "JSON".to_string()
+            }
+        );
     }
 
     #[test]
@@ -243,7 +276,13 @@ mod tests {
             },
         ]);
         let ir = compile(&ast).unwrap();
-        assert_eq!(ir.0[1], IrOp::Extract { target: "entities".to_string(), input: IrRef(0) });
+        assert_eq!(
+            ir.0[1],
+            IrOp::Extract {
+                target: "entities".to_string(),
+                input: IrRef(0)
+            }
+        );
     }
 
     #[test]

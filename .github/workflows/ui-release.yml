@@ -1,0 +1,58 @@
+name: Release
+
+# ui-build-pipeline.md §4: tag push -> full CI build workflow -> GitHub Releases,
+# stable channel only (§9.1) - no beta/nightly/experimental channels.
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ui-ci.yml
+
+  publish-release:
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      # ui-ci.yml's build-test-package job runs as a win-x64/win-arm64 matrix,
+      # so each artifact name carries a per-RID suffix - download both.
+      - name: Download bundle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: limelight-x-bundle-stable-*
+          path: dist/bundle
+
+      - name: Download MSIX artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: limelight-x-msix-stable-*
+          path: dist/msix
+
+      # Release assets must have unique filenames, so each RID's bundle is
+      # zipped as-is (LimelightX.exe/llx.exe keep their original names inside)
+      # and each MSIX is renamed with its RID.
+      - name: Stage release assets
+        shell: bash
+        run: |
+          mkdir -p dist/release
+          for rid in win-x64 win-arm64; do
+            (cd "dist/bundle/limelight-x-bundle-stable-$rid" && zip -r "$OLDPWD/dist/release/LimelightX-$rid.zip" .)
+            cp "dist/msix/limelight-x-msix-stable-$rid/LimelightX.msix" "dist/release/LimelightX-$rid.msix"
+          done
+
+      - name: Create GitHub Release (stable channel)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/release/LimelightX-win-x64.zip
+            dist/release/LimelightX-win-arm64.zip
+            dist/release/LimelightX-win-x64.msix
+            dist/release/LimelightX-win-arm64.msix
+          generate_release_notes: true
+          prerelease: false
+          draft: false

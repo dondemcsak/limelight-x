@@ -1,0 +1,18 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="400"
+             x:Class="LimelightX.UI.Components.SelectField"
+             x:Name="Root">
+
+  <StackPanel Spacing="2">
+    <TextBlock Classes="fieldLabel" Text="{Binding Label, ElementName=Root}" />
+    <ComboBox Classes="formField"
+              ItemsSource="{Binding Options, ElementName=Root}"
+              SelectedItem="{Binding SelectedValue, ElementName=Root, Mode=TwoWay}"
+              HorizontalAlignment="Stretch"
+              AutomationProperties.Name="{Binding Label, ElementName=Root}" />
+  </StackPanel>
+
+</UserControl>

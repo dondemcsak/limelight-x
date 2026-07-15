@@ -1,0 +1,40 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:fi="using:FluentIcons.Avalonia"
+             mc:Ignorable="d" d:DesignWidth="800"
+             x:Class="LimelightX.UI.Components.CollapsiblePanel"
+             x:Name="Root">
+
+  <Border Classes="card" Margin="{StaticResource PanelBottomSpacingThickness}">
+    <StackPanel>
+      <Button Classes="icon"
+              HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Left"
+              Padding="{StaticResource PaddingMediumThickness}"
+              Command="{Binding ToggleCommand, ElementName=Root}"
+              AutomationProperties.Name="{Binding AccessibleName, ElementName=Root}">
+        <Grid ColumnDefinitions="Auto,*">
+          <fi:SymbolIcon Grid.Column="0"
+                         Symbol="{Binding ChevronSymbol, ElementName=Root}"
+                         FontSize="16"
+                         Foreground="{StaticResource TextSecondaryBrush}"
+                         Margin="0,0,8,0" />
+          <TextBlock Grid.Column="1"
+                     Classes="cardHeader"
+                     Text="{Binding Title, ElementName=Root}" />
+        </Grid>
+      </Button>
+
+      <ScrollViewer x:Name="ContentScrollViewer"
+                    IsVisible="{Binding !IsCollapsed, ElementName=Root}"
+                    Height="{Binding PanelHeight, ElementName=Root}"
+                    VerticalScrollBarVisibility="Auto">
+        <ContentPresenter Content="{Binding PanelContent, ElementName=Root}"
+                           Margin="{StaticResource PaddingMediumThickness}" />
+      </ScrollViewer>
+    </StackPanel>
+  </Border>
+
+</UserControl>

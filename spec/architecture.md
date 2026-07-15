@@ -35,6 +35,14 @@ The repository must follow this structure:
     /ir
     /evaluator
     /model
+    /api
+/ui
+    /views
+    /viewmodels
+    /services
+    /components
+    /styles
+    /routing
 /spec
     architecture.md
     cnl-grammar.md
@@ -42,9 +50,27 @@ The repository must follow this structure:
     ir.md
     evaluator-semantics.md
     model-adapter.md
+    api.md
     coding-standards.md
     bdd.md
+    bdd-api.md
     spec-template.md
+    /ux
+        ui-architecture.md
+        ui-components.md
+        ui-viewmodels.md
+        ui-styling-theming.md
+        ui-routing-navigation.md
+        ui-data-contracts.md
+        ui-error-handling.md
+        ui-accessibility.md
+        ui-build-pipeline.md
+        ui-testing.md
+        ui-deployment.md
+        bdd-ui-interactions.md
+        bdd-ui-navigation.md
+        bdd-ui-error-cases.md
+        bdd-ui-visual-regressions.md
 ```
 
 ### Rules
@@ -54,6 +80,8 @@ The repository must follow this structure:
 - No shared mutable state.  
 - No “utils” or “helpers” modules.  
 - AST definitions live inside `/parser` and `/normalizer` (no `/ast` module).  
+- `/src/api` is defined in `spec/api.md`. It orchestrates calls to the existing pipeline stages over local HTTP; it does not introduce new pipeline stages or modify existing ones.  
+- `/ui` is a separate Avalonia/.NET (C#) client defined in `spec/ux/*.md`. It is a deliberately-scoped second language; `/src` remains single-language Rust. See CLAUDE.md §1.1.
 
 ---
 
@@ -179,6 +207,20 @@ The adapter must follow `model-adapter.md`.
 
 ---
 
+## 3.6 API Layer → HTTP Wrapper (optional, for `/ui`)
+
+`/src/api` exposes the same `run`/`explain`/`trace` operations over local HTTP, for use by the `/ui` Avalonia client. It sits alongside the CLI, not inside the pipeline:
+
+```
+        ┌── CLI (llx run/explain/trace) ──┐
+CNL ──► │                                  ├──► Parser → ... → Evaluator → Model Adapter → Result
+        └── API (llx serve → /run/explain/trace) ─┘
+```
+
+Full details (port, binding, lifecycle, request/response schemas) are defined in `spec/api.md`. The API layer does not reimplement, skip, or reorder any pipeline stage — it calls the same functions the CLI calls.
+
+---
+
 # 4. Data Flow Summary
 
 ```
@@ -209,7 +251,7 @@ Each stage receives a well‑defined input and produces a well‑defined output.
 
 # 5. CLI Integration
 
-The CLI exposes three commands:
+The CLI exposes four commands:
 
 ### `llx run <file>`
 - parses  
@@ -239,6 +281,11 @@ The CLI exposes three commands:
   - constructed prompts  
   - model outputs  
   - final result  
+
+### `llx serve [--port <N>]`
+- starts the `/src/api` HTTP server (see `spec/api.md`)
+- exposes `/run`, `/explain`, `/trace` over local HTTP for the `/ui` client
+- reuses the same pipeline invocations as the equivalent CLI commands
 
 The CLI must not perform evaluation logic.
 

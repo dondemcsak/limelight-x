@@ -7,10 +7,55 @@ use crate::normalizer::ast::NormalizedAst;
 use crate::parser::ast::RawAst;
 
 // ---------------------------------------------------------------------------
+// Structured evaluation outcome
+// ---------------------------------------------------------------------------
+
+/// The result of a full evaluator run: the final result string plus every
+/// prompt sent to, and output received from, the model adapter along the way.
+///
+/// `prompts`/`model_outputs` are always collected regardless of `trace`, so
+/// callers that need structured data (e.g. `/src/api`'s `/trace` endpoint)
+/// don't have to re-run the pipeline or scrape stdout.
+#[derive(Debug, Clone)]
+pub struct EvalOutcome {
+    pub final_result: String,
+    pub prompts: Vec<PromptRecord>,
+    pub model_outputs: Vec<ModelOutputRecord>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PromptRecord {
+    pub operation_index: usize,
+    pub prompt_text: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModelOutputRecord {
+    pub operation_index: usize,
+    pub raw_text: String,
+    pub latency_ms: u128,
+}
+
+// ---------------------------------------------------------------------------
+// Evaluator observer hook (spec/evaluator-semantics.md §4.1)
+// ---------------------------------------------------------------------------
+
+/// Notified at the exact moment each prompt is constructed and each model
+/// output is received, so callers (e.g. `/src/api`) can stream events as
+/// evaluation happens instead of waiting for the whole program to finish.
+///
+/// This is a notification hook only — it must not influence control flow,
+/// ordering, or determinism.
+pub trait EvaluatorObserver {
+    fn on_prompt_generated(&self, operation_index: usize, prompt_text: &str);
+    fn on_model_output_generated(&self, operation_index: usize, raw_text: &str, latency_ms: u128);
+}
+
+// ---------------------------------------------------------------------------
 // Public entry points
 // ---------------------------------------------------------------------------
 
-/// Evaluate an IR program and return the final result string.
+/// Evaluate an IR program and return the final result plus structured trace data.
 pub fn evaluate(
     ir: &Ir,
     adapter: &dyn ModelAdapter,
@@ -18,7 +63,8 @@ pub fn evaluate(
     trace: bool,
     raw_ast: Option<&RawAst>,
     normalized_ast: Option<&NormalizedAst>,
-) -> Result<String, Error> {
+    observer: Option<&dyn EvaluatorObserver>,
+) -> Result<EvalOutcome, Error> {
     if trace {
         if let Some(raw) = raw_ast {
             println!("=== Raw AST ===");
@@ -34,6 +80,8 @@ pub fn evaluate(
     }
 
     let mut results: Vec<String> = Vec::new();
+    let mut prompts: Vec<PromptRecord> = Vec::new();
+    let mut model_outputs: Vec<ModelOutputRecord> = Vec::new();
 
     for (index, op) in ir.0.iter().enumerate() {
         let op_name = op_name(op);
@@ -42,24 +90,39 @@ pub fn evaluate(
             println!("\n--- Operation [{index}]: {op} ---");
         }
 
-        let result = execute_op(op, &results, adapter, base_dir, index, op_name, trace)?;
+        let result = execute_op(
+            op,
+            &results,
+            adapter,
+            base_dir,
+            index,
+            op_name,
+            trace,
+            &mut prompts,
+            &mut model_outputs,
+            observer,
+        )?;
         results.push(result);
     }
 
-    results
-        .into_iter()
-        .last()
-        .ok_or_else(|| Error::EvalError {
-            index: 0,
-            op: "unknown".to_string(),
-            message: "no operations to evaluate".to_string(),
-        })
+    let final_result = results.into_iter().last().ok_or_else(|| Error::EvalError {
+        index: 0,
+        op: "unknown".to_string(),
+        message: "no operations to evaluate".to_string(),
+    })?;
+
+    Ok(EvalOutcome {
+        final_result,
+        prompts,
+        model_outputs,
+    })
 }
 
 // ---------------------------------------------------------------------------
 // Per-operation execution
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn execute_op(
     op: &IrOp,
     results: &[String],
@@ -68,12 +131,19 @@ fn execute_op(
     index: usize,
     op_name: &str,
     trace: bool,
+    prompts: &mut Vec<PromptRecord>,
+    model_outputs: &mut Vec<ModelOutputRecord>,
+    observer: Option<&dyn EvaluatorObserver>,
 ) -> Result<String, Error> {
     match op {
         IrOp::Load { path } => {
             let resolved = {
                 let p = Path::new(path);
-                if p.is_absolute() { p.to_path_buf() } else { base_dir.join(p) }
+                if p.is_absolute() {
+                    p.to_path_buf()
+                } else {
+                    base_dir.join(p)
+                }
             };
             let content = std::fs::read_to_string(&resolved).map_err(|e| Error::EvalError {
                 index,
@@ -89,7 +159,16 @@ fn execute_op(
         IrOp::Extract { target, input } => {
             let text = resolve_ref(input, results, index, op_name)?;
             let prompt = format!("Extract the {target} from the following text:\n\n{text}");
-            call_model(adapter, &prompt, index, op_name, trace)
+            call_model(
+                adapter,
+                &prompt,
+                index,
+                op_name,
+                trace,
+                prompts,
+                model_outputs,
+                observer,
+            )
         }
 
         IrOp::Summarize { input, prompt } => {
@@ -98,7 +177,16 @@ fn execute_op(
                 Some(user_prompt) => format!("{user_prompt}\n\nInput:\n{text}"),
                 None => format!("Summarize the following text clearly and concisely:\n\n{text}"),
             };
-            call_model(adapter, &full_prompt, index, op_name, trace)
+            call_model(
+                adapter,
+                &full_prompt,
+                index,
+                op_name,
+                trace,
+                prompts,
+                model_outputs,
+                observer,
+            )
         }
 
         IrOp::Translate {
@@ -111,7 +199,16 @@ fn execute_op(
                 Some(user_prompt) => format!("{user_prompt}\n\nInput:\n{text}"),
                 None => format!("Translate the following text into {language}:\n\n{text}"),
             };
-            call_model(adapter, &full_prompt, index, op_name, trace)
+            call_model(
+                adapter,
+                &full_prompt,
+                index,
+                op_name,
+                trace,
+                prompts,
+                model_outputs,
+                observer,
+            )
         }
 
         IrOp::Rewrite { input, prompt } => {
@@ -122,7 +219,16 @@ fn execute_op(
                     format!("Rewrite the following text for clarity and readability:\n\n{text}")
                 }
             };
-            call_model(adapter, &full_prompt, index, op_name, trace)
+            call_model(
+                adapter,
+                &full_prompt,
+                index,
+                op_name,
+                trace,
+                prompts,
+                model_outputs,
+                observer,
+            )
         }
 
         IrOp::Format { input, target } => {
@@ -131,11 +237,29 @@ fn execute_op(
                 let prompt = format!(
                     "Convert the following text into a pipe-delimited Markdown table with a header row:\n\n{text}"
                 );
-                let table = call_model(adapter, &prompt, index, op_name, trace)?;
+                let table = call_model(
+                    adapter,
+                    &prompt,
+                    index,
+                    op_name,
+                    trace,
+                    prompts,
+                    model_outputs,
+                    observer,
+                )?;
                 table_to_json(&table, index, op_name)
             } else {
                 let prompt = format!("Format the following text as {target}:\n\n{text}");
-                call_model(adapter, &prompt, index, op_name, trace)
+                call_model(
+                    adapter,
+                    &prompt,
+                    index,
+                    op_name,
+                    trace,
+                    prompts,
+                    model_outputs,
+                    observer,
+                )
             }
         }
     }
@@ -152,7 +276,10 @@ fn table_to_json(table: &str, index: usize, op_name: &str) -> Result<String, Err
         message: msg.to_string(),
     };
 
-    let is_separator = |line: &str| line.chars().all(|c| c == '|' || c == '-' || c == ' ' || c == ':');
+    let is_separator = |line: &str| {
+        line.chars()
+            .all(|c| c == '|' || c == '-' || c == ' ' || c == ':')
+    };
 
     let data_rows: Vec<Vec<String>> = table
         .lines()
@@ -166,12 +293,16 @@ fn table_to_json(table: &str, index: usize, op_name: &str) -> Result<String, Err
         .collect();
 
     if data_rows.is_empty() {
-        return Err(make_err("model output is not a valid pipe-delimited table: no rows found"));
+        return Err(make_err(
+            "model output is not a valid pipe-delimited table: no rows found",
+        ));
     }
 
     let headers = &data_rows[0];
     if headers.is_empty() {
-        return Err(make_err("model output is not a valid pipe-delimited table: no header columns found"));
+        return Err(make_err(
+            "model output is not a valid pipe-delimited table: no header columns found",
+        ));
     }
 
     let mut json = String::from("[");
@@ -198,7 +329,9 @@ fn table_to_json(table: &str, index: usize, op_name: &str) -> Result<String, Err
 }
 
 fn strip_markdown(s: &str) -> String {
-    s.replace("**", "").replace("__", "").replace('*', "").replace('_', "")
+    s.replace("**", "")
+        .replace("__", "")
+        .replace(['*', '_'], "")
 }
 
 fn escape_json_str(s: &str) -> String {
@@ -211,30 +344,54 @@ fn resolve_ref<'a>(
     index: usize,
     op_name: &str,
 ) -> Result<&'a str, Error> {
-    results.get(ir_ref.0).map(String::as_str).ok_or_else(|| Error::EvalError {
-        index,
-        op: op_name.to_string(),
-        message: format!("undefined IR reference ${}", ir_ref.0),
-    })
+    results
+        .get(ir_ref.0)
+        .map(String::as_str)
+        .ok_or_else(|| Error::EvalError {
+            index,
+            op: op_name.to_string(),
+            message: format!("undefined IR reference ${}", ir_ref.0),
+        })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn call_model(
     adapter: &dyn ModelAdapter,
     prompt: &str,
     index: usize,
     op_name: &str,
     trace: bool,
+    prompts: &mut Vec<PromptRecord>,
+    model_outputs: &mut Vec<ModelOutputRecord>,
+    observer: Option<&dyn EvaluatorObserver>,
 ) -> Result<String, Error> {
     if trace {
         println!("Prompt:\n{prompt}\n");
     }
+    prompts.push(PromptRecord {
+        operation_index: index,
+        prompt_text: prompt.to_string(),
+    });
+    if let Some(obs) = observer {
+        obs.on_prompt_generated(index, prompt);
+    }
+    let started = std::time::Instant::now();
     let output = adapter.complete(prompt).map_err(|e| Error::EvalError {
         index,
         op: op_name.to_string(),
         message: e.to_string(),
     })?;
+    let latency_ms = started.elapsed().as_millis();
     if trace {
         println!("Model output:\n{output}");
+    }
+    model_outputs.push(ModelOutputRecord {
+        operation_index: index,
+        raw_text: output.clone(),
+        latency_ms,
+    });
+    if let Some(obs) = observer {
+        obs.on_model_output_generated(index, &output, latency_ms);
     }
     Ok(output)
 }
@@ -261,7 +418,16 @@ mod tests {
     use crate::model::mock::{CapturingAdapter, MockModelAdapter};
 
     fn eval(ir: Ir, adapter: &dyn ModelAdapter) -> Result<String, Error> {
-        evaluate(&ir, adapter, std::path::Path::new("."), false, None, None)
+        evaluate(
+            &ir,
+            adapter,
+            std::path::Path::new("."),
+            false,
+            None,
+            None,
+            None,
+        )
+        .map(|outcome| outcome.final_result)
     }
 
     // BDD: Evaluate a Load operation
@@ -285,8 +451,13 @@ mod tests {
         // THEN the adapter receives the built-in template
         let adapter = CapturingAdapter::new("summary text");
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("article text") },
-            IrOp::Summarize { input: IrRef(0), prompt: None },
+            IrOp::Load {
+                path: make_temp_file("article text"),
+            },
+            IrOp::Summarize {
+                input: IrRef(0),
+                prompt: None,
+            },
         ]);
         eval(ir, &adapter).unwrap();
         let prompt = adapter.last_prompt().unwrap();
@@ -305,7 +476,9 @@ mod tests {
         // THEN the adapter receives the user prompt with input appended
         let adapter = CapturingAdapter::new("bullet summary");
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("article text") },
+            IrOp::Load {
+                path: make_temp_file("article text"),
+            },
             IrOp::Summarize {
                 input: IrRef(0),
                 prompt: Some("Summarize in 3 bullets.".to_string()),
@@ -313,7 +486,10 @@ mod tests {
         ]);
         eval(ir, &adapter).unwrap();
         let prompt = adapter.last_prompt().unwrap();
-        assert!(prompt.starts_with("Summarize in 3 bullets."), "unexpected prompt: {prompt}");
+        assert!(
+            prompt.starts_with("Summarize in 3 bullets."),
+            "unexpected prompt: {prompt}"
+        );
         assert!(prompt.contains("Input:"));
         assert!(prompt.contains("article text"));
     }
@@ -326,7 +502,9 @@ mod tests {
         // THEN the adapter receives the built-in translation template
         let adapter = CapturingAdapter::new("traduction");
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("some text") },
+            IrOp::Load {
+                path: make_temp_file("some text"),
+            },
             IrOp::Translate {
                 input: IrRef(0),
                 language: "French".to_string(),
@@ -349,8 +527,13 @@ mod tests {
         // THEN the adapter receives the built-in rewrite template
         let adapter = CapturingAdapter::new("rewritten");
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("draft text") },
-            IrOp::Rewrite { input: IrRef(0), prompt: None },
+            IrOp::Load {
+                path: make_temp_file("draft text"),
+            },
+            IrOp::Rewrite {
+                input: IrRef(0),
+                prompt: None,
+            },
         ]);
         eval(ir, &adapter).unwrap();
         let prompt = adapter.last_prompt().unwrap();
@@ -370,8 +553,13 @@ mod tests {
         let table_output = "| **Name** | **Age** |\n|------|-----|\n| Alice | 30 |\n| Bob | 25 |";
         let adapter = CapturingAdapter::new(table_output);
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("some data") },
-            IrOp::Format { input: IrRef(0), target: "JSON".to_string() },
+            IrOp::Load {
+                path: make_temp_file("some data"),
+            },
+            IrOp::Format {
+                input: IrRef(0),
+                target: "JSON".to_string(),
+            },
         ]);
         let result = eval(ir, &adapter).unwrap();
         let prompt = adapter.last_prompt().unwrap();
@@ -379,7 +567,10 @@ mod tests {
             prompt.contains("pipe-delimited Markdown table with a header row"),
             "unexpected prompt: {prompt}"
         );
-        assert_eq!(result, r#"[{"Name":"Alice","Age":"30"},{"Name":"Bob","Age":"25"}]"#);
+        assert_eq!(
+            result,
+            r#"[{"Name":"Alice","Age":"30"},{"Name":"Bob","Age":"25"}]"#
+        );
     }
 
     // BDD: Evaluate Format as non-JSON target — model receives standard format prompt
@@ -390,8 +581,13 @@ mod tests {
         // THEN the model receives the built-in format template
         let adapter = CapturingAdapter::new("## Markdown output");
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("some data") },
-            IrOp::Format { input: IrRef(0), target: "Markdown".to_string() },
+            IrOp::Load {
+                path: make_temp_file("some data"),
+            },
+            IrOp::Format {
+                input: IrRef(0),
+                target: "Markdown".to_string(),
+            },
         ]);
         eval(ir, &adapter).unwrap();
         let prompt = adapter.last_prompt().unwrap();
@@ -416,6 +612,38 @@ mod tests {
         assert!(msg.contains("operation 0"), "unexpected error: {msg}");
     }
 
+    // EvalOutcome carries structured prompt/model-output records regardless of trace
+    #[test]
+    fn test_eval_outcome_collects_prompts_and_model_outputs() {
+        let adapter = CapturingAdapter::new("summary text");
+        let ir = Ir(vec![
+            IrOp::Load {
+                path: make_temp_file("article text"),
+            },
+            IrOp::Summarize {
+                input: IrRef(0),
+                prompt: None,
+            },
+        ]);
+        let outcome = evaluate(
+            &ir,
+            &adapter,
+            std::path::Path::new("."),
+            false,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(outcome.final_result, "summary text");
+        assert_eq!(outcome.prompts.len(), 1);
+        assert_eq!(outcome.prompts[0].operation_index, 1);
+        assert!(outcome.prompts[0].prompt_text.contains("article text"));
+        assert_eq!(outcome.model_outputs.len(), 1);
+        assert_eq!(outcome.model_outputs[0].operation_index, 1);
+        assert_eq!(outcome.model_outputs[0].raw_text, "summary text");
+    }
+
     // BDD: Trace mode shows AST, normalized AST, IR, prompts, and results
     #[test]
     fn test_trace_mode_does_not_panic() {
@@ -424,17 +652,103 @@ mod tests {
         // THEN it executes without error (output goes to stdout)
         let adapter = MockModelAdapter::new("summary");
         let ir = Ir(vec![
-            IrOp::Load { path: make_temp_file("some text") },
-            IrOp::Summarize { input: IrRef(0), prompt: None },
+            IrOp::Load {
+                path: make_temp_file("some text"),
+            },
+            IrOp::Summarize {
+                input: IrRef(0),
+                prompt: None,
+            },
         ]);
-        let result = evaluate(&ir, &adapter, std::path::Path::new("."), true, None, None);
+        let result = evaluate(
+            &ir,
+            &adapter,
+            std::path::Path::new("."),
+            true,
+            None,
+            None,
+            None,
+        );
         assert!(result.is_ok());
+    }
+
+    // BDD: Observer is notified before/after each model call, in order, across
+    // multiple model-calling operations
+    #[test]
+    fn test_observer_notified_around_each_model_call_in_order() {
+        // GIVEN: Load -> Summarize -> Translate (two model-calling operations)
+        // WHEN the evaluator runs with an observer attached
+        // THEN the observer sees prompt(1), output(1), prompt(2), output(2) in order
+        let adapter = MockModelAdapter::new("model output");
+        let ir = Ir(vec![
+            IrOp::Load {
+                path: make_temp_file("article text"),
+            },
+            IrOp::Summarize {
+                input: IrRef(0),
+                prompt: None,
+            },
+            IrOp::Translate {
+                input: IrRef(1),
+                language: "French".to_string(),
+                prompt: None,
+            },
+        ]);
+        let observer = RecordingObserver::default();
+        evaluate(
+            &ir,
+            &adapter,
+            std::path::Path::new("."),
+            false,
+            None,
+            None,
+            Some(&observer),
+        )
+        .unwrap();
+        assert_eq!(
+            observer.events(),
+            vec![
+                (1, "prompt".to_string()),
+                (1, "output".to_string()),
+                (2, "prompt".to_string()),
+                (2, "output".to_string()),
+            ]
+        );
+    }
+
+    #[derive(Default)]
+    struct RecordingObserver {
+        events: std::cell::RefCell<Vec<(usize, String)>>,
+    }
+
+    impl RecordingObserver {
+        fn events(&self) -> Vec<(usize, String)> {
+            self.events.borrow().clone()
+        }
+    }
+
+    impl EvaluatorObserver for RecordingObserver {
+        fn on_prompt_generated(&self, operation_index: usize, _prompt_text: &str) {
+            self.events
+                .borrow_mut()
+                .push((operation_index, "prompt".to_string()));
+        }
+
+        fn on_model_output_generated(
+            &self,
+            operation_index: usize,
+            _raw_text: &str,
+            _latency_ms: u128,
+        ) {
+            self.events
+                .borrow_mut()
+                .push((operation_index, "output".to_string()));
+        }
     }
 
     fn make_temp_file(content: &str) -> String {
         use std::env;
-        static COUNTER: std::sync::atomic::AtomicU64 =
-            std::sync::atomic::AtomicU64::new(0);
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let path = env::temp_dir().join(format!("llx_test_{id}.txt"));
         std::fs::write(&path, content).unwrap();

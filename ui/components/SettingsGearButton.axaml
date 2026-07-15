@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:fi="using:FluentIcons.Avalonia"
+             xmlns:workspace="using:LimelightX.UI.ViewModels.Workspace"
+             mc:Ignorable="d" d:DesignWidth="32" d:DesignHeight="32"
+             x:Class="LimelightX.UI.Components.SettingsGearButton"
+             x:DataType="workspace:WorkspaceViewModel">
+
+  <!--
+    Persistent gear icon that opens the Settings modal (ui-components.md
+    §3.4). Disabled while any tab's execution is in flight, purely via
+    OpenSettingsCommand's own CanExecute (ui-routing-navigation.md §7) - no
+    separate IsEnabled binding needed.
+  -->
+  <Button Classes="icon"
+          Command="{Binding OpenSettingsCommand}"
+          AutomationProperties.Name="Open Settings"
+          ToolTip.Tip="Settings">
+    <fi:SymbolIcon Symbol="Settings" FontSize="18" Foreground="{StaticResource TextSecondaryBrush}" />
+  </Button>
+
+</UserControl>

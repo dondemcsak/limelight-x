@@ -1,0 +1,65 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:fi="using:FluentIcons.Avalonia"
+             xmlns:conv="using:LimelightX.UI.Components.Converters"
+             xmlns:tabs="using:LimelightX.UI.ViewModels.Tabs"
+             xmlns:workspace="using:LimelightX.UI.ViewModels.Workspace"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="36"
+             x:Class="LimelightX.UI.Components.TabStrip"
+             x:DataType="workspace:WorkspaceViewModel">
+
+  <!--
+    Tab strip (ui-components.md §3.2) - a dedicated ItemsControl, not
+    TabControl, for full control over the close button and dirty indicator.
+    Never disabled by execution state - switching, opening, and closing tabs
+    is always available (ui-routing-navigation.md §7). Hover-swap of the
+    dirty dot for the close icon (ui-styling-theming.md §4.8) is a Phase 9
+    styling refinement; both are shown side by side for now.
+  -->
+  <Border Background="{StaticResource BackgroundSecondaryBrush}"
+          BorderBrush="{StaticResource BorderBrush}"
+          BorderThickness="0,0,0,1"
+          AutomationProperties.Name="Open tabs">
+    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+      <ItemsControl ItemsSource="{Binding OpenTabs}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Horizontal" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="tabs:TabViewModel">
+            <Border Classes="tabStripItem" Classes.active="{Binding IsActive}">
+              <StackPanel Orientation="Horizontal" Spacing="6" Margin="{StaticResource PaddingMediumThickness}">
+                <Button Classes="tabStripHeaderButton"
+                        Command="{Binding $parent[ItemsControl].((workspace:WorkspaceViewModel)DataContext).SelectTabCommand}"
+                        CommandParameter="{Binding}"
+                        Content="{Binding Header}">
+                  <AutomationProperties.Name>
+                    <MultiBinding Converter="{x:Static conv:TabAccessibleNameConverter.Instance}">
+                      <Binding Path="Header" />
+                      <Binding Path="IsDirty" />
+                      <Binding Path="IsActive" />
+                    </MultiBinding>
+                  </AutomationProperties.Name>
+                </Button>
+                <Ellipse Width="6" Height="6"
+                         Fill="{StaticResource TabDirtyIndicatorBrush}"
+                         IsVisible="{Binding IsDirty}"
+                         AutomationProperties.Name="Unsaved changes" />
+                <Button Classes="icon"
+                        Command="{Binding CloseCommand}"
+                        AutomationProperties.Name="{Binding Header, StringFormat='Close {0}'}">
+                  <fi:SymbolIcon Symbol="Dismiss" FontSize="12" />
+                </Button>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </Border>
+
+</UserControl>

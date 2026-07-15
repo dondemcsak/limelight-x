@@ -1,0 +1,40 @@
+# Line endings, matching .editorconfig. Without this, a file checked out or
+# committed on a machine with a different core.autocrlf setting can silently
+# drift from the CRLF/LF convention .editorconfig and dotnet format expect,
+# passing on one machine and failing "dotnet format --verify-no-changes" on
+# another (confirmed: this happened to 7 /ui files committed with LF from a
+# non-Windows-normalized checkout).
+
+# .editorconfig's `[*] end_of_line = crlf` - the default for /ui and repo docs.
+*.cs text eol=crlf
+*.axaml text eol=crlf
+*.xaml text eol=crlf
+*.csproj text eol=crlf
+*.slnx text eol=crlf
+*.ps1 text eol=crlf
+*.md text eol=crlf
+*.manifest text eol=crlf
+
+# .editorconfig's `[*.{yml,yaml,json}] end_of_line = lf` override.
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+
+# Rust/Cargo ecosystem convention (LF) - explicitly out of .editorconfig's
+# scope per its own header comment; rustfmt's default newline_style is Auto
+# (preserves whatever the file already uses), so this pins it rather than
+# leaving it to whichever machine last touched the file.
+*.rs text eol=lf
+Cargo.toml text eol=lf
+Cargo.lock text eol=lf
+
+# Known binaries - never subject to line-ending conversion.
+*.dll binary
+*.exp binary
+*.lib binary
+*.obj binary
+*.pdb binary
+*.ico binary
+*.png binary
+*.ttf binary
+*.msix binary

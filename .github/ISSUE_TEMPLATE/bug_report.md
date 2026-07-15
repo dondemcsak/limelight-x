@@ -55,7 +55,9 @@ Include output, logs, or screenshots if helpful.
 
 ## 6. Environment
 - OS:
+- Surface: CLI (`llx run/explain/trace`) / API (`llx serve`) / UI (`/ui` desktop app) — which one?
 - CLI version (if applicable):
+- UI version (if applicable):
 - Branch or commit hash:
 
 ---

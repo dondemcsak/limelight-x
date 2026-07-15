@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:errors="using:LimelightX.UI.ViewModels.Errors"
+             mc:Ignorable="d" d:DesignWidth="800"
+             x:Class="LimelightX.UI.Components.ValidationOverlay"
+             x:Name="Root">
+
+  <ItemsControl ItemsSource="{Binding Errors, ElementName=Root}"
+                IsVisible="{Binding HasErrors, ElementName=Root}">
+    <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="errors:UiError">
+        <Border Classes="card"
+                BorderBrush="{StaticResource StatusErrorBrush}"
+                Margin="0,0,0,4"
+                Padding="{StaticResource PaddingMediumThickness}">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{Binding Code}"
+                       Foreground="{StaticResource StatusErrorBrush}"
+                       FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                       FontSize="{StaticResource FontSizeSmall}" />
+            <TextBlock Text="{Binding Message}"
+                       Foreground="{StaticResource TextPrimaryBrush}"
+                       FontFamily="{StaticResource InterFontFamily}"
+                       FontSize="{StaticResource FontSizeSmall}"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+      </DataTemplate>
+    </ItemsControl.ItemTemplate>
+  </ItemsControl>
+
+</UserControl>

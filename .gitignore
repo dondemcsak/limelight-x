@@ -19,3 +19,23 @@ target
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# .NET / Avalonia UI build output (packages.lock.json IS committed - see ui-build-pipeline.md §6.1)
+ui/bin/
+ui/obj/
+ui/tests/bin/
+ui/tests/obj/
+*.user
+
+# MSIX packaging output (staged layout + packed .msix are build artifacts,
+# not source - AppxManifest.xml, assets/, and build-msix.ps1 ARE committed)
+ui/packaging/layout/
+ui/packaging/out/
+tree-sitter/.editorconfig
+tree-sitter/.gitattributes
+tree-sitter/.gitignore
+tree-sitter/src/tree-sitter-limelightx.dll
+tree-sitter/src/tree-sitter-limelightx.exp
+tree-sitter/src/tree-sitter-limelightx.lib
+tree-sitter/src/*.obj
+*.log

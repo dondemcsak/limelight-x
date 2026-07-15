@@ -1,0 +1,43 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:fi="using:FluentIcons.Avalonia"
+             xmlns:conv="using:LimelightX.UI.Components.Converters"
+             xmlns:workspace="using:LimelightX.UI.ViewModels.Workspace"
+             mc:Ignorable="d" d:DesignWidth="220" d:DesignHeight="500"
+             x:Class="LimelightX.UI.Components.FileTreeView"
+             x:DataType="workspace:WorkspaceViewModel">
+
+  <!--
+    Explorer folder tree (ui-components.md §3.1). Never disabled by execution
+    state - folder browsing is always available (ui-routing-navigation.md §7).
+    Selecting a node reacts inside WorkspaceViewModel (not here), keeping this
+    component free of logic (ui-components.md §1).
+  -->
+  <UserControl.Styles>
+    <Style Selector="TreeViewItem" x:DataType="workspace:FileTreeNodeViewModel">
+      <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+    </Style>
+  </UserControl.Styles>
+
+  <TreeView ItemsSource="{Binding FileTree.Nodes}"
+            SelectedItem="{Binding FileTree.SelectedNode, Mode=TwoWay}"
+            Background="Transparent"
+            AutomationProperties.Name="Explorer">
+    <TreeView.DataTemplates>
+      <TreeDataTemplate DataType="workspace:FileTreeNodeViewModel" ItemsSource="{Binding Children}">
+        <StackPanel Orientation="Horizontal" Spacing="6" AutomationProperties.Name="{Binding Name}">
+          <fi:SymbolIcon Symbol="{Binding Converter={x:Static conv:FileTreeIconConverter.Instance}}"
+                         FontSize="14"
+                         Foreground="{StaticResource TextSecondaryBrush}" />
+          <TextBlock Text="{Binding Name}"
+                     Foreground="{StaticResource TextPrimaryBrush}"
+                     FontFamily="{StaticResource InterFontFamily}"
+                     FontSize="{StaticResource FontSizeSmall}" />
+        </StackPanel>
+      </TreeDataTemplate>
+    </TreeView.DataTemplates>
+  </TreeView>
+
+</UserControl>

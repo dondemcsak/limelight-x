@@ -1,6 +1,6 @@
 [package]
 name = "limelight-x"
-version = "0.1.0"
+version = "0.5.1"
 edition = "2021"
 
 [lib]
@@ -11,6 +11,11 @@ path = "src/lib.rs"
 name = "llx"
 path = "src/cli/main.rs"
 
+[features]
+# Exposes src/model/mock.rs (MockModelAdapter, CapturingAdapter) outside of
+# unit tests, so integration tests under tests/ can construct them.
+test-utils = []
+
 [dependencies]
 thiserror = "1"
 serde = { version = "1", features = ["derive"] }
@@ -18,3 +23,10 @@ serde_json = "1"
 clap = { version = "4", features = ["derive"] }
 reqwest = { version = "0.12", features = ["blocking", "json"] }
 regex = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+axum = { version = "0.7", features = ["ws"] }
+
+[dev-dependencies]
+# Self-dependency to enable the test-utils feature for integration tests
+# (tests/*.rs) without exposing it in the normal lib/bin build.
+limelight-x = { path = ".", features = ["test-utils"] }

@@ -7,10 +7,9 @@ This document explains how to report vulnerabilities responsibly and how we hand
 
 ## Supported Versions
 
-Limelight‑X is currently in active early development and does not yet use formal version tags.
+Limelight‑X is currently in active early development. `0.5.1` is the first tagged release; security fixes will be applied to the `main` branch and included in the next tagged version.
 
-Security fixes will be applied to the `main` branch.  
-When versioned releases begin, this policy will be updated to reflect supported versions.
+As the project matures past `1.0`, this policy will be updated to reflect a formal supported-versions window.
 
 ---
 
@@ -20,7 +19,7 @@ If you discover a security issue:
 
 1. **Do not open a public Issue or Pull Request.**
 2. **Email the maintainer privately** at:  
-   **[YOUR EMAIL HERE]**
+   **don@donxml.com**
 3. Include:
    - a clear description of the vulnerability  
    - steps to reproduce  
@@ -56,13 +55,17 @@ We appreciate researchers and contributors who help keep the project safe.
 
 Limelight‑X is intentionally minimal:
 
-- no backend  
 - no user accounts  
-- no server‑side logic  
-- no network access  
 - no dependencies beyond minimal dev tooling  
+- the only outbound network call is the model adapter's request to the Anthropic API (`model-adapter.md`)  
 
-This dramatically reduces the attack surface, but not completely.  
+The optional `llx serve` command (`/src/api`, see `api.md`) starts a local HTTP server for the optional `/ui` desktop client. It:
+
+- binds to `127.0.0.1` only — it is never reachable from another machine  
+- has no authentication, by design — its trust boundary is the loopback interface itself  
+- should not be exposed via port forwarding, reverse proxies, or `0.0.0.0` binding; doing so would expose an unauthenticated pipeline executor
+
+Aside from this opt-in local server, Limelight‑X remains attack-surface-minimal.  
 We still take reports seriously and treat security as part of the craft.
 
 ---

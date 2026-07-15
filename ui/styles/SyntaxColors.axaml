@@ -1,0 +1,27 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    VS Code Dark+ base, CNL-specific token colors (ui-styling-theming.md §5).
+    Used by CnlSyntaxColorizer (CNL editor, Tree-sitter-backed) and by
+    IR/prompt/model-output panels that reuse the same Dark+ palette for
+    JSON/code coloring.
+  -->
+  <Color x:Key="SyntaxKeywordColor">#569CD6</Color>
+  <Color x:Key="SyntaxPronounColor">#4EC9B0</Color>
+  <Color x:Key="SyntaxResourceColor">#CE9178</Color>
+  <Color x:Key="SyntaxExpressionHoleColor">#C586C0</Color>
+  <Color x:Key="SyntaxStringColor">#D69D85</Color>
+  <Color x:Key="SyntaxErrorColor">#EF4444</Color>
+
+  <SolidColorBrush x:Key="SyntaxKeywordBrush" Color="{StaticResource SyntaxKeywordColor}" />
+  <SolidColorBrush x:Key="SyntaxPronounBrush" Color="{StaticResource SyntaxPronounColor}" />
+  <SolidColorBrush x:Key="SyntaxResourceBrush" Color="{StaticResource SyntaxResourceColor}" />
+  <SolidColorBrush x:Key="SyntaxExpressionHoleBrush" Color="{StaticResource SyntaxExpressionHoleColor}" />
+  <SolidColorBrush x:Key="SyntaxStringBrush" Color="{StaticResource SyntaxStringColor}" />
+  <SolidColorBrush x:Key="SyntaxErrorBrush" Color="{StaticResource SyntaxErrorColor}" />
+
+  <!-- Editor cursor: thin lime bar (§5) -->
+  <SolidColorBrush x:Key="EditorCursorBrush" Color="{StaticResource AccentPrimaryColor}" />
+
+</ResourceDictionary>

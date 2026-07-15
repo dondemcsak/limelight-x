@@ -158,17 +158,19 @@ Example:
 ---
 
 # 8. CLI Behavior (If Applicable)
-Define how the CLI should expose this feature.
+Define how the CLI (and, if relevant, the `/src/api` HTTP surface started by `llx serve`) should expose this feature.
 
 Include:
 
-- new commands  
+- new commands or endpoints  
 - new flags  
 - examples  
 - error messages  
 - how the feature appears in:
   - `llx explain`  
   - `llx trace`  
+
+A feature scoped entirely to `/ui` (no `/src` change) may mark this section Not Applicable and rely on `spec/ux/*.md` instead — see `spec/api.md` for an example of a feature that uses this section for a new CLI/HTTP surface while marking §§3–7 Not Applicable.
 
 ---
 

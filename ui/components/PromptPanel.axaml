@@ -1,0 +1,20 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:components="using:LimelightX.UI.Components"
+             xmlns:inspectors="using:LimelightX.UI.ViewModels.Inspectors"
+             mc:Ignorable="d" d:DesignWidth="800"
+             x:Class="LimelightX.UI.Components.PromptPanel"
+             x:DataType="inspectors:PromptViewModel">
+
+  <components:CollapsiblePanel x:Name="Panel" Title="Prompts" IsCollapsed="{Binding IsCollapsed}" PanelHeight="{Binding Height}">
+    <components:CollapsiblePanel.PanelContent>
+      <StackPanel Spacing="8">
+        <components:ValidationOverlay Errors="{Binding Errors}" />
+        <ItemsControl x:Name="PromptsList" ItemsSource="{Binding Prompts}" />
+      </StackPanel>
+    </components:CollapsiblePanel.PanelContent>
+  </components:CollapsiblePanel>
+
+</UserControl>

@@ -1,0 +1,27 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:tabs="using:LimelightX.UI.ViewModels.Tabs"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="LimelightX.UI.Components.PlainTextEditor"
+             x:DataType="tabs:PlainTextEditorViewModel">
+
+  <!--
+    Generic text editor for non-.llx tabs (ui-components.md §4.3) - no CNL
+    syntax highlighting, no validation, no execution controls, no
+    relationship to the streaming pipeline.
+  -->
+  <TextBox Text="{Binding Text, Mode=TwoWay}"
+           CaretIndex="{Binding CursorPosition, Mode=TwoWay}"
+           AcceptsReturn="True"
+           AcceptsTab="True"
+           TextWrapping="NoWrap"
+           FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+           FontSize="{StaticResource FontSizeMedium}"
+           Foreground="{StaticResource TextPrimaryBrush}"
+           Background="Transparent"
+           BorderThickness="0"
+           AutomationProperties.Name="Plain text editor" />
+
+</UserControl>

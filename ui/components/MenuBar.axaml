@@ -1,0 +1,99 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:workspace="using:LimelightX.UI.ViewModels.Workspace"
+             mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="28"
+             x:Class="LimelightX.UI.Components.MenuBar"
+             x:DataType="workspace:WorkspaceViewModel">
+
+  <!--
+    Top MenuBar (ui-components.md §3.5): exactly two top-level menus, File
+    and Help, text-only (no icons). Shortcut hints are rendered as a second
+    TextBlock per leaf item rather than via MenuItem.InputGesture, since
+    Avalonia's KeyGesture parser cannot represent two-key chords like
+    "Ctrl+K, Ctrl+O" - every item's real key binding lives in
+    MainWindow.axaml/.axaml.cs, this is display-only.
+  -->
+  <Menu x:Name="RootMenu" Classes="titleBarMenu">
+
+    <MenuItem Header="_File">
+
+      <MenuItem Command="{Binding NewLlxFileCommand}" AutomationProperties.Name="New LLX File">
+        <MenuItem.Header>
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Text="New LLX File" />
+            <TextBlock Grid.Column="1" Text="Ctrl+N" Classes="menuShortcutHint" Margin="24,0,0,0" />
+          </Grid>
+        </MenuItem.Header>
+      </MenuItem>
+
+      <MenuItem Header="New TXT File" Command="{Binding NewTxtFileCommand}" AutomationProperties.Name="New TXT File" />
+
+      <MenuItem Command="{Binding OpenFileCommand}" AutomationProperties.Name="Open File">
+        <MenuItem.Header>
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Text="Open File" />
+            <TextBlock Grid.Column="1" Text="Ctrl+O" Classes="menuShortcutHint" Margin="24,0,0,0" />
+          </Grid>
+        </MenuItem.Header>
+      </MenuItem>
+
+      <MenuItem Command="{Binding OpenFolderCommand}" AutomationProperties.Name="Open Folder">
+        <MenuItem.Header>
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Text="Open Folder" />
+            <TextBlock Grid.Column="1" Text="Ctrl+K, Ctrl+O" Classes="menuShortcutHint" Margin="24,0,0,0" />
+          </Grid>
+        </MenuItem.Header>
+      </MenuItem>
+
+      <Separator />
+
+      <MenuItem Command="{Binding SaveCommand}" AutomationProperties.Name="Save">
+        <MenuItem.Header>
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Text="Save" />
+            <TextBlock Grid.Column="1" Text="Ctrl+S" Classes="menuShortcutHint" Margin="24,0,0,0" />
+          </Grid>
+        </MenuItem.Header>
+      </MenuItem>
+
+      <MenuItem Command="{Binding SaveAsCommand}" AutomationProperties.Name="Save As">
+        <MenuItem.Header>
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Text="Save As" />
+            <TextBlock Grid.Column="1" Text="Ctrl+Shift+S" Classes="menuShortcutHint" Margin="24,0,0,0" />
+          </Grid>
+        </MenuItem.Header>
+      </MenuItem>
+
+      <MenuItem Command="{Binding SaveAllCommand}" AutomationProperties.Name="Save All">
+        <MenuItem.Header>
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Text="Save All" />
+            <TextBlock Grid.Column="1" Text="Ctrl+K, S" Classes="menuShortcutHint" Margin="24,0,0,0" />
+          </Grid>
+        </MenuItem.Header>
+      </MenuItem>
+
+      <Separator />
+
+      <MenuItem Command="{Binding OpenSettingsCommand}" AutomationProperties.Name="Settings">
+        <MenuItem.Header>
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Text="Settings" />
+            <TextBlock Grid.Column="1" Text="Ctrl+," Classes="menuShortcutHint" Margin="24,0,0,0" />
+          </Grid>
+        </MenuItem.Header>
+      </MenuItem>
+
+    </MenuItem>
+
+    <MenuItem Header="_Help">
+      <MenuItem Header="About" Command="{Binding OpenAboutCommand}" AutomationProperties.Name="About" />
+    </MenuItem>
+
+  </Menu>
+
+</UserControl>

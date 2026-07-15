@@ -1,0 +1,115 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:components="using:LimelightX.UI.Components"
+             xmlns:tabs="using:LimelightX.UI.ViewModels.Tabs"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="LimelightX.UI.Components.CnlTabView"
+             x:DataType="tabs:CnlTabViewModel">
+
+  <!--
+    Composite view for an open .llx tab (ui-components.md §4.1): Run/Explain
+    above; below, an editor/execution-panel split divided by a draggable
+    GridSplitter (row 1 of SplitGrid). The execution panel always renders all
+    six inspector panels (§5), each starting collapsed, stacked in their own
+    accordion Grid (PanelStack) with a GridSplitter between each pair - both
+    halves share this tab's own Editor/PipelineExecution instances, so there
+    is no separate "Execution Page" to navigate to.
+  -->
+  <Grid RowDefinitions="Auto,*" Margin="{StaticResource PaddingLargeThickness}">
+
+    <StackPanel Grid.Row="0" Spacing="0" Margin="0,0,0,12">
+      <StackPanel Orientation="Horizontal" Spacing="{StaticResource PanelSpacing}" Margin="0,0,0,12">
+        <Button Classes="primary" Content="Run" Command="{Binding Editor.RunCommand}"
+                AutomationProperties.Name="Run" ToolTip.Tip="Run (Ctrl+R)" />
+        <Button Classes="secondary" Content="Explain" Command="{Binding Editor.ExplainCommand}"
+                AutomationProperties.Name="Explain" ToolTip.Tip="Explain (Ctrl+E)" />
+        <components:LoadingIndicator x:Name="ProgressIndicator"
+                                      IsLoading="{Binding PipelineExecution.IsRunning}"
+                                      Text="Running..."
+                                      VerticalAlignment="Center" />
+        <components:LoadingIndicator IsLoading="{Binding PipelineExecution.IsAwaitingModelOutput}"
+                                      Text="Waiting for model response..."
+                                      VerticalAlignment="Center" />
+      </StackPanel>
+
+      <components:ErrorBanner DataContext="{Binding PipelineExecution.ErrorBanner}" Margin="0,0,0,12" />
+    </StackPanel>
+
+    <Grid Grid.Row="1" x:Name="SplitGrid">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="1*" />
+        <RowDefinition Height="4" />
+        <RowDefinition Height="1*" />
+      </Grid.RowDefinitions>
+
+      <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+        <components:CnlEditor x:Name="CnlEditorView"
+                               Text="{Binding Editor.Text}"
+                               CursorPosition="{Binding Editor.CursorPosition}"
+                               SelectionRange="{Binding Editor.SelectionRange}"
+                               LocalDiagnostics="{Binding Editor.LocalDiagnostics}"
+                               FoldRegions="{Binding Editor.FoldRegions}"
+                               GhostSuggestion="{Binding Editor.GhostSuggestion}"
+                               MinHeight="200" />
+      </ScrollViewer>
+
+      <GridSplitter Grid.Row="1" x:Name="EditorPanelSplitter" Classes="rowSplitter"
+                    ResizeDirection="Rows" VerticalAlignment="Stretch"
+                    AutomationProperties.Name="Resize editor and results panel" />
+
+      <ScrollViewer Grid.Row="2" x:Name="PanelStackScrollViewer" VerticalScrollBarVisibility="Auto">
+        <Grid x:Name="PanelStack">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="4" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="4" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="4" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="4" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="4" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+
+          <components:RawAstPanel Grid.Row="0" DataContext="{Binding PipelineExecution.RawAstViewModel}" />
+          <GridSplitter Grid.Row="1" Classes="rowSplitter"
+                        ResizeDirection="Rows" VerticalAlignment="Stretch"
+                        IsVisible="{Binding !PipelineExecution.RawAstViewModel.IsCollapsed}"
+                        AutomationProperties.Name="Resize Raw AST panel" />
+
+          <components:NormalizedAstPanel Grid.Row="2" DataContext="{Binding PipelineExecution.NormalizedAstViewModel}" />
+          <GridSplitter Grid.Row="3" Classes="rowSplitter"
+                        ResizeDirection="Rows" VerticalAlignment="Stretch"
+                        IsVisible="{Binding !PipelineExecution.NormalizedAstViewModel.IsCollapsed}"
+                        AutomationProperties.Name="Resize Normalized AST panel" />
+
+          <components:IrPanel Grid.Row="4" DataContext="{Binding PipelineExecution.IrViewModel}" />
+          <GridSplitter Grid.Row="5" Classes="rowSplitter"
+                        ResizeDirection="Rows" VerticalAlignment="Stretch"
+                        IsVisible="{Binding !PipelineExecution.IrViewModel.IsCollapsed}"
+                        AutomationProperties.Name="Resize IR panel" />
+
+          <components:PromptPanel Grid.Row="6" x:Name="PromptPanelView" DataContext="{Binding PipelineExecution.PromptViewModel}" />
+          <GridSplitter Grid.Row="7" Classes="rowSplitter"
+                        ResizeDirection="Rows" VerticalAlignment="Stretch"
+                        IsVisible="{Binding !PipelineExecution.PromptViewModel.IsCollapsed}"
+                        AutomationProperties.Name="Resize Prompts panel" />
+
+          <components:ModelOutputPanel Grid.Row="8" DataContext="{Binding PipelineExecution.ModelOutputViewModel}" />
+          <GridSplitter Grid.Row="9" Classes="rowSplitter"
+                        ResizeDirection="Rows" VerticalAlignment="Stretch"
+                        IsVisible="{Binding !PipelineExecution.ModelOutputViewModel.IsCollapsed}"
+                        AutomationProperties.Name="Resize Model Outputs panel" />
+
+          <components:FinalResultPanel Grid.Row="10" DataContext="{Binding PipelineExecution.FinalResultViewModel}" />
+        </Grid>
+      </ScrollViewer>
+
+    </Grid>
+  </Grid>
+
+</UserControl>

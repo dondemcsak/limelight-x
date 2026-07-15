@@ -45,7 +45,7 @@ Maintainers have the right to remove, edit, or reject contributions that do not 
 ## Reporting Issues
 If you experience or witness behavior that violates this Code of Conduct:
 
-- Email the maintainers at: **[YOUR EMAIL HERE]**  
+- Email the maintainers at: **don@donxml.com**  
 - Or open a confidential issue labeled **conduct** (if appropriate)
 
 Reports will be handled promptly, respectfully, and confidentially.

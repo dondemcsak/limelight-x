@@ -224,9 +224,7 @@ mod tests {
         // GIVEN Load + Summarize(input = Pronoun("it"))
         // WHEN the normalizer runs
         // THEN input = PreviousResult, no NamedVariable nodes
-        let ast = parse_and_normalize(
-            "Load the article from \"article.txt\".\nSummarize it.",
-        );
+        let ast = parse_and_normalize("Load the article from \"article.txt\".\nSummarize it.");
         assert_eq!(
             ast.0[1],
             NormalizedNode::Summarize {
@@ -259,7 +257,8 @@ mod tests {
         // GIVEN: Load, Let summary be the result., Summarize summary.
         // WHEN the normalizer runs
         // THEN: Summarize gets input = PreviousResult (fully resolved), no NamedVariable
-        let src = "Load the article from \"article.txt\".\nLet saved be the result.\nSummarize saved.";
+        let src =
+            "Load the article from \"article.txt\".\nLet saved be the result.\nSummarize saved.";
         let ast = parse_and_normalize(src);
         // Load at 0, Summarize at 1 (Bind is removed)
         assert_eq!(ast.0.len(), 2);
@@ -298,7 +297,8 @@ mod tests {
     fn test_bind_load_pattern() {
         // Let article be the text from "article.txt". should produce a Load node
         // and bind "article" to Resource("text").
-        let src = "Let article be the text from \"article.txt\".\nExtract the entities from article.";
+        let src =
+            "Let article be the text from \"article.txt\".\nExtract the entities from article.";
         let ast = parse_and_normalize(src);
         assert_eq!(ast.0.len(), 2);
         assert_eq!(
@@ -319,7 +319,8 @@ mod tests {
 
     #[test]
     fn test_no_shadowing() {
-        let src = "Load the article from \"article.txt\".\nLet x be the result.\nLet x be the result.";
+        let src =
+            "Load the article from \"article.txt\".\nLet x be the result.\nLet x be the result.";
         let raw = parser::parse(src).unwrap();
         let err = normalize(&raw).unwrap_err();
         assert!(err.to_string().contains("already bound"));

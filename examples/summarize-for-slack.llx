@@ -1,4 +1,4 @@
-Load the transcript from "meeting.txt".
+Load the transcript from "C:\Code\limelight-private\examples\meeting.txt".
 Extract the action items from the transcript.
 Summarize the action items.
 Rewrite the summary using {{ prompt: "Rewrite in a friendly, conversational tone suitable for a Slack update." }}.

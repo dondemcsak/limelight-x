@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:inspectors="using:LimelightX.UI.ViewModels.Inspectors"
+             mc:Ignorable="d" d:DesignWidth="800"
+             x:Class="LimelightX.UI.Components.AstTreeView"
+             x:Name="Root">
+
+  <!--
+    VS-Code-style modern tree view (ui-components.md §4.6): chevron
+    expanders (Avalonia's default TreeViewItem chrome), indentation guides,
+    key/value pairs, syntax coloring, deterministic ordering (renders
+    Children in wire order - no re-sorting). Root node auto-expands
+    (bdd-ui-interactions.md §4.14-§4.15); descendants default collapsed and
+    toggle independently via the TwoWay IsExpanded binding below.
+  -->
+  <UserControl.Styles>
+    <Style Selector="TreeViewItem" x:DataType="inspectors:AstNodeViewModel">
+      <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+    </Style>
+  </UserControl.Styles>
+
+  <TreeView x:Name="Tree"
+            ItemsSource="{Binding RootItems, ElementName=Root}"
+            Background="Transparent">
+    <TreeView.DataTemplates>
+      <TreeDataTemplate DataType="inspectors:AstNodeViewModel" ItemsSource="{Binding Children}">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="{Binding Type}"
+                     Foreground="{StaticResource SyntaxKeywordBrush}"
+                     FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                     FontSize="{StaticResource FontSizeSmall}" />
+          <TextBlock Text="{Binding Value}"
+                     Foreground="{StaticResource TextSecondaryBrush}"
+                     FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                     FontSize="{StaticResource FontSizeSmall}"
+                     TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+      </TreeDataTemplate>
+    </TreeView.DataTemplates>
+  </TreeView>
+
+</UserControl>

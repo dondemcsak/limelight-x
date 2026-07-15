@@ -1,11 +1,11 @@
 # Coding Standards
 
 ## Purpose
-This document defines the coding standards for the Limelight‑X codebase.  
+This document defines the coding standards for the Limelight‑X **`/src` codebase** (Rust, including `/src/api`).  
 All Rust code generated or modified by Claude must follow these rules.  
 These standards ensure consistency, readability, determinism, and alignment with the architectural constraints defined in `/spec`.
 
-These rules are **mandatory** for all code in the repository.
+These rules are **mandatory** for all Rust code in `/src`. They do not apply to `/ui`, a separate Avalonia/.NET (C#) client governed by `spec/ux/*.md` (see CLAUDE.md §1.1).
 
 ---
 
@@ -28,6 +28,7 @@ The repository must follow this structure:
     /ir
     /evaluator
     /model
+    /api
 /spec
     ...
 ```
@@ -41,6 +42,7 @@ The repository must follow this structure:
    - IR compiler → consumes normalized AST, produces IR
    - Evaluator → consumes IR
    - Model adapter → only called by evaluator
+   - API (`/src/api`) → orchestrates the same `run`/`explain`/`trace` calls the CLI makes; it must not introduce new pipeline stages or call into parser/normalizer/IR/evaluator internals directly outside those existing entry points
 3. No circular dependencies.
 4. No “misc”, “utils”, or “helpers” modules unless explicitly approved.
 5. No `/ast` module — AST node definitions live inside the parser and normalizer modules as specified in `architecture.md`.
@@ -174,6 +176,7 @@ Every public type, function, and module must include Rustdoc comments:
 - `reqwest` (for model adapter)
 - `clap` (for CLI)
 - `regex` (for parser, if needed)
+- an HTTP server crate for `/src/api` (e.g. `axum`), per `api.md` — this is the only new crate approved for `/src/api`; it must reuse `crate::error::Error`/`thiserror` for its error type, not introduce a parallel error hierarchy
 
 ### Prohibited Crates
 - Any crate that introduces nondeterminism.

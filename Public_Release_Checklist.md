@@ -27,8 +27,9 @@ Complete each section before changing the repository visibility to **Public**.
 - [ ] No temporary files, scratch notes, or experimental branches  
 - [ ] No dead code or unused directories  
 - [ ] All examples run as written  
-- [ ] CLI help text is correct and up to date  
+- [ ] CLI help text is correct and up to date, including `llx serve`  
 - [ ] Grammar, IR, evaluator, and normalization docs are consistent  
+- [ ] `/src/api` (`llx serve`) and `/ui` docs (`api.md`, `spec/ux/*.md`) are consistent with each other  
 - [ ] Commit history is clean and readable  
 
 ---
@@ -61,11 +62,11 @@ Enable all recommended GitHub security features:
 
 ## 5. Versioning & Release Prep
 
-- [ ] Version number set (e.g., `0.1.0`)  
+- [ ] Version number set (e.g., `0.5.1`)  
 - [ ] `CHANGELOG.md` created or updated  
 - [ ] First release tag created:  
   ```
-  git tag -a v0.1.0 -m "Initial public release"
+  git tag -a v0.5.1 -m "Initial public release"
   git push --tags
   ```
 
@@ -79,6 +80,7 @@ Enable all recommended GitHub security features:
 - [ ] IR examples are correct and readable  
 - [ ] Evaluator semantics documented  
 - [ ] Normalization rules documented  
+- [ ] `/src/api` HTTP examples (`POST /run`, `/explain`, `/trace`) documented  
 - [ ] Roadmap or “Future Work” section included  
 
 ---
@@ -88,8 +90,9 @@ Enable all recommended GitHub security features:
 - [ ] `CODEOWNERS` file added  
 - [ ] GitHub Discussions enabled (if desired)  
 - [ ] GitHub Pages configured or explicitly disabled  
-- [ ] Screenshots, diagrams, or architecture overview added  
+- [ ] Screenshots, diagrams, or architecture overview added — including `/ui` screenshots if the UI is included in this release  
 - [ ] “Good First Issues” labeled for new contributors  
+- [ ] If `/ui` is part of this release: MSIX installer build verified, and `ANTHROPIC_API_KEY` setup steps documented for end users (see `spec/ux/ui-deployment.md`)  
 
 ---
 

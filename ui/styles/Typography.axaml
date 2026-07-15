@@ -1,0 +1,19 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    Dual-font system (ui-styling-theming.md §3). Inter for all UI/inspector
+    text, JetBrains Mono exclusively for the editor. Bundled as Avalonia
+    assets under styles/Fonts, not a NuGet font package (per plan).
+  -->
+  <FontFamily x:Key="InterFontFamily">avares://LimelightX.UI/styles/Fonts#Inter</FontFamily>
+  <FontFamily x:Key="JetBrainsMonoFontFamily">avares://LimelightX.UI/styles/Fonts#JetBrains Mono</FontFamily>
+
+  <x:Double x:Key="FontSizeSmall">12</x:Double>
+  <x:Double x:Key="FontSizeMedium">13</x:Double>
+  <x:Double x:Key="FontSizeLarge">15</x:Double>
+  <x:Double x:Key="FontSizeHeading">18</x:Double>
+
+  <x:Double x:Key="EditorLineHeight">1.35</x:Double>
+
+</ResourceDictionary>

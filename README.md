@@ -53,6 +53,14 @@ It is a **teaching and demonstration engine**.
     /ir
     /evaluator
     /model
+    /api
+/ui
+    /views
+    /viewmodels
+    /services
+    /components
+    /styles
+    /routing
 /spec
     architecture.md
     cnl-grammar.md
@@ -60,15 +68,35 @@ It is a **teaching and demonstration engine**.
     ir.md
     evaluator-semantics.md
     model-adapter.md
+    api.md
     coding-standards.md
     bdd.md
+    bdd-api.md
     spec-template.md
+    /ux
+        ui-architecture.md
+        ui-components.md
+        ui-viewmodels.md
+        ui-styling-theming.md
+        ui-routing-navigation.md
+        ui-data-contracts.md
+        ui-error-handling.md
+        ui-accessibility.md
+        ui-build-pipeline.md
+        ui-testing.md
+        ui-deployment.md
+        bdd-ui-interactions.md
+        bdd-ui-navigation.md
+        bdd-ui-error-cases.md
+        bdd-ui-visual-regressions.md
 ```
 
 ### Key points
 
 - There is **no `/ast` module** — AST types live in `/parser` and `/normalizer`.
 - There is **no provider layer** — the evaluator calls the model adapter directly.
+- `/src/api` is a thin HTTP wrapper around the existing `run`/`explain`/`trace` logic (see `api.md`) — it is the one approved exception to the "no new modules" rule.
+- `/ui` is a separate, optional Avalonia/.NET (C#) desktop client (see `spec/ux/`) that talks to `/src/api` over local HTTP. It is a deliberately-scoped second language; the core pipeline in `/src` remains single-language Rust.
 - All behavior is defined in `/spec`.
 
 ---
@@ -144,6 +172,9 @@ Runs the full pipeline and prints:
 
 Trace mode is the best way to understand the system.
 
+## `llx serve [--port <N>]`
+Starts a local, loopback-only HTTP server (`/src/api`, see `api.md`) exposing `POST /run`, `/explain`, `/trace` — the same three operations above, over HTTP. It exists so the optional `/ui` desktop client (see §11) can drive the pipeline without embedding Rust. Default port is `4747`.
+
 ---
 
 # 6. Example
@@ -218,7 +249,10 @@ Key specs:
 - `ir.md` — IR structure  
 - `evaluator-semantics.md` — prompt construction + execution  
 - `model-adapter.md` — Claude integration  
-- `bdd.md` — acceptance criteria  
+- `api.md` — `/src/api` HTTP server (`llx serve`), consumed by the optional `/ui` client  
+- `bdd.md` — acceptance criteria for the core pipeline  
+- `bdd-api.md` — acceptance criteria for `/src/api`  
+- `ux/` — specs for the optional `/ui` desktop client (Avalonia/.NET)  
 
 ---
 
@@ -239,7 +273,41 @@ These may be added in future versions.
 
 ---
 
-# 10. License
+# 10. Optional UI
+
+Limelight‑X also has an optional desktop UI (`/ui`), a separate Avalonia/.NET (C#) client that talks to `llx serve`'s local HTTP API instead of embedding Rust. It is entirely optional — the CLI is fully self-sufficient without it. See `spec/ux/` for its specs and `api.md` for the HTTP contract it depends on.
+
+---
+
+# 11. Building & CI
+
+Full details are the authoritative spec at `spec/ux/ui-build-pipeline.md`. Summary below.
+
+## 11.1 CI Build
+
+Every push and pull request to `main` runs the CI workflow (`.github/workflows/ui-ci.yml`), which builds and validates **both** components together as a **`win-x64` / `win-arm64` matrix** — one leg on `windows-latest`, one on `windows-11-arm` (GitHub-hosted, free for public repos). Each leg runs the full sequence independently, since `cargo build --release` always targets its own runner's host architecture:
+
+- **Prepare** — checkout, restore .NET/Cargo caches, validate `Cargo.lock` / `packages.lock.json` are present and committed, restore both components in locked mode, run dependency audits (`cargo audit`, `dotnet list package --vulnerable`)
+- **Compile** — `dotnet build ui/LimelightX.slnx -c Release -warnaserror`, `dotnet format --verify-no-changes`, `cargo build --release --locked`, `cargo fmt --check`, `cargo clippy -- -D warnings`
+- **Test** — `dotnet test`, `cargo test --release --locked` (each leg's `NativeTreeSitter`-tagged `/ui` tests exercise that architecture's own Tree-sitter DLLs for real)
+- **Package** — `dotnet publish -r <rid>` for `LimelightX.UI`, then `ui/packaging/build-msix.ps1 -Rid <rid>` builds an unsigned MSIX bundling `LimelightX.exe` + `llx.exe`, followed by structural validation of the unpacked MSIX
+- **Publish artifacts** — uploads the `LimelightX.exe` + `llx.exe` bundle and the MSIX as CI artifacts, RID-suffixed per leg (`limelight-x-bundle-stable-win-x64`/`-win-arm64`, `limelight-x-msix-stable-win-x64`/`-win-arm64`)
+
+Tagged pushes matching `v*.*.*` additionally trigger `.github/workflows/ui-release.yml`, which reuses this CI workflow and publishes both architectures' artifacts (`LimelightX-win-x64.zip`/`.msix`, `LimelightX-win-arm64.zip`/`.msix`) to a GitHub Release (stable channel only).
+
+## 11.2 Manual Testing (Debug) Build
+
+Running the full CI-equivalent build locally just to manually try out a change is unnecessary overhead — it lints, audits, tests, and packages an MSIX. For quick local iteration, use:
+
+```
+./scripts/build-manual-testing.ps1
+```
+
+This builds `/src` (`cargo build`) and `/ui` (`dotnet publish ui/LimelightX.UI.csproj --no-self-contained`) in **Debug** configuration by default (pass `-Configuration Release` for a release build), and stages `LimelightX.UI.exe`, `llx.exe`, and every required runtime dependency (DLLs, `.deps.json`, `.runtimeconfig.json`) together into `target/manual-testing/` so the app can be run from one folder. It does not lint, audit, test, or package — see `spec/ux/ui-build-pipeline.md` §2.5 for the full spec.
+
+---
+
+# 12. License
 
 MIT License.
 

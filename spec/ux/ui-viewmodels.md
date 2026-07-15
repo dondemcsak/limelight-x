@@ -1,0 +1,537 @@
+# UI ViewModels (Streaming Edition)
+
+## Purpose
+This document defines all ViewModels used by the Limelight‑X UI.  
+It specifies their responsibilities, state models, commands, and deterministic behavior.  
+This specification is authoritative.  
+All implementation must follow this architecture exactly.
+
+This version incorporates the **event‑streaming API** defined in `api.md`, replacing single‑response HTTP calls with incremental JSON events delivered over WebSocket.
+
+The UI operates in **app‑wide single‑execution mode**:
+- Only one pipeline execution may be active at a time, across all open tabs.
+- A tab's Run/Explain buttons are disabled while any tab (including itself) has an execution in flight.
+- A new execution cannot begin until the previous one completes or fails, regardless of which tab started it.
+- Each `.llx` tab nonetheless retains its own independent execution *results* (inspector state) between executions — the lock is about concurrency, not about sharing state across tabs.
+
+---
+
+# 1. Architectural Principles
+
+1. **MVVM Purity**  
+   - Views contain no logic.  
+   - ViewModels contain state and commands.  
+   - Services handle HTTP + WebSocket communication.
+
+2. **Deterministic State**  
+   - All UI state is derived from ViewModels.  
+   - No hidden transitions.  
+   - No nondeterministic behavior.
+
+3. **Streaming Pipeline Model**  
+   - Each pipeline execution produces a sequence of JSON events.  
+   - ViewModels update incrementally as events arrive.  
+   - Inspectors appear when their corresponding event arrives.
+
+4. **App‑Wide Single Execution**  
+   - Only one `correlation_id` is active at a time, app‑wide.  
+   - UI disables execution commands on every tab until the active pipeline finishes.  
+   - No queuing, no cancellation, no parallel requests.
+
+---
+
+# 2. ViewModel Overview
+
+The UI defines the following ViewModels:
+
+- `WorkspaceViewModel`
+- `FileTreeViewModel`
+- `TabViewModel` (base), `CnlTabViewModel`, `PlainTextTabViewModel`
+- `EditorViewModel` (per `CnlTabViewModel`)
+- `PlainTextEditorViewModel` (per `PlainTextTabViewModel`)
+- `PipelineExecutionViewModel` (per `CnlTabViewModel`)
+- `IExecutionLockService`
+- `SettingsViewModel`
+- `AboutViewModel`
+- Inspector ViewModels (per `CnlTabViewModel`):
+  - `RawAstViewModel`  
+  - `NormalizedAstViewModel`  
+  - `IrViewModel`  
+  - `PromptViewModel`  
+  - `ModelOutputViewModel`  
+  - `FinalResultViewModel`
+
+Each ViewModel is deterministic and state‑derived.
+
+---
+
+# 3. WorkspaceViewModel
+
+### Responsibilities
+- Holds the open root folder path.
+- Owns the folder tree (`FileTreeViewModel`) and the collection of open tabs.
+- Opens or focuses a tab when a file is selected in the tree.
+- Coordinates the Settings‑modal and About‑modal open/close gates.
+- Creates untitled tabs and resolves file paths for Save/Save As/Save All.
+
+### State
+- `RootFolderPath : string?`
+- `OpenTabs : ObservableCollection<TabViewModel>`
+- `ActiveTab : TabViewModel?`
+- `IsSettingsOpen : bool`
+- `IsAboutOpen : bool`
+
+### Commands
+- `OpenFolderCommand`
+- `OpenOrFocusTabCommand(FileTreeNodeViewModel)`
+- `CloseTabCommand(TabViewModel)`
+- `OpenSettingsCommand`
+- `CloseSettingsCommand`
+- `OpenAboutCommand`
+- `CloseAboutCommand`
+- `NewLlxFileCommand`
+- `NewTxtFileCommand`
+- `OpenFileCommand`
+- `SaveCommand`
+- `SaveAsCommand`
+- `SaveAllCommand`
+
+### Rules
+- Must not depend on pipeline state except: `OpenSettingsCommand` is blocked while `IExecutionLockService.IsAnyExecutionRunning == true` (see §8).
+- `OpenAboutCommand` is **never** blocked by execution state — explicit contrast with `OpenSettingsCommand`; About has no backend side effects.
+- Tab open/focus/close and folder browsing are never gated by execution state.
+- Closing a dirty tab (or closing Settings with unsaved changes) triggers the same unsaved‑changes confirmation dialog (see `ui-error-handling.md` and `ui-components.md`'s `ModalService` usage).
+- `NewLlxFileCommand` creates a new `CnlTabViewModel`, and `NewTxtFileCommand` a new `PlainTextTabViewModel`, both with `IsUntitled = true`, `FilePath = null`, and `Header` set from a single shared session‑scoped counter (`Untitled-1`, `Untitled-2`, …) incremented across both commands — not two independent counters. The new tab starts with `IsDirty = false` (no unsaved‑changes prompt until the user actually edits it).
+- `OpenFileCommand` opens an unfiltered "open any file" picker and dispatches the chosen path through the same `.llx`→`CnlTabViewModel` / else→`PlainTextTabViewModel` rule already used by `OpenOrFocusTabCommand` (§4), independent of whether a folder (`RootFolderPath`) is open.
+- `SaveCommand` on an untitled tab (`IsUntitled == true`) behaves exactly like `SaveAsCommand`: prompts for a location, then writes and clears `IsUntitled`/sets `FilePath`/`IsDirty = false`. On a non‑untitled tab it writes directly to the existing `FilePath` and sets `IsDirty = false`.
+- `SaveAsCommand` always prompts for a location, regardless of whether the tab is untitled, then writes and updates `FilePath`/`IsDirty = false` (and clears `IsUntitled` if it was set).
+- `SaveAllCommand` iterates every open tab with `IsDirty == true`, applying `SaveCommand`'s per‑tab resolution (direct write, or prompt if untitled) to each. If the user cancels an individual tab's save‑location prompt, that tab is skipped and the command continues to the remaining dirty tabs rather than aborting.
+- `SaveCommand`/`SaveAsCommand`/`SaveAllCommand` are enabled only when applicable (see `ui-components.md` §3.5 Rules for exact enablement conditions).
+
+### File & Save Picker Behavior
+- Opening a file (`OpenFileCommand`) requires an unfiltered file picker capability — broader than today's `.llx`‑only `PickCnlFileAsync()`.
+- Saving (`SaveCommand`/`SaveAsCommand` when prompting) requires a save‑file picker that suggests a file name and default extension based on the tab kind (`.llx` for `CnlTabViewModel`, no forced extension for `PlainTextTabViewModel`).
+- These are new picker capabilities beyond today's `PickCnlFileAsync()`/`PickFolderAsync()` — this document describes the required behavior; the underlying picker/service abstraction is an implementation detail.
+
+---
+
+# 4. FileTreeViewModel
+
+### Responsibilities
+- Recursively scans the open root folder (pure client‑side filesystem read; no backend endpoint is involved).
+- Tracks expand/collapse state per node.
+- Emits the selected file to `WorkspaceViewModel.OpenOrFocusTabCommand`.
+
+### State
+- `RootPath : string?`
+- `Nodes : ObservableCollection<FileTreeNodeViewModel>`
+- `SelectedNode : FileTreeNodeViewModel?`
+
+### FileTreeNodeViewModel
+- `Name : string`
+- `FullPath : string`
+- `IsDirectory : bool`
+- `IsExpanded : bool`
+- `Children : ObservableCollection<FileTreeNodeViewModel>`
+
+### Rules
+- Must not perform any pipeline or backend call.
+- Must surface filesystem read errors (e.g. permission denied) immediately, the same as any other `UiError`.
+
+---
+
+# 5. TabViewModel Family
+
+### 5.1 TabViewModel (base)
+- `Header : string` (file name, or `Untitled-N` while `IsUntitled`)
+- `FilePath : string?` (`null` while `IsUntitled`)
+- `IsUntitled : bool` — `true` for tabs created via New LLX File/New TXT File that have never been saved
+- `IsDirty : bool`
+- `CloseCommand`
+
+### 5.2 CnlTabViewModel : TabViewModel
+- Owns one `EditorViewModel` instance (§6).
+- Owns one `PipelineExecutionViewModel` instance (§7), which in turn owns the six inspector ViewModels (§11) for this tab only.
+- Instantiated when a `.llx` file is opened, **or** when `NewLlxFileCommand` (§3) creates a new untitled tab; disposed (along with its owned `EditorViewModel`/`PipelineExecutionViewModel`/inspectors) when the tab closes.
+- `EditorPaneRatio : double` — this tab's editor/panel split ratio, adjusted by dragging the `SplitterControl` (`ui-components.md` §4.1, §4.5) between the editor and the execution panel. Tab‑scoped, session‑only state (not persisted to disk); default value is left to implementation (`ui-architecture.md` §9).
+
+### 5.3 PlainTextTabViewModel : TabViewModel
+- Owns one `PlainTextEditorViewModel` instance.
+- Instantiated when a non‑`.llx` file is opened, **or** when `NewTxtFileCommand` (§3) creates a new untitled tab.
+
+### 5.4 PlainTextEditorViewModel
+- `Text : string`
+- `CursorPosition : int`
+- `IsDirty : bool`
+- No validation, no syntax highlighting, no pipeline commands.
+
+### Rules
+- `EditorViewModel` and `PipelineExecutionViewModel` are **per‑tab instances**, not composition‑root singletons — each `.llx` tab gets its own pair, constructed when the tab opens.
+- A tab's own inspector/result state is retained across the tab's lifetime and is unaffected by other tabs' executions.
+- **`CnlTabViewModel.IsDirty`** is a live diff against a baseline (the text as of tab‑open, or the most recent successful save), not a one‑way latch: it is `true` whenever `Editor.Text` differs from that baseline, and becomes `false` again the instant the text returns to exactly that baseline — whether by Undo/Redo (`ui-components.md` §4.2, `bdd-ui-interactions.md` §7.6) or any other edit that happens to reproduce it. `SaveCommand`/`SaveAsCommand`/`SaveAllCommand` re‑anchor the baseline to the just‑written text at the same moment they clear `IsDirty` (§3 Rules). `PlainTextTabViewModel.IsDirty` does **not** have this baseline‑comparison behavior — it remains a plain latch (any edit sets it `true`; only Save clears it) — Undo/Redo is CNL‑editor‑only.
+
+---
+
+# 6. EditorViewModel (per `.llx` tab)
+
+### Responsibilities
+- Holds CNL text for this tab.
+- Provides execution commands for this tab.
+- Never calls the backend on its own (`bdd-ui-interactions.md` §2.2) — `RunRequested`/`ExplainRequested`, invoked only by an explicit Run/Explain click, are the sole path to `/src/api`.
+
+### State
+- `SourceText : string`
+- `CanExecute : bool` (derived: `!IExecutionLockService.IsAnyExecutionRunning && SourceText not empty`)
+- `CompletionItems : ObservableCollection<CompletionItem>` — populated by `CompletionService` (`ui/intellisense/CompletionService.cs`, `spec/ux/ui-editor-services-guide.md` §3.3)
+- `HoverInfo : HoverInfo?` — populated by `HoverService`; `null` means no hover content for the current cursor position
+- `FoldRegions : ObservableCollection<FoldRegion>` — populated by `FoldingService` (`ui/intellisense/FoldingService.cs`, `spec/ux/ui-editor-services-guide.md` §3.6); one entry per CNL sentence (`bdd-ui-interactions.md` §2.9)
+- `LocalDiagnostics : ObservableCollection<LocalDiagnostic>` — populated by `DiagnosticService` (`ui/intellisense/DiagnosticService.cs`, `spec/ux/ui-editor-services-guide.md` §3.4); one entry per Tree‑sitter `ERROR`/`MISSING` node's span, advisory only. This is `EditorViewModel`'s only error-shaped state (`bdd-ui-interactions.md` §2.2, §2.8) — there is no separate backend-sourced error collection on the editor. Each entry is `LocalDiagnostic(Message, StartByte, EndByte, SuggestedFix)` — `SuggestedFix : string?` is non‑null only for the fixed set of self‑describing `MISSING` literals (`.`, `"`, `}}`; `bdd-ui-interactions.md` §2.18), `null` for every other diagnostic. Rendered as a squiggly underline + margin marker (`bdd-ui-interactions.md` §2.16), and takes priority over grammar hover when hovered (§2.17).
+- `QuickFixes : ObservableCollection<QuickFixItem>` — one entry per `LocalDiagnostics` entry that carries a non‑null `SuggestedFix`, rebuilt alongside `LocalDiagnostics` by `RefreshDecorations()`. `QuickFixItem` is `{ Title : string, InsertionByte : int, InsertText : string }` — `InsertionByte` is the diagnostic's `StartByte` (the fix's insertion point), `InsertText` is the missing literal.
+- `GhostSuggestion : QuickFixItem?` — the `QuickFixes` entry (if any) whose `InsertionByte` equals the current `CursorPosition`, recomputed on every cursor move and after every `RefreshDecorations()`. Drives the inline ghost‑text rendering (`bdd-ui-interactions.md` §2.18) and is the source `ApplyQuickFixCommand` consumes when `Tab` commits it (§2.19).
+
+`EditorViewModel` has no `IsExecuting` property of its own. Two distinct flags matter here and must not be confused:
+- `PipelineExecutionViewModel.IsRunning` (§7) — is *this tab's* execution currently running (drives this tab's own spinner/inspector state).
+- `IExecutionLockService.IsAnyExecutionRunning` (§8) — is *any* tab's execution currently running, app‑wide (drives `CanExecute` on every tab and the Settings gear).
+
+### Commands
+- `RunCommand` — invokes `POST /trace`.
+- `ExplainCommand` — invokes `POST /explain`.
+- `SelectCompletionItemCommand(CompletionItem)` — inserts the selected item's `Text` at the current cursor position; local-only, no backend call.
+- `ApplyQuickFixCommand(QuickFixItem)` — splices `item.InsertText` into `Text` at `item.InsertionByte`, moves `CursorPosition` to just past the inserted text, and clears `GhostSuggestion` to `null` (`bdd-ui-interactions.md` §2.19). Invoked either by `Tab` when `GhostSuggestion` is active, or by any future explicit quick‑fix UI.
+- `UndoCommand` (`Ctrl+Z`), `RedoCommand` (`Ctrl+Y`) — raise `UndoRequested`/`RedoRequested`, which the owning `CnlTabView` forwards to this tab's own `CnlEditor.Undo()`/`Redo()` (`ui-components.md` §4.2 Rules, `bdd-ui-interactions.md` §2.1a–§2.1b). Undo/redo history itself lives in the editor's underlying AvaloniaEdit text buffer, not in `EditorViewModel` — reimplementing a parallel ViewModel‑level undo stack would just be duplicate, divergent state (§8's determinism rules).
+
+There is no `TraceCommand`. The Trace button and its distinct trigger are removed entirely; Run now performs what Trace previously did.
+
+### Execution Behavior (App‑Wide Single Execution)
+1. Send HTTP request (`POST /trace` for Run, `POST /explain` for Explain).
+2. Receive `correlation_id`.
+3. Notify this tab's `PipelineExecutionViewModel` to begin streaming — this sets `IsRunning = true` (§7, on `pipeline_started`) and acquires the app‑wide lock via `IExecutionLockService.TryAcquire` (§8), which disables execution buttons on every tab and the Settings gear via `CanExecute`.
+4. No workspace‑area navigation occurs; the result renders in place in this tab's execution panel.
+5. Execution buttons re‑enable everywhere automatically once `IExecutionLockService.IsAnyExecutionRunning` recomputes to `false`, which happens when:
+   - `final_result_ready` arrives, or  
+   - `pipeline_failed` arrives.
+
+### IntelliSense (Tree‑sitter)
+- Client‑side only: computed entirely in-process from `SourceText` via `ui/intellisense`'s `ParserHost`/`CompletionService`/`HoverService`/`FoldingService`/`DiagnosticService` (`spec/ux/ui-editor-services-guide.md`, `spec/cnl-editor-architecture.md` §5). Never calls `/src/api`, never blocked by it — `EditorViewModel` has no `IPipelineService`/`IEventStreamService` dependency at all (`bdd-ui-interactions.md` §2.2).
+- Trigger points: `CompletionItems` recomputes on text change and on explicit completion invocation; `HoverInfo` recomputes on cursor move (and now also checks `LocalDiagnostics` first — `bdd-ui-interactions.md` §2.17); `FoldRegions`/`LocalDiagnostics`/`QuickFixes`/`Outline` recompute together via `RefreshDecorations()`, called synchronously from `OnTextChanged` (`bdd-ui-interactions.md` §2.7a); `GhostSuggestion` recomputes on cursor move and after `RefreshDecorations()` (§2.18).
+- **Exempt from `IExecutionLockService`** — this is local computation, not a backend call, so there is nothing to serialize against other tabs' executions.
+- Local diagnostics (Tree‑sitter `ERROR`/`MISSING` nodes, rendered as a squiggly underline + margin marker — `bdd-ui-interactions.md` §2.16) are the editor's only error-shaped state and are never reconciled against backend results — see `cnl-editor-architecture.md` §5's "Tree‑sitter's view of 'valid' can disagree with Rust's." Backend `ERR_CNL_PARSE` errors only ever exist as a result of an explicit Run/Explain click, and surface via `PipelineExecutionViewModel.ErrorBanner` (§7, `ui-error-handling.md` §6.1‑§6.2), not through this ViewModel. The visual resemblance between that banner's styling and `LocalDiagnostics`' squiggle styling (`ui-error-handling.md` §10.3) is deliberate (§2.7); the two remain entirely independent.
+- `CompletionItems`/`HoverInfo` content that references prior bindings or pronoun targets (`ui-intellisense-engine-spec.md` §5.1, §7.1–§7.2) is a syntactic, CST-only, best-effort local echo — never authoritative, always superseded by `/explain`'s response (`cnl-editor-architecture.md` §1.1.3).
+
+---
+
+# 7. PipelineExecutionViewModel (per `.llx` tab)
+
+### Responsibilities
+- Holds this tab's pipeline execution state.
+- Receives streaming events from WebSocket, filtered to this tab's active `correlation_id`.
+- Updates this tab's inspector ViewModels incrementally.
+- Tracks this tab's execution status and errors.
+- Clears this tab's state when a new pipeline begins in this tab.
+
+### State
+- `CorrelationId : string`
+- `IsRunning : bool` — this tab's own execution-state flag (see §6 for how it differs from the app‑wide lock). Drives this tab's execution progress indicator (`ui-components.md` §4.4) — shown while `true`, hidden while `false`. This is a per-tab signal, distinct from the app-wide `IExecutionLockService.IsAnyExecutionRunning` that gates `CanExecute` on every tab (§6).
+- `IsAwaitingModelOutput : bool` — true from a `prompt_generated` event until the matching `model_output_generated` arrives. Drives a second `LoadingIndicator` (`ui-components.md` §4.4) positioned between `PromptPanel` and `ModelOutputPanel`, since `ModelOutputPanel` itself stays collapsed until its first `model_output_generated` (`ui-components.md` §5.6) and would otherwise leave that wait with no visible feedback. Reset to `false` on `pipeline_started`, `final_result_ready`, and `pipeline_failed`.
+- `HasErrors : bool`
+- Inspector ViewModels (this tab's own instances):
+  - `RawAst : RawAstViewModel`
+  - `NormalizedAst : NormalizedAstViewModel`
+  - `Ir : IrViewModel`
+  - `Prompts : PromptViewModel`
+  - `ModelOutputs : ModelOutputViewModel`
+  - `FinalResult : FinalResultViewModel`
+
+### Commands
+None.  
+All updates come from streaming events.
+
+### Event Handling
+
+#### `pipeline_started`
+- Clear this tab's inspector ViewModels.
+- Reset all six inspector panels' `IsCollapsed` to `true` (re-collapse), regardless of how the previous run left them — every run repeats the closed→auto-expand reveal (`ui-architecture.md` §7, `ui-components.md` §5.1).
+- Set `IsRunning = true`.
+- Set `IsAwaitingModelOutput = false`.
+- Set `HasErrors = false`.
+- Acquire the app‑wide lock via `IExecutionLockService.TryAcquire(this tab)`.
+
+#### `raw_ast_generated`
+- Update `RawAstViewModel`.
+- Expand Raw AST panel automatically (`IsCollapsed = false`).
+
+#### `normalized_ast_generated`
+- Update `NormalizedAstViewModel`.
+- Expand Normalized AST panel automatically (`IsCollapsed = false`).
+
+#### `ir_generated`
+- Update `IrViewModel`.
+- Expand IR panel automatically (`IsCollapsed = false`).
+
+#### `prompt_generated`
+- Append the incoming prompt to `PromptViewModel.Prompts`. This event may fire multiple times per execution — once per model-calling IR operation, in program order — so it must append rather than replace the collection.
+- Expand Prompt panel automatically (`IsCollapsed = false`) on the first occurrence of this event in the execution only; later occurrences leave `IsCollapsed` unchanged (already `false`).
+- Scroll the Prompt panel's content to reveal the newly appended entry, unconditionally, on every occurrence (including the first).
+- Set `IsAwaitingModelOutput = true`.
+
+#### `model_output_generated`
+- Append the incoming output to `ModelOutputViewModel.Outputs`. Like `prompt_generated`, this event may fire multiple times per execution and must append rather than replace.
+- Expand Model Output panel automatically (`IsCollapsed = false`) on the first occurrence of this event in the execution only; later occurrences leave `IsCollapsed` unchanged (already `false`).
+- Scroll the Model Output panel's content to reveal the newly appended entry, unconditionally, on every occurrence (including the first).
+- Set `IsAwaitingModelOutput = false`.
+
+#### `final_result_ready`
+- Update `FinalResultViewModel`.
+- Expand Final Result panel automatically (`IsCollapsed = false`).
+- Set `IsRunning = false`.
+- Set `IsAwaitingModelOutput = false`.
+- Release the app‑wide lock via `IExecutionLockService.Release(this tab)`.
+
+#### `pipeline_failed`
+- Set `HasErrors = true`.
+- Populate this tab's error banner.
+- Set `IsRunning = false`.
+- Set `IsAwaitingModelOutput = false`.
+- Release the app‑wide lock via `IExecutionLockService.Release(this tab)`.
+- Panels that already auto-expanded earlier in this execution (e.g. Raw AST, Normalized AST) remain expanded; panels never reached before the failure remain collapsed.
+
+### Rules
+- Must ignore events whose `correlation_id` does not match this tab's active execution.
+- Must not reorder events.
+- Must not buffer events.
+- Must not retry events.
+- Must not reconstruct pipeline stages manually.
+- If this tab is closed while its execution is still in flight, `IExecutionLockService` must still be released — either immediately on close, or upon the terminal event if the underlying HTTP/WebSocket exchange is left to finish in the background. Implementations must pick one and apply it consistently; the lock must never be left permanently held by a closed tab.
+
+---
+
+# 8. IExecutionLockService
+
+### Responsibilities
+- Tracks whether any tab, app‑wide, currently has an execution in flight.
+- Gates every tab's `EditorViewModel.CanExecute` and the Settings gear (`WorkspaceViewModel.OpenSettingsCommand`).
+- Does **not** gate tab switching, tab open/close, or folder‑tree browsing — those remain available regardless of lock state.
+
+### State
+- `IsAnyExecutionRunning : bool`
+
+### Members
+- `TryAcquire(tabId) : bool` — succeeds only if no other tab currently holds the lock.
+- `Release(tabId)`
+- `ExecutionLockChanged` event — raised whenever `IsAnyExecutionRunning` changes, so every tab's `CanExecute` and the Settings gear can recompute.
+
+### Rules
+- Exactly one tab may hold the lock at a time.
+- Live validation (`/explain` triggered by text change, §6) never calls `TryAcquire` — it is exempt from this lock.
+- This is a lock, not an execution engine: it does not multiplex or track multiple concurrent correlation IDs. Each `PipelineExecutionViewModel` remains solely responsible for its own tab's event stream (§7).
+
+---
+
+# 9. SettingsViewModel
+
+### Responsibilities
+- Holds backend configuration.
+- Validates input.
+- Applies changes by relaunching `llx serve`.
+
+### State
+- `BackendPort : int`
+- `ApiKey : string`
+- `LogPath : string` — the directory the persistent log file is written to, not just a validated string (see "Rules" below and `ui-deployment.md` §4.3)
+- `EnvironmentProfile : string`
+- `IsValid : bool`
+
+### Commands
+- `SaveSettingsCommand`
+
+### Rules
+- Must block Save while invalid.
+- Must restart backend deterministically.
+- Must surface backend startup errors: if the `llx serve` relaunch fails, synthesize an `api`-category `UiError`, show it via `ErrorBannerViewModel.IsVisible = true`, and keep the Settings modal open (see `ui-error-handling.md` §7.5). The previous backend connection, if any, is left running until a restart succeeds.
+- `LogPath` empty/unset resolves to `config.json`'s own directory (`%APPDATA%\LimelightX\`); a non-empty `LogPath` must be an absolute path (existing validation, unchanged) and is used as the log directory instead. Either way the log file itself is always named `Limelight-x-log.txt` (`ui-deployment.md` §4.3). This resolution is not persisted back into `config.json` — an empty `LogPath` stays empty until the user explicitly sets a custom one.
+- A successful Save redirects logging to the new `LogPath` immediately — the same restart-on-success moment that already re-points the backend connection (see above). No further entries are written to the previous log location once the redirect completes.
+- `SettingsViewModel` is a single composition‑root instance (not per‑tab) — Settings is not file‑scoped.
+
+---
+
+# 10. AboutViewModel
+
+### Responsibilities
+- Holds read‑only project information for the About modal.
+- Closes the About modal.
+
+### State
+- `AppName : string` — immutable
+- `Description : string` — immutable, the project description shown in the modal
+- `Version : string` — immutable, sourced from the assembly version at runtime (see `ui-build-pipeline.md`)
+- `GitHubUrl : string` — immutable, `https://github.com/dondemcsak/limelight-x`
+
+### Commands
+- `CloseCommand` — delegates to `WorkspaceViewModel.CloseAboutCommand` (§3).
+
+### Rules
+- `AboutViewModel` is a single composition‑root instance (not per‑tab) — About is not file‑scoped, mirroring §9 SettingsViewModel.
+- Never gated by `IExecutionLockService` — explicit contrast with §9.
+- Activating the GitHub link opens the system default browser out‑of‑process; it does not navigate within the app.
+
+---
+
+# 11. Inspector ViewModels
+
+Each inspector ViewModel is responsible for:
+
+- deterministic state  
+- collapse/expand state  
+- resized height state  
+- formatted display text  
+- incremental updates from streaming events  
+
+Each is instantiated once per `.llx` tab (owned by that tab's `PipelineExecutionViewModel`, §7), not app‑wide. All six are always rendered (`ui-components.md` §5.1) — `IsCollapsed` controls their expand state, never their presence in the layout.
+
+### 11.1 RawAstViewModel
+State:
+- `AstNodes : ObservableCollection<AstNode>` — populated as a single-element collection holding the synthetic `Program` root returned by `raw_ast_generated` (`ui-data-contracts.md` §4); the tree itself is walked via each node's `Children`, not by further top-level siblings here.
+- `IsCollapsed : bool = true` — default on tab open; reset to `true` on every `pipeline_started` (§7)
+- `Height : double` — this panel's current expanded height, adjusted via its `SplitterControl` (`ui-components.md` §4.5, §5.1); default left to implementation
+- `HasErrors : bool` — set when this inspector's data fails to render; backs `InspectorErrorPanel` (`ui-components.md` §6.2) via an `InspectorErrorViewModel`
+
+Each `AstNode` reachable from `AstNodes` (the root and every descendant) additionally carries a client-side-only `IsExpanded : bool` field — **not** part of the wire contract (`ui-data-contracts.md` §4). Immediately after `AstNodes` is populated, the root node (`Depth == 0`) has `IsExpanded == true`; every other node defaults to `IsExpanded == false` until the user manually expands it via `AstTreeView` (`ui-components.md` §4.6).
+
+### 11.2 NormalizedAstViewModel
+State:
+- `NormalizedNodes : ObservableCollection<AstNode>` — same single-element, root-plus-`Children` shape as `AstNodes` above, populated from `normalized_ast_generated` (`ui-data-contracts.md` §5). Reuses the identical `AstNode` node object as §11.1 — there is no distinct `NormalizedAstNode` type.
+- `IsCollapsed : bool = true`
+- `Height : double`
+- `HasErrors : bool`
+
+`NormalizedNodes` nodes carry the same client-side-only `IsExpanded` field, with the same root-defaults-to-`true` / descendants-default-to-`false` rule as §11.1.
+
+### 11.3 IrViewModel
+State:
+- `Operations : ObservableCollection<IrOperation>`
+- `IsCollapsed : bool = true`
+- `Height : double`
+- `HasErrors : bool`
+
+### 11.4 PromptViewModel
+State:
+- `Prompts : ObservableCollection<Prompt>` — grows by one entry per `prompt_generated` event (one event per model-calling IR operation), rather than being set all at once.
+- `IsCollapsed : bool = true`
+- `Height : double`
+- `HasErrors : bool`
+
+### 11.5 ModelOutputViewModel
+State:
+- `Outputs : ObservableCollection<ModelOutput>` — grows by one entry per `model_output_generated` event (one event per model-calling IR operation), rather than being set all at once.
+- `IsCollapsed : bool = true`
+- `Height : double`
+- `HasErrors : bool`
+
+### 11.6 FinalResultViewModel
+State:
+- `ResultText : string`
+- `ContentType : string`
+- `IsCollapsed : bool = true`
+- `Height : double`
+
+### Rules
+- Inspector ViewModels must never perform pipeline logic.
+- They must only reflect streamed event data for their owning tab.
+- They must clear state, including `HasErrors`, when `pipeline_started` arrives for their tab.
+- `HasErrors` is set locally by the inspector when it fails to render its own data (e.g. a malformed node it cannot display) — it is independent of `PipelineExecutionViewModel.HasErrors`, which reflects a `pipeline_failed` event. An inspector can have `HasErrors = true` from a local rendering failure even on an otherwise-successful pipeline run.
+- `IsCollapsed` starts `true` when the tab opens and resets to `true` on every `pipeline_started`; it becomes `false` only via the auto-expand rule tied to that inspector's own event (§7) or an explicit user expand/collapse action — never merely because the panel exists in the layout.
+- `Height` is adjusted only by dragging that panel's `SplitterControl` (`ui-components.md` §4.5), which trades height only with the immediate next-neighbor panel below (classic two-panel splitter behavior, `ui-architecture.md` §7) — it is independent of `IsCollapsed` and of every other panel's `Height` beyond that one immediate neighbor.
+- Each AST node's `IsExpanded` (§11.1, §11.2) resets along with the rest of the tree's content when the panel clears on `pipeline_started` — there is no cross-run persistence of a node's manual expand/collapse choice.
+
+---
+
+# 12. Deterministic State Rules
+
+### Allowed State
+- collapse/expand  
+- per‑tab editor/panel split ratio (`CnlTabViewModel.EditorPaneRatio`, §5.2)  
+- per‑tab, per‑panel resized height (`Height` on each inspector ViewModel, §11)  
+- open tabs and tab order  
+- active tab  
+- expanded/collapsed folder tree nodes  
+- editor cursor position  
+- current correlation_id (per tab)  
+- inspector contents (per tab)  
+- whether any execution is in flight app‑wide (`IExecutionLockService.IsAnyExecutionRunning`)  
+- whether the Settings modal is open (`IsSettingsOpen`) or the About modal is open (`IsAboutOpen`)  
+- per‑tab untitled state (`IsUntitled`, `FilePath`)
+
+### Forbidden State
+- implicit transitions  
+- nondeterministic animations  
+- hidden state machines  
+- state not represented in ViewModels  
+- buffering or reordering events
+
+---
+
+# 13. Error Handling
+
+Errors may originate from:
+
+- parser  
+- normalizer  
+- IR compiler  
+- evaluator  
+- model adapter  
+- malformed request  
+- malformed event  
+- WebSocket disconnect  
+- `pipeline_failed` events
+- file open/save (e.g. permission denied, disk full, invalid path)
+
+### Rules
+- Errors must appear immediately.
+- Errors must be human‑readable.
+- Errors must be surfaced in:
+  - that tab's error banner  
+  - that tab's execution panel  
+  - that tab's inspector panels (if applicable)  
+  - inline editor (validation errors)
+- Each tab's `ErrorBannerViewModel` clears when a new `pipeline_started` event arrives for that tab (per §7), or when the user dismisses it — see `ui-error-handling.md` §8. Switching tabs never clears another tab's banner.
+- A failed Open File, Save, Save As, or Save All leaves the affected tab's state unchanged (still dirty/untitled as before the attempt) and surfaces the failure via that tab's error banner; it does not partially update `FilePath`/`IsDirty`/`IsUntitled`.
+
+---
+
+# 14. Non‑Goals
+
+ViewModels do **not** support:
+
+- parallel pipeline executions  
+- queued executions  
+- cancellation  
+- plugin inspectors  
+- direct Rust integration  
+- nondeterministic behavior  
+- reconstructing pipeline stages  
+- buffering or reassembling event streams
+- autosave
+
+---
+
+# 15. Future Extensions
+
+Potential enhancements:
+
+- queued execution mode  
+- cancelable pipelines  
+- richer inspector interactions  
+- visual IR graph  
+- per‑tab independent execution (superseding `IExecutionLockService`'s app‑wide lock)  
+- additional observability events (timing, resource usage)
+- autosave for dirty/untitled tabs
+
+---
+
+# Summary
+
+The Limelight‑X ViewModel layer is deterministic, MVVM‑pure, and fully aligned with the streaming API.  
+Pipeline results arrive incrementally over WebSocket and update the owning tab's inspector ViewModels in real time.  
+App‑wide single‑execution mode ensures predictable behavior and simplifies state management, while each `.llx` tab retains its own independent execution results.  
+`WorkspaceViewModel` also owns untitled‑tab creation and Save/Save As/Save All resolution, and coordinates the Settings and About modals — the latter never gated by execution state.  
+All ViewModels are state‑derived, spec‑driven, and free of nondeterministic logic.

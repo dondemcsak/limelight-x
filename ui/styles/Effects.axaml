@@ -1,0 +1,14 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    Soft shadows + subtle depth (ui-styling-theming.md §4.1). No heavy
+    shadows, no flat design. BoxShadows syntax: offsetX offsetY blur spread color.
+  -->
+  <BoxShadows x:Key="ShadowSmall">0 1 3 0 #66000000</BoxShadows>
+  <BoxShadows x:Key="ShadowMedium">0 4 8 0 #59000000</BoxShadows>
+
+  <!-- Deterministic animation timings (§7): 100-150ms, linear/ease-out only -->
+  <x:Double x:Key="AnimationDurationMs">120</x:Double>
+
+</ResourceDictionary>

@@ -21,6 +21,17 @@ Claude must assume the following directory layout:
     /ir
     /evaluator
     /model
+    /api
+/ui
+    /views
+    /viewmodels
+    /services
+    /components
+    /styles
+    /routing
+    /intellisense
+    /native
+    /queries
 /spec
     architecture.md
     cnl-grammar.md
@@ -28,9 +39,41 @@ Claude must assume the following directory layout:
     ir.md
     evaluator-semantics.md
     model-adapter.md
+    api.md
     coding-standards.md
     bdd.md
+    bdd-api.md
     spec-template.md
+    cnl-editor-architecture.md
+    /parsing
+        peg-grammar.md
+        grammer-js.md
+        highlights-scm.md
+        folds-scm.md
+        injections-scm.md
+        tree-sitter-integration.md
+        tree-sitter-build-guide.md
+        tree-sitter-runtime-build-guide.md
+    /ux
+        ui-architecture.md
+        ui-components.md
+        ui-viewmodels.md
+        ui-styling-theming.md
+        ui-routing-navigation.md
+        ui-data-contracts.md
+        ui-error-handling.md
+        ui-accessibility.md
+        ui-build-pipeline.md
+        ui-testing.md
+        ui-deployment.md
+        ui-editor-services-guide.md
+        ui-intellisense-architecture.md
+        ui-intellisense-engine-spec.md
+        ui-intellisense-implementation-guide.md
+        bdd-ui-interactions.md
+        bdd-ui-navigation.md
+        bdd-ui-error-cases.md
+        bdd-ui-visual-regressions.md
 ```
 
 ### Rules
@@ -41,7 +84,18 @@ Claude must assume the following directory layout:
 - There is **no `/providers` layer** in v0.1.  
   The evaluator calls the model adapter directly.
 
-- Claude must never invent new directories or modules.
+- `/src/api` is the sole exception to the "no new modules" rule: it wraps the existing `run`/`explain`/`trace` pipeline logic behind a local HTTP interface, as defined in `spec/api.md`. It does not reimplement or bypass any pipeline stage.
+
+- `/ui/intellisense` holds the Tree‑sitter‑backed editor services (`ParserHost`, `QueryRunner`, `CompletionService`, `DiagnosticService`, `HoverService`, `FoldingService`, `OutlineService`) defined in `spec/ux/ui-editor-services-guide.md` and `spec/ux/ui-intellisense-*.md`. `/ui/native` and `/ui/queries` are asset‑only companions (no code) holding, respectively, the compiled `tree-sitter-limelightx.dll` and its `.scm` query files — see `spec/cnl-editor-architecture.md` and `spec/parsing/tree-sitter-integration.md`.
+
+- Claude must never invent new directories or modules beyond what is listed here without explicit instruction.
+
+### 1.1 Multi‑Component Scope
+
+Limelight‑X now has two components governed by different rules:
+
+- **`/src` (the core pipeline, including `/src/api`)** — governed by this document in full: single‑language (Rust), deterministic, no providers, no new modules beyond `/src/api`.
+- **`/ui`** — a separate Avalonia/.NET (C#) desktop client, governed by `spec/ux/*.md`. It is a second language deliberately scoped to this one boundary and does not violate `/src`'s single‑language or determinism rules. `/ui` must not reimplement pipeline stages; it may only call `/src/api`'s HTTP endpoints.
 
 ---
 
@@ -144,6 +198,16 @@ Claude must not introduce:
 
 Unless explicitly approved.
 
+**Explicitly approved for `/src/api`:** an HTTP server crate (e.g. `axum` or `actix-web`) sufficient to implement `spec/api.md`. No other new Rust crates are approved.
+
+**Explicitly approved for `/ui`:** Avalonia, Avalonia Community Toolkit, a Fluent UI icon set, Inter and JetBrains Mono fonts, MSIX packaging tooling, and — for persistent diagnostic logging — `Microsoft.Extensions.Logging` plus Serilog (`Serilog.Extensions.Logging`, `Serilog.Sinks.File`), per `spec/ux/*.md`. These apply only to `/ui` and do not license any further additions without explicit approval.
+
+**Also explicitly approved for `/ui`:** two native Tree‑sitter DLLs, loaded via hand‑written, raw `[DllImport]` P/Invoke bindings only — **no third‑party Tree‑sitter binding NuGet package (e.g. TreeSitterSharp) is approved.**
+- `tree-sitter-limelightx.dll` (built from `tree-sitter/grammar.js` per `spec/parsing/tree-sitter-build-guide.md`) — the CNL grammar only; exports a single `tree_sitter_limelightx()` accessor.
+- `tree-sitter-runtime.dll` (built from `tree-sitter/tree-sitter` core's `lib/` per `spec/parsing/tree-sitter-runtime-build-guide.md`, a separate codebase from this repo's own `tree-sitter/` folder) — the actual `ts_parser_*`/`ts_node_*`/`ts_query_*` engine that consumes the grammar DLL's `TSLanguage*`. Required because Tree‑sitter's C API splits these into two separate libraries by design; a single self‑contained grammar DLL is not how it works (confirmed empirically — `tree-sitter-limelightx.dll` exports nothing but the language accessor).
+
+`/ui/native` is split per-RID: `/ui/native/win-arm64/` and `/ui/native/win-x64/`, matching `ui-build-pipeline.md` §7.1's `RuntimeIdentifiers` list. `LimelightX.UI.csproj` resolves and copies whichever folder matches the current build/publish RID (falling back to the host machine's own OS architecture when no RID is pinned) automatically. Both DLLs are now built and committed for **both ARM64 and win-x64** (per `spec/parsing/tree-sitter-build-guide.md` §9's completed steps) — `/ui/native/win-arm64/` and `/ui/native/win-x64/` are both populated. The `NativeTreeSitter` xUnit trait still tags the tests that P/Invoke these DLLs (for local ad-hoc filtering), but `ui-ci.yml`'s `windows-latest` (x64) runner no longer excludes them — they run for real on every CI build. This entry governs `/ui/native`, `/ui/queries`, and `/ui/intellisense` (see §1) and does not license any further native/interop additions without explicit approval.
+
 ---
 
 # 4. File‑Level Rules
@@ -206,7 +270,14 @@ Claude must implement:
   - model outputs  
   - final result  
 
-Claude must not add new CLI commands.
+### `llx serve [--port <N>]`
+- starts the `/src/api` HTTP server defined in `spec/api.md`
+- binds to `127.0.0.1` on the given port (default defined in `spec/api.md`)
+- fails fast if `ANTHROPIC_API_KEY` is unset or the port is unavailable
+- serves `/run`, `/explain`, `/trace` by invoking the same pipeline logic as the equivalent CLI commands, one request at a time
+- runs until interrupted (Ctrl+C), then shuts down cleanly
+
+Claude must not add CLI commands beyond these four without explicit instruction.
 
 ---
 
@@ -229,15 +300,17 @@ Claude must not:
 
 - invent new architecture  
 - introduce providers  
-- introduce multiple languages  
+- introduce multiple languages **within `/src`**  
 - introduce multiple model hosts  
-- introduce streaming  
+- introduce streaming **at the model-adapter or evaluator level** (token-level streaming from the model API, incremental/partial evaluation, or otherwise executing IR operations out of the deterministic order defined in `evaluator-semantics.md`)  
 - introduce batching  
 - introduce parallelism  
 - introduce caching  
 - introduce optimization passes  
 
-These are explicitly out of scope for v0.1.
+These are explicitly out of scope for v0.1. The `/ui` component is the one deliberate, pre-approved exception to the single-language rule — see §1.1.
+
+**Scope note on streaming:** the prohibition above applies to the model adapter and evaluator only. `/src/api`'s WebSocket event stream (per `spec/api.md`) is a transport-layer concern — it delivers the same pipeline stage outputs, computed in the same order, by the same deterministic one-request-at-a-time execution, just incrementally instead of bundled into one response. It does not add randomness, retries, batching, parallelism, or reordering, so it does not violate this rule.
 
 ---
 
@@ -258,5 +331,5 @@ Claude must never guess.
 # Summary
 
 Claude must implement Limelight‑X exactly as defined in the `/spec` directory.  
-The architecture is fixed, deterministic, and single‑language.  
+The `/src` pipeline architecture is fixed, deterministic, and single‑language (Rust); `/ui` is a separate, deliberately-scoped Avalonia/.NET client governed by `spec/ux/*.md` (see §1.1).  
 Claude must generate code that is consistent, spec‑driven, and free of hidden behavior.
