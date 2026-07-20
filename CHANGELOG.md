@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Desktop client (`/ui`) distribution switched from an MSIX installer to a portable, per‑architecture ZIP bundle (`win-x64`/`win-arm64`) — no installer, extract-and-run, remove by deleting the folder. `config.json` and the diagnostic log now live next to `LimelightX.exe` instead of `%APPDATA%\LimelightX\`, so deleting the folder removes all app state; the `ANTHROPIC_API_KEY` Windows Credential Manager entry is the sole deliberate exception. See `spec/ux/ui-deployment.md`.
+
 ---
 
 ## [0.5.1] — Initial Public Release

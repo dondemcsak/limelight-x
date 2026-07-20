@@ -323,7 +323,7 @@ UI must:
 ### 12.1 Default Location
 - No custom `LogPath` configured  
 - An error is added to any of the three logged collections (`WorkspaceViewModel.Errors`, a tab's `PipelineExecutionViewModel.Errors`, `SettingsViewModel.Errors`) — `EditorViewModel` has no error collection of its own to log (`bdd-ui-interactions.md` §2.2)  
-- Entry is appended to `%APPDATA%\LimelightX\Limelight-x-log.txt`
+- Entry is appended to `Limelight-x-log.txt` in the same folder as `LimelightX.exe`
 
 ### 12.2 Custom LogPath
 - `LogPath` set to a custom absolute directory  

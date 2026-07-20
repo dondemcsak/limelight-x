@@ -35,13 +35,9 @@ jobs:
         include:
           - rid: win-x64
             runner: windows-latest
-            msix_arch: x64
           - rid: win-arm64
             runner: windows-11-arm
-            msix_arch: arm64
     runs-on: ${{ matrix.runner }}
-    env:
-      MSIX_ARCH: ${{ matrix.msix_arch }}
     steps:
       # --- Prepare stage (§3.2) ---
       - name: Checkout
@@ -134,22 +130,17 @@ jobs:
       - name: Publish LimelightX.UI
         run: dotnet publish ui/LimelightX.UI.csproj -c Release -r ${{ matrix.rid }} --self-contained false
 
-      - name: Build MSIX package
+      - name: Stage portable bundle
         shell: pwsh
-        run: ./ui/packaging/build-msix.ps1 -Rid ${{ matrix.rid }}
+        run: ./ui/packaging/stage-bundle.ps1 -Rid ${{ matrix.rid }}
 
-      - name: Validate MSIX structure (unpack + inspect manifest)
+      - name: Validate bundle structure
         shell: pwsh
         run: |
-          $makeAppx = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter "makeappx.exe" -Recurse |
-            Where-Object { $_.FullName -match "\\$env:MSIX_ARCH\\" } | Sort-Object FullName -Descending | Select-Object -First 1
-          $unpackDir = "ui/packaging/out/unpacked"
-          & $makeAppx.FullName unpack /p ui/packaging/out/LimelightX.msix /d $unpackDir /o
-          if ($LASTEXITCODE -ne 0) { throw "makeappx unpack (structure validation) failed" }
-          if (-not (Test-Path "$unpackDir/AppxManifest.xml")) { throw "Unpacked MSIX is missing AppxManifest.xml" }
-          if (-not (Test-Path "$unpackDir/LimelightX.exe")) { throw "Unpacked MSIX is missing LimelightX.exe" }
-          if (-not (Test-Path "$unpackDir/llx.exe")) { throw "Unpacked MSIX is missing llx.exe" }
-          Write-Host "MSIX structure validated: manifest, LimelightX.exe, and llx.exe all present."
+          $layoutDir = "ui/packaging/layout"
+          if (-not (Test-Path "$layoutDir/LimelightX.exe")) { throw "Staged bundle is missing LimelightX.exe" }
+          if (-not (Test-Path "$layoutDir/llx.exe")) { throw "Staged bundle is missing llx.exe" }
+          Write-Host "Bundle structure validated: LimelightX.exe and llx.exe both present."
 
       # --- Artifact publishing stage (§3.6) ---
       # Artifact names carry a per-RID suffix - GitHub Actions requires unique
@@ -160,11 +151,4 @@ jobs:
           name: limelight-x-bundle-stable-${{ matrix.rid }}
           path: |
             ui/packaging/layout/**
-          if-no-files-found: error
-
-      - name: Upload MSIX installer (stable channel)
-        uses: actions/upload-artifact@v4
-        with:
-          name: limelight-x-msix-stable-${{ matrix.rid }}
-          path: ui/packaging/out/LimelightX.msix
           if-no-files-found: error

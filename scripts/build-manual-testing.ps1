@@ -3,8 +3,8 @@
   Manual Testing (Debug) Build Workflow (ui-build-pipeline.md §2.5): builds
   /src and /ui and stages both binaries plus all required runtime
   dependencies into target/manual-testing/, without running the static
-  analysis, dependency audits, tests, or MSIX packaging that the full Local
-  (§2.1-§2.4) / CI (§3) build workflows require.
+  analysis, dependency audits, tests, or bundle packaging that the full
+  Local (§2.1-§2.4) / CI (§3) build workflows require.
 
 .DESCRIPTION
   This script exists so developers can manually exercise the app after a

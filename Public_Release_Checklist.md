@@ -92,7 +92,7 @@ Enable all recommended GitHub security features:
 - [ ] GitHub Pages configured or explicitly disabled  
 - [ ] Screenshots, diagrams, or architecture overview added — including `/ui` screenshots if the UI is included in this release  
 - [ ] “Good First Issues” labeled for new contributors  
-- [ ] If `/ui` is part of this release: MSIX installer build verified, and `ANTHROPIC_API_KEY` setup steps documented for end users (see `spec/ux/ui-deployment.md`)  
+- [ ] If `/ui` is part of this release: portable ZIP bundle build verified for both architectures (`win-x64`/`win-arm64`), and `ANTHROPIC_API_KEY` setup steps documented for end users (see `spec/ux/ui-deployment.md`)  
 
 ---
 

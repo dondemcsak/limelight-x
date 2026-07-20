@@ -27,8 +27,8 @@ ui/tests/bin/
 ui/tests/obj/
 *.user
 
-# MSIX packaging output (staged layout + packed .msix are build artifacts,
-# not source - AppxManifest.xml, assets/, and build-msix.ps1 ARE committed)
+# Portable bundle staging output (build artifact, not source -
+# ui/packaging/stage-bundle.ps1 IS committed)
 ui/packaging/layout/
 ui/packaging/out/
 tree-sitter/.editorconfig

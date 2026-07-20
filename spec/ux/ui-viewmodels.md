@@ -348,7 +348,7 @@ All updates come from streaming events.
 - Must block Save while invalid.
 - Must restart backend deterministically.
 - Must surface backend startup errors: if the `llx serve` relaunch fails, synthesize an `api`-category `UiError`, show it via `ErrorBannerViewModel.IsVisible = true`, and keep the Settings modal open (see `ui-error-handling.md` §7.5). The previous backend connection, if any, is left running until a restart succeeds.
-- `LogPath` empty/unset resolves to `config.json`'s own directory (`%APPDATA%\LimelightX\`); a non-empty `LogPath` must be an absolute path (existing validation, unchanged) and is used as the log directory instead. Either way the log file itself is always named `Limelight-x-log.txt` (`ui-deployment.md` §4.3). This resolution is not persisted back into `config.json` — an empty `LogPath` stays empty until the user explicitly sets a custom one.
+- `LogPath` empty/unset resolves to `config.json`'s own directory (the same folder as `LimelightX.exe` — see `ui-deployment.md` §4.3); a non-empty `LogPath` must be an absolute path (existing validation, unchanged) and is used as the log directory instead. Either way the log file itself is always named `Limelight-x-log.txt` (`ui-deployment.md` §4.3). This resolution is not persisted back into `config.json` — an empty `LogPath` stays empty until the user explicitly sets a custom one.
 - A successful Save redirects logging to the new `LogPath` immediately — the same restart-on-success moment that already re-points the backend connection (see above). No further entries are written to the previous log location once the redirect completes.
 - `SettingsViewModel` is a single composition‑root instance (not per‑tab) — Settings is not file‑scoped.
 

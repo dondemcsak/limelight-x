@@ -17,9 +17,14 @@ public sealed class ConfigService(string? configFilePathOverride = null) : IConf
         Converters = { new JsonStringEnumConverter() },
     };
 
+    // Colocated with LimelightX.exe (ui-deployment.md §4.3) rather than
+    // %APPDATA% - the app is distributed as a portable zip bundle with no
+    // installer, so deleting the app folder must remove config.json (and,
+    // via AppLogging's directory-of-configFilePath fallback, the log file)
+    // along with the binaries. AppContext.BaseDirectory is the directory
+    // containing LimelightX.exe, not the process's working directory.
     public string ConfigFilePath { get; } = configFilePathOverride ?? Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "LimelightX",
+        AppContext.BaseDirectory,
         "config.json");
 
     public AppConfig? Load()
