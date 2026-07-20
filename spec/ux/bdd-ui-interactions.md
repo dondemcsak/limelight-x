@@ -693,7 +693,7 @@ Inspector panels are always present in the layout (`ui-components.md` §5.1); co
 ## 10.1 Default Location Write
 **GIVEN** no custom `LogPath` is configured  
 **WHEN** a `UiError` is added to any logged collection (`WorkspaceViewModel.Errors`, a tab's `PipelineExecutionViewModel.Errors`, `SettingsViewModel.Errors`)  
-**THEN** an entry is appended to `%APPDATA%\LimelightX\Limelight-x-log.txt`  
+**THEN** an entry is appended to `Limelight-x-log.txt` in the same folder as `LimelightX.exe`  
 **SO THAT** diagnostics are recoverable without a custom setup  
 **AS MEASURED BY** the file's contents after the error occurs
 

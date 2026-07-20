@@ -290,14 +290,14 @@ Every push and pull request to `main` runs the CI workflow (`.github/workflows/u
 - **Prepare** — checkout, restore .NET/Cargo caches, validate `Cargo.lock` / `packages.lock.json` are present and committed, restore both components in locked mode, run dependency audits (`cargo audit`, `dotnet list package --vulnerable`)
 - **Compile** — `dotnet build ui/LimelightX.slnx -c Release -warnaserror`, `dotnet format --verify-no-changes`, `cargo build --release --locked`, `cargo fmt --check`, `cargo clippy -- -D warnings`
 - **Test** — `dotnet test`, `cargo test --release --locked` (each leg's `NativeTreeSitter`-tagged `/ui` tests exercise that architecture's own Tree-sitter DLLs for real)
-- **Package** — `dotnet publish -r <rid>` for `LimelightX.UI`, then `ui/packaging/build-msix.ps1 -Rid <rid>` builds an unsigned MSIX bundling `LimelightX.exe` + `llx.exe`, followed by structural validation of the unpacked MSIX
-- **Publish artifacts** — uploads the `LimelightX.exe` + `llx.exe` bundle and the MSIX as CI artifacts, RID-suffixed per leg (`limelight-x-bundle-stable-win-x64`/`-win-arm64`, `limelight-x-msix-stable-win-x64`/`-win-arm64`)
+- **Package** — `dotnet publish -r <rid>` for `LimelightX.UI`, then `ui/packaging/stage-bundle.ps1 -Rid <rid>` stages `LimelightX.exe` + `llx.exe` + dependencies into a portable bundle directory, followed by structural validation of the staged bundle
+- **Publish artifacts** — uploads the staged `LimelightX.exe` + `llx.exe` bundle as a CI artifact, RID-suffixed per leg (`limelight-x-bundle-stable-win-x64`/`-win-arm64`)
 
-Tagged pushes matching `v*.*.*` additionally trigger `.github/workflows/ui-release.yml`, which reuses this CI workflow and publishes both architectures' artifacts (`LimelightX-win-x64.zip`/`.msix`, `LimelightX-win-arm64.zip`/`.msix`) to a GitHub Release (stable channel only).
+Tagged pushes matching `v*.*.*` additionally trigger `.github/workflows/ui-release.yml`, which reuses this CI workflow and publishes both architectures' artifacts (`LimelightX-win-x64.zip`/`LimelightX-win-arm64.zip`) to a GitHub Release (stable channel only). There is no installer — the ZIP is extracted to any folder and run directly; see `spec/ux/ui-deployment.md`.
 
 ## 11.2 Manual Testing (Debug) Build
 
-Running the full CI-equivalent build locally just to manually try out a change is unnecessary overhead — it lints, audits, tests, and packages an MSIX. For quick local iteration, use:
+Running the full CI-equivalent build locally just to manually try out a change is unnecessary overhead — it lints, audits, tests, and stages a packaged bundle. For quick local iteration, use:
 
 ```
 ./scripts/build-manual-testing.ps1

@@ -200,7 +200,7 @@ Unless explicitly approved.
 
 **Explicitly approved for `/src/api`:** an HTTP server crate (e.g. `axum` or `actix-web`) sufficient to implement `spec/api.md`. No other new Rust crates are approved.
 
-**Explicitly approved for `/ui`:** Avalonia, Avalonia Community Toolkit, a Fluent UI icon set, Inter and JetBrains Mono fonts, MSIX packaging tooling, and — for persistent diagnostic logging — `Microsoft.Extensions.Logging` plus Serilog (`Serilog.Extensions.Logging`, `Serilog.Sinks.File`), per `spec/ux/*.md`. These apply only to `/ui` and do not license any further additions without explicit approval.
+**Explicitly approved for `/ui`:** Avalonia, Avalonia Community Toolkit, a Fluent UI icon set, Inter and JetBrains Mono fonts, and — for persistent diagnostic logging — `Microsoft.Extensions.Logging` plus Serilog (`Serilog.Extensions.Logging`, `Serilog.Sinks.File`), per `spec/ux/*.md`. `/ui` is distributed as a portable, per-architecture ZIP bundle with no installer (`spec/ux/ui-deployment.md`) — no MSIX or other packaging/installer tooling is in scope. These apply only to `/ui` and do not license any further additions without explicit approval.
 
 **Also explicitly approved for `/ui`:** two native Tree‑sitter DLLs, loaded via hand‑written, raw `[DllImport]` P/Invoke bindings only — **no third‑party Tree‑sitter binding NuGet package (e.g. TreeSitterSharp) is approved.**
 - `tree-sitter-limelightx.dll` (built from `tree-sitter/grammar.js` per `spec/parsing/tree-sitter-build-guide.md`) — the CNL grammar only; exports a single `tree_sitter_limelightx()` accessor.

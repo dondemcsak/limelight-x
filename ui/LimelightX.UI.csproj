@@ -6,9 +6,7 @@
     <AssemblyName>LimelightX.UI</AssemblyName>
     <RootNamespace>LimelightX.UI</RootNamespace>
     <!-- Single source of truth for the shipped version (ui-build-pipeline.md
-         §4.1): build-msix.ps1 reads this and stamps it into the staged
-         AppxManifest.xml's Identity/@Version at package time, and
-         AboutViewModel.Version reads it back at runtime via
+         §4.1): AboutViewModel.Version reads it at runtime via
          Assembly.GetExecutingAssembly().GetName().Version. Bump this (and
          only this) before tagging a release. -->
     <Version>0.5.1.0</Version>

@@ -1,7 +1,7 @@
 namespace LimelightX.UI.Services;
 
 /// <summary>
-/// In-memory representation of %APPDATA%\LimelightX\config.json
+/// In-memory representation of config.json, colocated with LimelightX.exe
 /// (ui-deployment.md §4.3). A record (not a plain class) so callers can
 /// non-destructively update a subset of fields via `with` - notably
 /// SettingsViewModel.SaveSettingsAsync, which must preserve

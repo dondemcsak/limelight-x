@@ -27,22 +27,15 @@ jobs:
           pattern: limelight-x-bundle-stable-*
           path: dist/bundle
 
-      - name: Download MSIX artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: limelight-x-msix-stable-*
-          path: dist/msix
-
       # Release assets must have unique filenames, so each RID's bundle is
-      # zipped as-is (LimelightX.exe/llx.exe keep their original names inside)
-      # and each MSIX is renamed with its RID.
+      # zipped as-is (LimelightX.exe/llx.exe keep their original names inside).
+      # This zip *is* the shipped artifact (ui-deployment.md §2) - no installer.
       - name: Stage release assets
         shell: bash
         run: |
           mkdir -p dist/release
           for rid in win-x64 win-arm64; do
             (cd "dist/bundle/limelight-x-bundle-stable-$rid" && zip -r "$OLDPWD/dist/release/LimelightX-$rid.zip" .)
-            cp "dist/msix/limelight-x-msix-stable-$rid/LimelightX.msix" "dist/release/LimelightX-$rid.msix"
           done
 
       - name: Create GitHub Release (stable channel)
@@ -51,8 +44,6 @@ jobs:
           files: |
             dist/release/LimelightX-win-x64.zip
             dist/release/LimelightX-win-arm64.zip
-            dist/release/LimelightX-win-x64.msix
-            dist/release/LimelightX-win-arm64.msix
           generate_release_notes: true
           prerelease: false
           draft: false

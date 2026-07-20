@@ -37,4 +37,3 @@ Cargo.lock text eol=lf
 *.ico binary
 *.png binary
 *.ttf binary
-*.msix binary

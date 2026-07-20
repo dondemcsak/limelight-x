@@ -2,8 +2,8 @@
 
 ## Purpose
 This document defines the deterministic build pipeline for the Limelight‑X UI.  
-The UI (`/ui`) is a separate Avalonia/.NET (C#) project built with the **.NET SDK / MSBuild**, and is packaged together with the Rust CLI server binary (`/src/api`, built with **Cargo**, per `spec/api.md`) into a single MSIX installer via **GitHub Actions**.  
-The pipeline supports Windows‑only builds, produces MSIX installers, uses semantic versioning, and publishes stable‑channel artifacts.
+The UI (`/ui`) is a separate Avalonia/.NET (C#) project built with the **.NET SDK / MSBuild**, and is packaged together with the Rust CLI server binary (`/src/api`, built with **Cargo**, per `spec/api.md`) into a single portable, per‑architecture ZIP bundle via **GitHub Actions**.  
+The pipeline supports Windows‑only builds, produces ZIP bundles, uses semantic versioning, and publishes stable‑channel artifacts.
 
 The pipeline is organized by **workflow**:
 - Local Build Workflow (including a reduced Manual Testing sub‑workflow, §2.5)  
@@ -19,7 +19,7 @@ Limelight‑X uses two build systems, one per component:
 - **Cargo** as the build system for `/src`, including the `/src/api` server consumed by `/ui`  
 - **GitHub Actions** for CI + artifact publishing  
 - **Semantic versioning** for releases  
-- **MSIX packaging** for distribution, bundling both build outputs  
+- **Portable ZIP bundling** for distribution, one bundle per architecture (`ui-deployment.md` §2) — no installer  
 - **`packages.lock.json` (NuGet) and `Cargo.lock`** for dependency locking  
 - **Unit tests** for validation, run separately per component  
 - **Full static analysis** (`dotnet format`, Roslyn analyzers, Rustfmt, Clippy, `cargo audit`, NuGet vulnerability audit)
@@ -27,7 +27,7 @@ Limelight‑X uses two build systems, one per component:
 Build artifacts:
 - UI executable: `LimelightX.exe` (project `LimelightX.UI`, `/ui`, .NET — see `ui-architecture.md` §3)  
 - CLI/server binary: `llx.exe` (`/src`, Rust — the same binary as the CLI; `llx serve` is what runs it as `/src/api`'s HTTP server)  
-- MSIX installer bundling both
+- Portable ZIP bundle, per architecture, containing both
 
 ---
 
@@ -53,17 +53,17 @@ Build artifacts:
 - Fail build on any static analysis error
 
 ## 2.4. Package Stage
-- Generate MSIX installer  
-- Bundle UI executable + CLI server binary  
-- Validate installer structure
+- Stage the portable bundle (`ui/packaging/stage-bundle.ps1`): `LimelightX.exe` + `llx.exe` + all managed/native dependencies into a single layout directory  
+- Validate bundle structure (both executables present)  
+- Zip the staged directory to produce the shipped artifact (CI/Release workflows do this when assembling GitHub Release assets — see §3.6, §4.3)
 
 ## 2.5. Manual Testing (Debug) Build Workflow
-Running the full Local Build Workflow (§2.1–§2.4) — static analysis, dependency audits, tests, and MSIX packaging — is unnecessary overhead when a developer just wants to manually exercise the app after a change. `scripts/build-manual-testing.ps1` provides a reduced, compile‑only workflow for this purpose:
+Running the full Local Build Workflow (§2.1–§2.4) — static analysis, dependency audits, tests, and bundle packaging — is unnecessary overhead when a developer just wants to manually exercise the app after a change. `scripts/build-manual-testing.ps1` provides a reduced, compile‑only workflow for this purpose:
 
 - Builds `/src` via `cargo build` (Debug by default; `-Configuration Release` supported) — produces `llx.exe`  
 - Builds `/ui` via `dotnet publish ui/LimelightX.UI.csproj --no-self-contained` (same configuration) — produces `LimelightX.UI.exe` plus all managed dependencies (DLLs, `.deps.json`, `.runtimeconfig.json`)  
 - Stages both binaries and all required dependencies together into `target/manual-testing/` (Windows paths are case‑insensitive, so this is the same location as `Target/manual-testing` — intentionally a subdirectory of Cargo's own `target/` output root)  
-- Does **not** run static analysis, dependency audits, unit tests, or MSIX packaging — those remain exclusive to the Local Build Workflow (§2.1–§2.4) and CI Build Workflow (§3)
+- Does **not** run static analysis, dependency audits, unit tests, or bundle packaging — those remain exclusive to the Local Build Workflow (§2.1–§2.4) and CI Build Workflow (§3)
 
 This workflow is local‑only, is never invoked by CI, and is not a substitute for it — it exists solely to let developers manually test their changes without the overhead of the full pipeline.
 
@@ -98,17 +98,14 @@ Runs as a `win-x64` / `win-arm64` matrix — two legs of the same job, one on th
 - Fail CI on any test failure
 
 ## 3.5. Package Stage
-- Generate MSIX installer  
-- Bundle UI executable + CLI server binary  
-- Validate installer manifest  
-- Validate installer signing status (unsigned)
+- Publish `LimelightX.UI` (`dotnet publish -r <rid> --self-contained false`)  
+- Stage the portable bundle (`ui/packaging/stage-bundle.ps1 -Rid <rid>`): `LimelightX.exe` + `llx.exe` + dependencies into `ui/packaging/layout/`  
+- Validate bundle structure (both executables present)
 
 ## 3.6. Artifact Publishing Stage
-- Upload UI executable  
-- Upload CLI server binary  
-- Upload MSIX installer  
+- Upload the staged bundle (`ui/packaging/layout/**`)  
 - Mark artifacts as stable‑channel builds
-- Each matrix leg uploads its own RID-suffixed artifact names (`limelight-x-bundle-stable-<rid>`, `limelight-x-msix-stable-<rid>`) — GitHub Actions requires unique artifact names across matrix legs within one workflow run
+- Each matrix leg uploads its own RID-suffixed artifact name (`limelight-x-bundle-stable-<rid>`) — GitHub Actions requires unique artifact names across matrix legs within one workflow run
 
 ---
 
@@ -118,16 +115,16 @@ Runs as a `win-x64` / `win-arm64` matrix — two legs of the same job, one on th
 - Increment semantic version (major.minor.patch)  
 - Tag release commit with version  
 - Push tag to repository
-- Stamp the incremented version from a single source of truth into both `LimelightX.UI.csproj`'s `<Version>` and `ui/packaging/AppxManifest.xml`'s `Identity/@Version` — the two must never diverge. `AboutViewModel.Version` (`ui-viewmodels.md` §10) reads the stamped assembly version at runtime via `Assembly.GetExecutingAssembly().GetName().Version` reflection; there is no separate manual step to keep the About modal's version string in sync.
+- `LimelightX.UI.csproj`'s `<Version>` is the single source of truth for the shipped version — bump it (and only it) before tagging a release. `AboutViewModel.Version` (`ui-viewmodels.md` §10) reads the stamped assembly version at runtime via `Assembly.GetExecutingAssembly().GetName().Version` reflection; there is no separate manifest or manual step to keep the About modal's version string in sync.
 
 ## 4.2. Build Stage
 - Run full CI build workflow  
 - Ensure no warnings or errors remain in either component  
-- Ensure MSIX installer is generated
+- Ensure the portable bundle is staged and validated for both architectures
 
 ## 4.3. Publish Stage
 - Publish artifacts to GitHub Releases  
-- Include both architectures: `LimelightX-win-x64.zip`/`LimelightX-win-arm64.zip` (UI executable + CLI server binary, unmodified) and `LimelightX-win-x64.msix`/`LimelightX-win-arm64.msix` — RID-suffixed since release assets must have unique filenames  
+- Include both architectures: `LimelightX-win-x64.zip`/`LimelightX-win-arm64.zip` (UI executable + CLI server binary + dependencies, zipped as‑is from the staged bundle) — RID-suffixed since release assets must have unique filenames  
 - Include release notes  
 - Mark release as stable channel
 
@@ -167,7 +164,7 @@ Runs as a `win-x64` / `win-arm64` matrix — two legs of the same job, one on th
 ## 6.2. Dependency Updates
 - Updates must be intentional  
 - Updates must be validated through CI  
-- Updates must not break MSIX packaging
+- Updates must not break bundle staging
 
 ---
 
@@ -177,7 +174,7 @@ Runs as a `win-x64` / `win-arm64` matrix — two legs of the same job, one on th
 - `LimelightX.UI` targets Windows (`net8.0-windows` or later) and produces `LimelightX.exe`  
 - Avalonia build uses Windows runtime  
 - No macOS or Linux UI builds  
-- `LimelightX.UI.csproj` lists `RuntimeIdentifiers=win-x64;win-arm64` and pins `SelfContained=false`. Without a pinned RID, `dotnet build`/`publish` stages a `runtimes/{RID}/native/` folder for *every* platform each native-asset package supports (Avalonia, SkiaSharp, HarfBuzzSharp, Tmds.DBus, etc.) — Linux, macOS, and all three Windows architectures — even though only one RID is ever actually shipped at a time. The commands that produce shipped output pass an explicit `-r <rid>` (CI's publish step runs once per matrix leg — `-r win-x64` on `windows-latest`, `-r win-arm64` on `windows-11-arm`, §3; `scripts/build-manual-testing.ps1` defaults to the host machine's own architecture — `win-arm64` on an ARM64 dev machine, `win-x64` elsewhere, overridable via `-Rid`) to confine native assets to just that one RID, flattened directly into the output root instead of a `runtimes/` subfolder; this cut the MSIX from ~195 MB to ~45 MB. Passing `-r` also inserts a `<rid>` segment into the build/publish output path (`ui/bin/<Configuration>/net8.0-windows/<rid>/...`), which `ui/packaging/build-msix.ps1` and `scripts/build-manual-testing.ps1` account for. `win-arm64` exists in the RID list so `dotnet restore` captures its native assets too — this repo's Tree-sitter DLLs live under `ui/native/win-x64/` and `ui/native/win-arm64/` (CLAUDE.md §3.5, `spec/parsing/tree-sitter-build-guide.md` §0), one folder per RID, auto-selected by `LimelightX.UI.csproj`. `win-x64` alone would make manual testing on an ARM64 dev machine impossible for exactly this reason. Both `win-arm64` and the genuine `win-x64` *native Tree-sitter* build are now populated (`tree-sitter-build-guide.md` §9) — this RID list is a separate concern regardless, since it only governs Avalonia/managed-dependency native assets, not the Tree-sitter DLLs.
+- `LimelightX.UI.csproj` lists `RuntimeIdentifiers=win-x64;win-arm64` and pins `SelfContained=false`. Without a pinned RID, `dotnet build`/`publish` stages a `runtimes/{RID}/native/` folder for *every* platform each native-asset package supports (Avalonia, SkiaSharp, HarfBuzzSharp, Tmds.DBus, etc.) — Linux, macOS, and all three Windows architectures — even though only one RID is ever actually shipped at a time. The commands that produce shipped output pass an explicit `-r <rid>` (CI's publish step runs once per matrix leg — `-r win-x64` on `windows-latest`, `-r win-arm64` on `windows-11-arm`, §3; `scripts/build-manual-testing.ps1` defaults to the host machine's own architecture — `win-arm64` on an ARM64 dev machine, `win-x64` elsewhere, overridable via `-Rid`) to confine native assets to just that one RID, flattened directly into the output root instead of a `runtimes/` subfolder; this cut the shipped bundle from ~195 MB to ~45 MB. Passing `-r` also inserts a `<rid>` segment into the build/publish output path (`ui/bin/<Configuration>/net8.0-windows/<rid>/...`), which `ui/packaging/stage-bundle.ps1` and `scripts/build-manual-testing.ps1` account for. `win-arm64` exists in the RID list so `dotnet restore` captures its native assets too — this repo's Tree-sitter DLLs live under `ui/native/win-x64/` and `ui/native/win-arm64/` (CLAUDE.md §3.5, `spec/parsing/tree-sitter-build-guide.md` §0), one folder per RID, auto-selected by `LimelightX.UI.csproj`. `win-x64` alone would make manual testing on an ARM64 dev machine impossible for exactly this reason. Both `win-arm64` and the genuine `win-x64` *native Tree-sitter* build are now populated (`tree-sitter-build-guide.md` §9) — this RID list is a separate concern regardless, since it only governs Avalonia/managed-dependency native assets, not the Tree-sitter DLLs.
 - `ui/packages.lock.json` must be regenerated (`dotnet restore --force-evaluate`) whenever the RID list changes, since the lock file records RID-specific package assets.
 
 ## 7.2. CLI/Server Build
@@ -188,17 +185,18 @@ Runs as a `win-x64` / `win-arm64` matrix — two legs of the same job, one on th
 
 # 8. Packaging Requirements
 
-## 8.1. MSIX Installer
-- Installer must include `LimelightX.exe`  
-- Installer must include `llx.exe`  
-- Installer must include manifest  
-- Installer must remain unsigned  
-- Installer must validate structure before publishing
+## 8.1. Portable ZIP Bundle
+- Bundle must include `LimelightX.exe`  
+- Bundle must include `llx.exe`  
+- Bundle must include all managed and native runtime dependencies (DLLs, `.deps.json`, `.runtimeconfig.json`, native Tree‑sitter DLLs, `.scm` query files)  
+- Bundle must remain unsigned  
+- Bundle must contain no installer, manifest, or registry/shortcut side effects — it is a flat, self‑contained folder that runs from wherever it is extracted and is removed by deleting that folder (`ui-deployment.md` §6)  
+- Bundle structure must be validated before publishing (§3.5)
 
 ## 8.2. Distribution Bundle
-- `LimelightX.exe` + `llx.exe` must be bundled  
-- Bundle must match MSIX contents  
-- Bundle must be published as CI artifact
+- `LimelightX.exe` + `llx.exe` + dependencies must be staged together (§2.4, §3.5)  
+- The staged layout directory is zipped as‑is to produce the shipped `.zip` — no additional packaging step  
+- Bundle must be published as CI artifact, and as a GitHub Release asset on tagged releases (§4.3)
 
 ---
 
@@ -223,6 +221,6 @@ Runs as a `win-x64` / `win-arm64` matrix — two legs of the same job, one on th
 
 # Summary
 
-The Limelight‑X UI build pipeline uses two build systems — .NET SDK/MSBuild for `/ui` and Cargo for `/src` (including `/src/api`) — orchestrated through GitHub Actions to produce Windows‑only builds, MSIX installers, and a bundled CLI server binary.  
+The Limelight‑X UI build pipeline uses two build systems — .NET SDK/MSBuild for `/ui` and Cargo for `/src` (including `/src/api`) — orchestrated through GitHub Actions to produce Windows‑only builds and a bundled CLI server binary, packaged as a portable, per‑architecture ZIP with no installer.  
 It enforces semantic versioning, unit testing per component, full static analysis, dependency locking, and stable‑channel releases.  
 The pipeline is organized by workflow (local, CI, release) and must be followed exactly.
